@@ -70,7 +70,7 @@ export default function Login() {
       if (res.data.success) {
         setMessage("OTP Verified! Login Success");
         await AsyncStorage.setItem("loggedInUser", "true");
-        router.push("/driver-dashboard");
+        router.push("/customer-page");
 
         // navigation.navigate("home"); // After login
       } else {  
@@ -160,9 +160,9 @@ const driverLogin = async () => {
         {/* ---------------- USER LOGIN ---------------- */}
         {loginType === "user" && (
           <>
-            <Text style={styles.subtitle}>
+            {/* <Text style={styles.subtitle}>
               {otpSent ? "Enter the OTP" : "Enter your phone number"}
-            </Text>
+            </Text> */}
 
             {!otpSent ? (
               <>

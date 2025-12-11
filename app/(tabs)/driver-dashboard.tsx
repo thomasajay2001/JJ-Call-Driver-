@@ -2,19 +2,19 @@
 import axios from "axios";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import io from "socket.io-client";
 
@@ -27,8 +27,8 @@ interface Driver {
   lng?: string;
 }
 
-const BASE_URL = "http://localhost:3000"; // change to LAN IP when testing on phone
-const SOCKET_URL = "http://localhost:3000"; // change to LAN IP when testing on phone
+const BASE_URL = "http://192.168.0.107:3000"; // change to LAN IP when testing on phone
+const SOCKET_URL = "http://192.168.0.107:3000"; // change to LAN IP when testing on phone
 const LOCATIONIQ_KEY = "pk.3d89a3dff9f53e4a29a4948c199756e4"; // replace if you have your own
 
 export default function DriverDashboard() {

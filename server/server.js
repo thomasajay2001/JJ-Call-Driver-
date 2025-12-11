@@ -209,7 +209,7 @@ app.get('/api/drivers', (req, res) => {
               lat: parseFloat(r.LAT),
       lng: parseFloat(r.LNG)
       }));
-     console.log(result)
+     console.log("data",result)
       res.send(JSON.stringify(result));
     }
   );
