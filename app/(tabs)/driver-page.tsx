@@ -8,17 +8,18 @@ import io from 'socket.io-client';
 
 interface Booking {
   name: string;
-  area: string;
+  pickup: string;
+  drop:string;
   phone: string;
 }
 
-const BASE_URL = 'http://192.168.0.107:3000'; // replace with your IP
+const BASE_URL = 'http://192.168.0.102:3000'; // replace with your IP
 
 const DriverDashboard = () => {
   const [driverId, setDriverId] = useState<string>('');
   const [name, setName] = useState('');
   const [vehicle, setVehicle] = useState('Vehicle');
-  const [status, setStatus] = useState<'online' | 'offline'>('offline');
+const [status, setStatus] = useState<'online' | 'offline' | 'inride' | 'complete'>('offline');
   const [mobile, setMobile] = useState('');
   const [lat, setLat] = useState(0);
   const [lng, setLng] = useState(0);
@@ -70,11 +71,22 @@ const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   };
 
   const showPopup = (booking: Booking) => {
-    setPopupMessage(`New Booking from ${booking.name}, Area: ${booking.area}`);
+    setPopupMessage(`New Booking from ${booking.name}, Area: ${booking.pickup}`);
     setTimeout(() => setPopupMessage(''), 4000);
   };
+const startRide = async () => {
+  setStatus('inride');
+  await sendStatusToBackend('inride');
+  alert("Ride Started");
+};
 
-  const sendStatusToBackend = async (s: 'online' | 'offline') => {
+const completeRide = async () => {
+  setStatus('complete');
+  await sendStatusToBackend('complete');
+  alert("Ride Completed");
+};
+
+  const sendStatusToBackend = async (s: 'online' | 'offline' | 'complete' | 'inride') => {
     if (!driverId) return;
     try {
       await axios.post(`${BASE_URL}/api/driver/updateStatus`, {
@@ -86,32 +98,36 @@ const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     }
   };
 
-  const sendLocationToBackend = async () => {
-    if (!driverId) return;
-    try {
-      await axios.post(`${BASE_URL}/api/driver/updateLocation`, {
-        driverId,
-        lat,
-        lng,
-      });
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  
+
+const sendLocationToBackend = async (latVal: number, lngVal: number) => {
+  if (!driverId) return;
+  try {
+    await axios.post(`${BASE_URL}/api/driver/updateLocation`, {
+      driverId,
+      lat: latVal,
+      lng: lngVal,
+    });
+  } catch (err) {
+    console.error(err);
+  }
+};
+
 
   const updateLocationOnce = async () => {
-    try {
-      const { coords } = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-      setLat(coords.latitude);
-      setLng(coords.longitude);
-      sendLocationToBackend();
-    } catch (err) {
-      setLocationError('Unable to fetch location.');
-      console.error(err);
-    }
-  };
+  try {
+    const { coords } = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High,
+    });
+
+    setLat(coords.latitude);
+    setLng(coords.longitude);
+
+    sendLocationToBackend(coords.latitude, coords.longitude);
+  } catch (err) {
+    setLocationError('Unable to fetch location.');
+  }
+};
 
   const startSharing = async () => {
     const { status: permStatus } = await Location.requestForegroundPermissionsAsync();
@@ -121,31 +137,41 @@ const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     }
 
     setIsSharing(true);
-    setStatus('online');
-    sendStatusToBackend('online');
+    await sendStatusToBackend('online');
+setStatus('online');
+
     updateLocationOnce();
 
     intervalRef.current = setInterval(updateLocationOnce, 5000);
   };
 
-  const stopSharing = () => {
+  const stopSharing = async() => {
     setIsSharing(false);
-    setStatus('offline');
-    sendStatusToBackend('offline');
+   await sendStatusToBackend('offline');
+setStatus('offline');
+
     if (intervalRef.current) clearInterval(intervalRef.current);
   };
 
-  const onAccept = async (booking: Booking) => {
-    try {
-      await axios.post(`${BASE_URL}/api/bookingaccepted`, {
-        name,
-        mobile,
-      });
+ const onAccept = async (booking: Booking) => {
+  try {
+    const res = await axios.post(`${BASE_URL}/api/bookingaccepted`, {
+      name,
+      mobile,
+      
+    });
+
+    if (res.data.success) {
+      alert("Booking accepted");
       setNotifications(prev => prev.filter(b => b !== booking));
-    } catch (err) {
-      console.error(err);
+    } else {
+      alert(res.data.message); // Already accepted
     }
-  };
+
+  } catch (err) {
+    console.error(err);
+  }
+};
 
   const onDecline = (booking: Booking) => {
     setNotifications(prev => prev.filter(b => b !== booking));
@@ -161,12 +187,19 @@ const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
         <Text style={styles.cardTitle}>Driver Details</Text>
         <Text>Name: {name}</Text>
         <Text>Vehicle: {vehicle}</Text>
-        <Text>Status: {status}</Text>
+        <Text>{status === 'online' && (
+  <Button title="Start Ride" onPress={startRide} color="green" />
+)}
+
+{status === 'inride' && (
+  <Button title="Complete Ride" onPress={completeRide} color="orange" />
+)}
+</Text>
 
         {notifications.map((n, idx) => (
           <View key={idx} style={styles.booking}>
             <Text>
-              New Booking → {n.name} | {n.area} | {n.phone}
+              New Booking → {n.name} | {n.pickup} | {n.phone} | {n.drop}
             </Text>
             <Button title="Accept" onPress={() => onAccept(n)} />
             <Button title="Decline" onPress={() => onDecline(n)} color="red" />

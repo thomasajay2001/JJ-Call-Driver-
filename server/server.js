@@ -10,7 +10,7 @@ const http = require('http');
 app.use(cors());
 
 const server = http.createServer(app);
-const BASE_URL = "http://192.168.0.105:3000";
+const BASE_URL = "http://192.168.0.102:3000";
 const { Server } = require("socket.io");
 const io = new Server(server, {
   cors: { origin: "*" }
@@ -151,6 +151,40 @@ app.post('/api/trip-booking',upload.none(),(req,res)=>{
 
  
 })
+
+
+app.post("/api/bookingaccepted", (req, res) => {
+  const { name, mobile } = req.body;
+
+  if (!name || !mobile) {
+    return res.status(400).send({ success: false, message: "Missing details" });
+  }
+
+  // Check if already accepted
+  const checkSql = "SELECT * FROM accepted_bookings WHERE mobile = ?";
+  db.query(checkSql, [mobile], (err, rows) => {
+    if (err) return res.status(500).send(err);
+
+    if (rows.length > 0) {
+      // already accepted
+      return res.send({
+        success: false,
+        message: "Already accepted by another driver"
+      });
+    }
+
+    // otherwise save the new accepted booking
+    const insertSql = "INSERT INTO accepted_bookings (name, mobile) VALUES (?, ?)";
+    db.query(insertSql, [name, mobile], (err2) => {
+      if (err2) return res.status(500).send(err2);
+
+      return res.send({
+        success: true,
+        message: "Booking accepted successfully"
+      });
+    });
+  });
+});
 
 
 app.get('/api/customer', async (req, res) => {

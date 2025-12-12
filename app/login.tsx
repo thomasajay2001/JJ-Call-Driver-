@@ -24,7 +24,7 @@ export default function Login() {
   const [errorMessage, setErrorMessage] = useState("");
 
   const navigation = useNavigation();
-  const BASE_URL = "http://192.168.0.107:3000"; 
+  const BASE_URL = "http://192.168.0.102:3000"; 
 
   const clearMessages = () => {
     setMessage("");
