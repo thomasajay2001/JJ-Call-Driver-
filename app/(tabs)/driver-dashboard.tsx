@@ -27,8 +27,8 @@ interface Driver {
   lng?: string;
 }
 
-const BASE_URL = "http://192.168.0.102:3000"; // change to LAN IP when testing on phone
-const SOCKET_URL = "http://192.168.0.102:3000"; // change to LAN IP when testing on phone
+const BASE_URL = "http://192.168.0.8:3000"; // change to LAN IP when testing on phone
+const SOCKET_URL = "http://192.168.0.8:3000"; // change to LAN IP when testing on phone
 const LOCATIONIQ_KEY = "pk.3d89a3dff9f53e4a29a4948c199756e4"; // replace if you have your own
 
 export default function DriverDashboard() {

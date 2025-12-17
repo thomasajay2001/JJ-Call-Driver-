@@ -10,7 +10,7 @@ const http = require('http');
 app.use(cors());
 
 const server = http.createServer(app);
-const BASE_URL = "http://192.168.0.102:3000";
+const BASE_URL = "http://192.168.0.104:3000";
 const { Server } = require("socket.io");
 const io = new Server(server, {
   cors: { origin: "*" }
@@ -38,36 +38,28 @@ db.connect(err => {
 
 
 io.on("connection", (socket) => {
-  console.log("Driver or customer connected:", socket.id);
+  console.log("✅ Socket connected:", socket.id);
 
-  // Driver sends live location
-  socket.on("driverLocation", (data) => {
-    // data = { driverId, lat, lng }
-
-    // update database also
-    db.query(
-      "UPDATE DRIVERS SET LAT=?, LNG=? WHERE ID=?",
-      [data.lat, data.lng, data.driverId]
-    );
-
-    // send to all customers
-    io.emit("updateDriverLocation", data);
+  socket.on("joinDriverRoom", ({ driverId }) => {
+    socket.join(`driver_${driverId}`);
+    socket.driverId = driverId; // store for disconnect
+    console.log(`🚗 Driver joined room: driver_${driverId}`);
   });
 
-  // Driver online/offline
-  socket.on("driverStatus", (data) => {
-    // data = { driverId, status }
-
-    db.query(
-      "UPDATE DRIVERS SET STATUS=? WHERE ID=?",
-      [data.status, data.driverId]
-    );
-
-    io.emit("updateDriverStatus", data);
+  socket.on("joinCustomer", (customerId) => {
+    socket.join(`customer_${customerId}`);
   });
 
-  socket.on("disconnect", () => {
-    console.log("A user disconnected", socket.id);
+  socket.on("disconnect", async () => {
+    console.log("❌ Socket disconnected:", socket.id);
+
+    if (socket.driverId) {
+      await db.promise().query(
+        "UPDATE drivers SET status='offline' WHERE id=?",
+        [socket.driverId]
+      );
+      console.log("Driver offline:", socket.driverId);
+    }
   });
 });
 
@@ -141,50 +133,150 @@ app.post("/api/verify-otp",(req, res) => {
   });
 });
 
-app.post('/api/trip-booking',upload.none(),(req,res)=>{
+app.post("/api/trip-booking", (req, res) => {
+  const {
+    name,
+    phone,
+    pickup,
+    pickupLat,
+    pickupLng,
+    drop,
+    driverId
+  } = req.body;
 
-  const booking = req.body;
-
-  io.emit("newbooking",booking);
-  console.log(booking)
-  res.json({ status: true, message: "Booking Added" });
-
- 
-})
-
-
-app.post("/api/bookingaccepted", (req, res) => {
-  const { name, mobile } = req.body;
-
-  if (!name || !mobile) {
-    return res.status(400).send({ success: false, message: "Missing details" });
+  if (!name || !phone || !pickup || !drop ) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing required fields"
+    });
   }
 
-  // Check if already accepted
-  const checkSql = "SELECT * FROM accepted_bookings WHERE mobile = ?";
-  db.query(checkSql, [mobile], (err, rows) => {
-    if (err) return res.status(500).send(err);
+  const sql = `
+    INSERT INTO bookings
+    (customer_name, customer_mobile, pickup, pickup_lat, pickup_lng, drop_location, driver_id, status)
+    VALUES (?,?,?,?,?,?,?, 'pending')
+  `;
 
-    if (rows.length > 0) {
-      // already accepted
-      return res.send({
-        success: false,
-        message: "Already accepted by another driver"
-      });
+  db.query(
+    sql,
+    [name, phone, pickup, pickupLat, pickupLng, drop, driverId],
+    (err, result) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ success: false });
+      }
+
+      const booking = {
+        name,
+        phone,
+        pickup,
+        drop
+      };
+
+      io.emit("newBooking", booking);
+
+      res.json({ success: true, bookingId: result.insertId });
+    }
+  );
+});
+
+
+
+
+/* ================= ACCEPT BOOKING ================= */
+app.post("/api/accept-booking", async (req, res) => {
+  const { bookingId, driverId } = req.body;
+
+  try {
+    const [rows] = await db.promise().query(
+      "SELECT * FROM bookings WHERE id=? AND status='pending'",
+      [bookingId]
+    );
+
+    if (rows.length === 0) {
+      return res.json({ success: false, message: "Already accepted" });
     }
 
-    // otherwise save the new accepted booking
-    const insertSql = "INSERT INTO accepted_bookings (name, mobile) VALUES (?, ?)";
-    db.query(insertSql, [name, mobile], (err2) => {
-      if (err2) return res.status(500).send(err2);
+    // booking accepted
+    await db.promise().query(
+      "UPDATE bookings SET status='accepted', driver_id=? WHERE id=?",
+      [driverId, bookingId]
+    );
 
-      return res.send({
-        success: true,
-        message: "Booking accepted successfully"
-      });
-    });
-  });
+    // driver in ride
+    await db.promise().query(
+      "UPDATE drivers SET status='inride' WHERE id=?",
+      [driverId]
+    );
+
+    io.to(`driver_${driverId}`).emit("bookingConfirmed", { bookingId });
+    io.emit("bookingStatusUpdate", { bookingId, status: "accepted" });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
 });
+
+
+app.post("/api/complete-ride", async (req, res) => {
+  const { bookingId, driverId } = req.body;
+
+  try {
+    await db.promise().query(
+      "UPDATE bookings SET status='completed' WHERE id=?",
+      [bookingId]
+    );
+
+    await db.promise().query(
+      "UPDATE drivers SET status='online' WHERE id=?",
+      [driverId]
+    );
+
+    io.emit("bookingStatusUpdate", {
+      bookingId,
+      status: "completed"
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
+});
+
+
+// app.post("/api/bookingaccepted", (req, res) => {
+//   const { name, mobile } = req.body;
+
+//   if (!name || !mobile) {
+//     return res.status(400).send({ success: false, message: "Missing details" });
+//   }
+
+//   // Check if already accepted
+//   const checkSql = "SELECT * FROM accepted_bookings WHERE mobile = ?";
+//   db.query(checkSql, [mobile], (err, rows) => {
+//     if (err) return res.status(500).send(err);
+
+//     if (rows.length > 0) {
+//       // already accepted
+//       return res.send({
+//         success: false,
+//         message: "Already accepted by another driver"
+//       });
+//     }
+
+//     // otherwise save the new accepted booking
+//     const insertSql = "INSERT INTO accepted_bookings (name, mobile) VALUES (?, ?)";
+//     db.query(insertSql, [name, mobile], (err2) => {
+//       if (err2) return res.status(500).send(err2);
+
+//       return res.send({
+//         success: true,
+//         message: "Booking accepted successfully"
+//       });
+//     });
+//   });
+// });
 
 
 app.get('/api/customer', async (req, res) => {

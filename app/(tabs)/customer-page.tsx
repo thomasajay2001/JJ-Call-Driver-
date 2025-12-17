@@ -19,7 +19,7 @@ import io from "socket.io-client";
 /* =======================
    CONFIG - set your backend
    ======================= */
-const BASE_URL = "http://192.168.0.102:3000"; // change if needed
+const BASE_URL = 'http://192.168.0.8:3000';
 /* ======================= */
 
 type Suggestion = {
@@ -335,7 +335,6 @@ export default function CustomerDetailsScreen() {
       const res = await axios.post(`${BASE_URL}/api/trip-booking`, body);
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 2500);
-      socketRef.current?.emit("newBooking", res.data);
       // clear fields
       setName(""); setPhone(""); setArea(""); setDArea(""); setTriptype(""); setSelectedDriver(null); setSelectedDriverText("");
     } catch (err) {

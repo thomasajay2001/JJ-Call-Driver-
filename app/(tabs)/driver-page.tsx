@@ -13,7 +13,7 @@ interface Booking {
   phone: string;
 }
 
-const BASE_URL = 'http://192.168.0.102:3000'; // replace with your IP
+const BASE_URL = 'http://192.168.0.8:3000'; // replace with your IP
 
 const DriverDashboard = () => {
   const [driverId, setDriverId] = useState<string>('');
@@ -32,17 +32,37 @@ const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const socketRef = useRef<any>(null);
 
   // Fetch driver profile and initialize socket
- useEffect(() => {
+useEffect(() => {
   const init = async () => {
     const id = (await AsyncStorage.getItem('driverId')) || '';
     setDriverId(id);
     await loadDriverProfile(id);
 
-    // Initialize socket
-    socketRef.current = io(BASE_URL);
-    socketRef.current.on('newbooking', (data: Booking) => {
+    // 🔌 Create socket
+    const socket = io(BASE_URL, {
+      transports: ['websocket'],
+      autoConnect: true,
+    });
+
+    socketRef.current = socket;
+
+    // ✅ Wait until socket is connected
+    socket.on("connect", () => {
+      console.log("Socket connected:", socket.id);
+
+      if (id) {
+        socket.emit("joinDriverRoom", { driverId: id });
+      }
+    });
+
+    // 📩 Receive booking
+    socket.on("newBooking", (data: Booking) => {
       setNotifications(prev => [...prev, data]);
       showPopup(data);
+    });
+
+    socket.on("disconnect", () => {
+      console.log("Socket disconnected");
     });
   };
 
@@ -53,6 +73,7 @@ const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     socketRef.current?.disconnect();
   };
 }, []);
+
 
 
   const loadDriverProfile = async (id: string) => {

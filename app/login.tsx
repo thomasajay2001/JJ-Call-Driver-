@@ -4,11 +4,12 @@ import { useNavigation } from "@react-navigation/native";
 import axios from "axios";
 import { router } from "expo-router";
 import { useState } from "react";
-
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
-export default function Login() {
 
+
+export default function Login() {
+const BASE_URL = 'http://192.168.0.8:3000';
   const [loginType, setLoginType] = useState("user"); // user | driver
 
   // USER LOGIN STATES
@@ -24,7 +25,6 @@ export default function Login() {
   const [errorMessage, setErrorMessage] = useState("");
 
   const navigation = useNavigation();
-  const BASE_URL = "http://192.168.0.102:3000"; 
 
   const clearMessages = () => {
     setMessage("");
