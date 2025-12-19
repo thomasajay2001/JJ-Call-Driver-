@@ -9,7 +9,7 @@ import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-nativ
 
 
 export default function Login() {
-const BASE_URL = 'http://192.168.0.8:3000';
+const BASE_URL = 'http://192.168.0.5:3000';
   const [loginType, setLoginType] = useState("user"); // user | driver
 
   // USER LOGIN STATES
@@ -67,10 +67,15 @@ const BASE_URL = 'http://192.168.0.8:3000';
 
     try {
       const res = await axios.post(`${BASE_URL}/api/verify-otp`, { phone, otp });
-      if (res.data.success) {
-        setMessage("OTP Verified! Login Success");
-        await AsyncStorage.setItem("loggedInUser", "true");
-        router.push("/customer-page");
+       if (res.data.success) {
+  setMessage("OTP Verified! Login Success");
+
+  await AsyncStorage.setItem("role", "customer");
+  await AsyncStorage.setItem("customerPhone", phone);
+
+  router.push("/customer/customer-page");
+
+
 
         // navigation.navigate("home"); // After login
       } else {  
@@ -121,8 +126,11 @@ const driverLogin = async () => {
 
     await AsyncStorage.setItem("role", "driver");
     await AsyncStorage.setItem("driverId", driverId);
-
-    router.push("/driver-page");
+await axios.post(`${BASE_URL}/api/driver/updateStatus`, {
+  driverId,
+  status: "online"
+});
+    router.push("/driver/driver-page");
 
   } catch (err) {
     console.log("Login error:", err);

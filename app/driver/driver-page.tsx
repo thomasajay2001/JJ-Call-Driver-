@@ -7,19 +7,20 @@ import MapView, { Marker } from 'react-native-maps';
 import io from 'socket.io-client';
 
 interface Booking {
+  bookingId: number;
   name: string;
   pickup: string;
   drop:string;
   phone: string;
 }
 
-const BASE_URL = 'http://192.168.0.8:3000'; // replace with your IP
+const BASE_URL = 'http://192.168.0.5:3000'; // replace with your IP
 
 const DriverDashboard = () => {
   const [driverId, setDriverId] = useState<string>('');
   const [name, setName] = useState('');
   const [vehicle, setVehicle] = useState('Vehicle');
-const [status, setStatus] = useState<'online' | 'offline' | 'inride' | 'complete'>('offline');
+const [status, setStatus] = useState<'online' | 'offline' | 'inride' | 'completed'>('offline');
   const [mobile, setMobile] = useState('');
   const [lat, setLat] = useState(0);
   const [lng, setLng] = useState(0);
@@ -34,45 +35,37 @@ const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Fetch driver profile and initialize socket
 useEffect(() => {
   const init = async () => {
-    const id = (await AsyncStorage.getItem('driverId')) || '';
-    setDriverId(id);
-    await loadDriverProfile(id);
+    const role = await AsyncStorage.getItem("role");
+    if (role !== "driver") return;
 
-    // 🔌 Create socket
+    const id = await AsyncStorage.getItem("driverId");
+    if (!id) return;
+
+    setDriverId(id);
+
     const socket = io(BASE_URL, {
-      transports: ['websocket'],
-      autoConnect: true,
+      transports: ["websocket"],
     });
 
     socketRef.current = socket;
 
-    // ✅ Wait until socket is connected
     socket.on("connect", () => {
-      console.log("Socket connected:", socket.id);
-
-      if (id) {
-        socket.emit("joinDriverRoom", { driverId: id });
-      }
+      console.log("✅ Driver socket connected", socket.id);
+      socket.emit("joinDriverRoom", { driverId: id });
     });
 
-    // 📩 Receive booking
-    socket.on("newBooking", (data: Booking) => {
+    socket.on("newBooking", (data) => {
+      console.log("📩 New Booking:", data);
       setNotifications(prev => [...prev, data]);
       showPopup(data);
-    });
-
-    socket.on("disconnect", () => {
-      console.log("Socket disconnected");
     });
   };
 
   init();
 
-  return () => {
-    stopSharing();
-    socketRef.current?.disconnect();
-  };
+  return () => socketRef.current?.disconnect();
 }, []);
+
 
 
 
@@ -102,12 +95,12 @@ const startRide = async () => {
 };
 
 const completeRide = async () => {
-  setStatus('complete');
-  await sendStatusToBackend('complete');
+  setStatus('completed');
+  await sendStatusToBackend('completed');
   alert("Ride Completed");
 };
 
-  const sendStatusToBackend = async (s: 'online' | 'offline' | 'complete' | 'inride') => {
+  const sendStatusToBackend = async (s:any) => {
     if (!driverId) return;
     try {
       await axios.post(`${BASE_URL}/api/driver/updateStatus`, {
@@ -151,20 +144,24 @@ const sendLocationToBackend = async (latVal: number, lngVal: number) => {
 };
 
   const startSharing = async () => {
-    const { status: permStatus } = await Location.requestForegroundPermissionsAsync();
-    if (permStatus !== 'granted') {
-      setLocationError('Permission to access location was denied');
-      return;
-    }
+    console.log("START SHARING CLICKED");
+  console.log("DriverId:", driverId);
+  const { status: permStatus } =
+    await Location.requestForegroundPermissionsAsync();
 
-    setIsSharing(true);
-    await sendStatusToBackend('online');
-setStatus('online');
+  if (permStatus !== 'granted') {
+    setLocationError('Permission to access location was denied');
+    return;
+  }
 
-    updateLocationOnce();
+  setIsSharing(true);
+  await sendStatusToBackend('online');
+  setStatus('online');
 
-    intervalRef.current = setInterval(updateLocationOnce, 5000);
-  };
+  updateLocationOnce();
+  intervalRef.current = setInterval(updateLocationOnce, 5000);
+};
+
 
   const stopSharing = async() => {
     setIsSharing(false);
@@ -176,7 +173,7 @@ setStatus('offline');
 
  const onAccept = async (booking: Booking) => {
   try {
-    const res = await axios.post(`${BASE_URL}/api/bookingaccepted`, {
+    const res = await axios.post(`${BASE_URL}/api/accepted-booking`, {
       name,
       mobile,
       

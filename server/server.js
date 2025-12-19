@@ -10,7 +10,7 @@ const http = require('http');
 app.use(cors());
 
 const server = http.createServer(app);
-const BASE_URL = "http://192.168.0.104:3000";
+const BASE_URL = "http://192.168.0.5:3000";
 const { Server } = require("socket.io");
 const io = new Server(server, {
   cors: { origin: "*" }
@@ -40,10 +40,9 @@ db.connect(err => {
 io.on("connection", (socket) => {
   console.log("✅ Socket connected:", socket.id);
 
-  socket.on("joinDriverRoom", ({ driverId }) => {
+ socket.on("joinDriverRoom", ({ driverId }) => {
     socket.join(`driver_${driverId}`);
-    socket.driverId = driverId; // store for disconnect
-    console.log(`🚗 Driver joined room: driver_${driverId}`);
+    console.log("ROOM JOINED:", `driver_${driverId}`);
   });
 
   socket.on("joinCustomer", (customerId) => {
@@ -55,7 +54,7 @@ io.on("connection", (socket) => {
 
     if (socket.driverId) {
       await db.promise().query(
-        "UPDATE drivers SET status='offline' WHERE id=?",
+        "UPDATE drivers SET status='online' WHERE id=?",
         [socket.driverId]
       );
       console.log("Driver offline:", socket.driverId);
@@ -173,8 +172,8 @@ app.post("/api/trip-booking", (req, res) => {
         drop
       };
 
-      io.emit("newBooking", booking);
-
+io.to(`driver_${driverId}`).emit("newBooking", booking);
+          console.log(booking)
       res.json({ success: true, bookingId: result.insertId });
     }
   );
@@ -335,7 +334,6 @@ app.get('/api/drivers', (req, res) => {
               lat: parseFloat(r.LAT),
       lng: parseFloat(r.LNG)
       }));
-     console.log("data",result)
       res.send(JSON.stringify(result));
     }
   );
