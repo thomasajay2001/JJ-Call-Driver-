@@ -10,7 +10,7 @@ const http = require('http');
 app.use(cors());
 
 const server = http.createServer(app);
-const BASE_URL = "http://192.168.0.5:3000";
+const BASE_URL = "http://192.168.0.4:3000";
 const { Server } = require("socket.io");
 const io = new Server(server, {
   cors: { origin: "*" }
@@ -40,15 +40,24 @@ db.connect(err => {
 io.on("connection", (socket) => {
   console.log("✅ Socket connected:", socket.id);
 
+    socket.on("joinBookingRoom", ({ bookingId }) => {
+    socket.join(`booking_${bookingId}`);
+    console.log("Customer joined booking room:", `booking_${bookingId}`);
+  });
+
  socket.on("joinDriverRoom", ({ driverId }) => {
     socket.join(`driver_${driverId}`);
     console.log("ROOM JOINED:", `driver_${driverId}`);
   });
 
+  
+
   socket.on("joinCustomer", (customerId) => {
     socket.join(`customer_${customerId}`);
   });
 
+
+  
   socket.on("disconnect", async () => {
     console.log("❌ Socket disconnected:", socket.id);
 
@@ -166,6 +175,7 @@ app.post("/api/trip-booking", (req, res) => {
       }
 
       const booking = {
+        bookingId: result.insertId,
         name,
         phone,
         pickup,
@@ -174,7 +184,7 @@ app.post("/api/trip-booking", (req, res) => {
 
 io.to(`driver_${driverId}`).emit("newBooking", booking);
           console.log(booking)
-      res.json({ success: true, bookingId: result.insertId });
+      res.json({ success: true ,bookingId:booking.bookingId});
     }
   );
 });
@@ -187,35 +197,67 @@ app.post("/api/accept-booking", async (req, res) => {
   const { bookingId, driverId } = req.body;
 
   try {
-    const [rows] = await db.promise().query(
+    // 1️⃣ Get booking + customer socket room
+    const [bookings] = await db.promise().query(
       "SELECT * FROM bookings WHERE id=? AND status='pending'",
       [bookingId]
     );
 
-    if (rows.length === 0) {
+    if (!bookings.length) {
       return res.json({ success: false, message: "Already accepted" });
     }
 
-    // booking accepted
+    // 2️⃣ Get driver details
+    const [drivers] = await db.promise().query(
+      "SELECT name, mobile FROM drivers WHERE id=?",
+      [driverId]
+    );
+
+    const driver = drivers[0];
+    console.log(driver);
+
+    // 3️⃣ Update booking
     await db.promise().query(
       "UPDATE bookings SET status='accepted', driver_id=? WHERE id=?",
       [driverId, bookingId]
     );
 
-    // driver in ride
+    // 4️⃣ Save accept history
+    await db.promise().query(
+      `INSERT INTO accept_booking 
+       (booking_id, driver_id, driver_name, driver_mobile)
+       VALUES (?,?,?,?)`,
+      [bookingId, driverId, driver.name, driver.mobile]
+    );
+
+    // 5️⃣ Driver status
     await db.promise().query(
       "UPDATE drivers SET status='inride' WHERE id=?",
       [driverId]
     );
 
-    io.to(`driver_${driverId}`).emit("bookingConfirmed", { bookingId });
-    io.emit("bookingStatusUpdate", { bookingId, status: "accepted" });
+    // 🔔 6️⃣ SOCKET → CUSTOMER
+    io.to(`booking_${bookingId}`).emit("driverAssigned", {
+      bookingId,
+      driverName: driver.name,
+      driverMobile: driver.mobile
+    });
+    console.log(bookingId,driver.name,driver.mobile)
+
+    // 🔔 7️⃣ SOCKET → DRIVER
+    io.to(`driver_${driverId}`).emit("bookingConfirmed", {
+      bookingId
+    });
 
     res.json({ success: true });
+
   } catch (err) {
-    res.status(500).json({ success: false });
+    console.error(err);
+    res.status(500).json({ success: false,bookingId:result.insertId });
   }
 });
+
+
 
 
 app.post("/api/complete-ride", async (req, res) => {

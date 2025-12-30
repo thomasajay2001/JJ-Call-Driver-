@@ -14,7 +14,7 @@ interface Booking {
   phone: string;
 }
 
-const BASE_URL = 'http://192.168.0.5:3000'; // replace with your IP
+const BASE_URL = 'http://192.168.0.6:3000'; // replace with your IP
 
 const DriverDashboard = () => {
   const [driverId, setDriverId] = useState<string>('');
@@ -31,7 +31,6 @@ const [status, setStatus] = useState<'online' | 'offline' | 'inride' | 'complete
 
 const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const socketRef = useRef<any>(null);
-
   // Fetch driver profile and initialize socket
 useEffect(() => {
   const init = async () => {
@@ -47,6 +46,7 @@ useEffect(() => {
       transports: ["websocket"],
     });
 
+ loadDriverProfile(id);
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -59,6 +59,10 @@ useEffect(() => {
       setNotifications(prev => [...prev, data]);
       showPopup(data);
     });
+
+    socket.on("bookingConfirmed", (data) => {
+  console.log("Booking accepted:", data);
+});
   };
 
   init();
@@ -87,6 +91,8 @@ useEffect(() => {
   const showPopup = (booking: Booking) => {
     setPopupMessage(`New Booking from ${booking.name}, Area: ${booking.pickup}`);
     setTimeout(() => setPopupMessage(''), 4000);
+    console.log(booking);
+
   };
 const startRide = async () => {
   setStatus('inride');
@@ -171,25 +177,29 @@ setStatus('offline');
     if (intervalRef.current) clearInterval(intervalRef.current);
   };
 
- const onAccept = async (booking: Booking) => {
+const onAccept = async (booking: Booking) => {
   try {
-    const res = await axios.post(`${BASE_URL}/api/accepted-booking`, {
-      name,
-      mobile,
-      
+    const res = await axios.post(`${BASE_URL}/api/accept-booking`, {
+      bookingId: booking.bookingId,   // ✅ IMPORTANT
+      driverId: driverId       // ✅ From AsyncStorage / state
     });
 
     if (res.data.success) {
       alert("Booking accepted");
-      setNotifications(prev => prev.filter(b => b !== booking));
+
+      setNotifications(prev =>
+        prev.filter(b => b.bookingId !== booking.bookingId)
+      );
     } else {
-      alert(res.data.message); // Already accepted
+      alert(res.data.message);
     }
 
   } catch (err) {
-    console.error(err);
+    console.error("Accept booking error:", err);
   }
 };
+
+
 
   const onDecline = (booking: Booking) => {
     setNotifications(prev => prev.filter(b => b !== booking));

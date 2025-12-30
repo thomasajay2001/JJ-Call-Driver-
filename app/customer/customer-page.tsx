@@ -19,7 +19,7 @@ import io from "socket.io-client";
 /* =======================
    CONFIG - set your backend
    ======================= */
-const BASE_URL = 'http://192.168.0.5:3000';
+const BASE_URL = 'http://192.168.0.4:3000';
 /* ======================= */
 
 type Suggestion = {
@@ -47,7 +47,13 @@ export default function CustomerDetailsScreen() {
   const [area, setArea] = useState("");
   const [darea, setDArea] = useState("");
   const [triptype, setTriptype] = useState<"local" | "outstation" | "">("");
+  const [driverDetails, setDriverDetails] = useState<{
+  bookingId: number;
+  driverName: string;
+  driverMobile: string;
+} | null>(null);
 
+const [bookingId, setBookingId] = useState<number>(0);
   // suggestions (small lists rendered as Views)
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [dropsuggestions, setDropsuggestions] = useState<Suggestion[]>([]);
@@ -72,56 +78,82 @@ export default function CustomerDetailsScreen() {
   const pollRef = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const mapRef = useRef<MapView | null>(null);
 
-  useEffect(() => {
-    // initial fetch of drivers (non-filtered)
-    fetchDrivers();
+ useEffect(() => {
+  try {
+    socketRef.current = io(BASE_URL, { transports: ["websocket"] });
 
-    // socket (optional)
-    try {
-      socketRef.current = io(BASE_URL, { transports: ["websocket"] });
-      socketRef.current.on("connect", () => {
-        // connected
-      });
+    socketRef.current.on("connect", () => {
+      console.log("✅ Socket connected:", socketRef.current.id);
+    });
 
-      socketRef.current.on("updateDriverLocation", (driver: any) => {
-        // update driver in list
-        updateDriverInList(driver);
-      });
+    socketRef.current.on("updateDriverLocation", updateDriverInList);
 
-      socketRef.current.on("bookingAccepted", (payload: any) => {
-        Alert.alert("Booking update", JSON.stringify(payload));
-      });
+    socketRef.current.on("updateDriverStatus", (data: any) => {
+      setDrivers(prev =>
+        prev.map(d =>
+          String(d.id) === String(data.driverId)
+            ? { ...d, status: data.status }
+            : d
+        )
+      );
+    });
 
-      socketRef.current.on("updateDriverStatus", (data: any) => {
-        setDrivers(prev => prev.map(d => (String(d.id) === String(data.driverId) ? { ...d, status: data.status } : d)));
-      });
-    } catch (e) {
-      console.warn("Socket init failed", e);
-    }
+    socketRef.current.on("bookingAccepted", (payload: any) => {
+      Alert.alert("Booking update", JSON.stringify(payload));
+    });
 
-    return () => {
-      if (socketRef.current) socketRef.current.disconnect();
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  
+
+  } catch (e) {
+    console.warn("Socket init failed", e);
+  }
+
+  return () => {
+    socketRef.current?.disconnect();
+  };
+}, []);
+
+useEffect(() => {
+  socketRef.current.on("driverAssigned", (data: any) => {
+    console.log("🚗 Driver Assigned:", data);
+    setDriverDetails(data); // show name & mobile
+  });
+
+  return () => {
+    socketRef.current?.off("driverAssigned");
+  };
+}, []);
+
+useEffect(() => {
+  if (!bookingId || !socketRef.current) return;
+
+  socketRef.current.emit("joinBookingRoom", { bookingId });
+  console.log("📌 Joined booking room:", bookingId);
+
+}, [bookingId]);
 
   // when selected coordsPreview changes, auto load nearby drivers and animate map
-  useEffect(() => {
-    if (coordsPreview) {
-      loadDrivers(coordsPreview.lat, coordsPreview.lng);
-      // auto-refresh drivers every 3s
-      if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = setInterval(() => loadDrivers(coordsPreview.lat, coordsPreview.lng), 3000);
-      // animate map
-      mapRef.current?.animateToRegion(regionFrom(coordsPreview.lat, coordsPreview.lng, 0.01), 500);
-    } else {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
+ useEffect(() => {
+  if (coordsPreview) {
+    loadDrivers(coordsPreview.lat, coordsPreview.lng);
+
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(
+      () => loadDrivers(coordsPreview.lat, coordsPreview.lng),
+      3000
+    );
+
+    mapRef.current?.animateToRegion(
+      regionFrom(coordsPreview.lat, coordsPreview.lng, 0.01),
+      500
+    );
+  } else {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     }
-  }, [coordsPreview]);
+  }
+}, [coordsPreview]);
 
   // -------------------------
   // Autocomplete (Nominatim)
@@ -303,45 +335,73 @@ export default function CustomerDetailsScreen() {
   // -------------------------
   // Submit booking
   // -------------------------
-  const onSubmit = async () => {
-    if (!name.trim()) {
-      Alert.alert("Validation", "Please enter name");
-      return;
-    }
-    if (!/^\d{10}$/.test(phone)) {
-      Alert.alert("Validation", "Enter valid 10-digit phone");
-      return;
-    }
-    if (!area.trim()) {
-      Alert.alert("Validation", "Enter pickup area");
-      return;
-    }
-    if (!triptype) {
-      Alert.alert("Validation", "Select trip type");
+const onSubmit = async () => {
+  if (!name.trim()) {
+    Alert.alert("Validation", "Please enter name");
+    return;
+  }
+  if (!/^\d{10}$/.test(phone)) {
+    Alert.alert("Validation", "Enter valid 10-digit phone");
+    return;
+  }
+  if (!area.trim()) {
+    Alert.alert("Validation", "Enter pickup area");
+    return;
+  }
+  if (!triptype) {
+    Alert.alert("Validation", "Select trip type");
+    return;
+  }
+
+  try {
+    const body = {
+      name,
+      phone,
+      pickup: area,
+      drop: darea,
+      triptype,
+      driverId: selectedDriver?.id ?? null,
+      pickupLat: coordsPreview?.lat ?? null,
+      pickupLng: coordsPreview?.lng ?? null,
+    };
+
+    const res = await axios.post(`${BASE_URL}/api/trip-booking`, body);
+
+    const bookingId = res.data.bookingId;
+    if (!bookingId) {
+      Alert.alert("Error", "Booking ID missing");
       return;
     }
 
-    try {
-      const body = {
-        name,
-        phone,
-        pickup: area,
-        drop: darea,
-        triptype,
-        driverId: selectedDriver?.id ?? null,
-        pickupLat: coordsPreview?.lat ?? null,
-        pickupLng: coordsPreview?.lng ?? null,
-      };
-      const res = await axios.post(`${BASE_URL}/api/trip-booking`, body);
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 2500);
-      // clear fields
-      setName(""); setPhone(""); setArea(""); setDArea(""); setTriptype(""); setSelectedDriver(null); setSelectedDriverText("");
-    } catch (err) {
-      console.warn("submit error", err);
-      Alert.alert("Error", "Unable to submit. Try again");
+    // ✅ JOIN ROOM ONLY WHEN SOCKET IS READY
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("joinBookingRoom", { bookingId });
+      console.log("📌 Joined booking room:", bookingId);
+    } else {
+      socketRef.current.once("connect", () => {
+        socketRef.current.emit("joinBookingRoom", { bookingId });
+        console.log("📌 Joined booking room (delayed):", bookingId);
+      });
     }
-  };
+
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 2500);
+
+    // clear fields
+    setName("");
+    setPhone("");
+    setArea("");
+    setDArea("");
+    setTriptype("");
+    setSelectedDriver(null);
+    setSelectedDriverText("");
+
+  } catch (err) {
+    console.warn("submit error", err);
+    Alert.alert("Error", "Unable to submit. Try again");
+  }
+};
+
 
   // ---------- helpers ----------
   const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -480,6 +540,15 @@ export default function CustomerDetailsScreen() {
                 ))}
               </View>
             )}
+
+            {driverDetails && (
+  <View style={{ padding: 10, backgroundColor: "#e8ffe8", marginTop: 10 }}>
+    <Text>Booking ID: {driverDetails.bookingId}</Text>
+    <Text>Driver Name: {driverDetails.driverName}</Text>
+    <Text>Driver Mobile: {driverDetails.driverMobile}</Text>
+  </View>
+)}
+
 
             <View style={{ flexDirection: "row", marginTop: 8 }}>
               <TouchableOpacity style={styles.smallBtn} onPress={useCurrentLocation}>
