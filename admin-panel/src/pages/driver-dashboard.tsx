@@ -27,19 +27,16 @@ interface Driver {
   lng?: string;
 }
 
-const BASE_URL = "http://192.168.0.4:3000"; // change to LAN IP when testing on phone
-const SOCKET_URL = "http://192.168.0.4:3000"; // change to LAN IP when testing on phone
-const LOCATIONIQ_KEY = "pk.3d89a3dff9f53e4a29a4948c199756e4"; // replace if you have your own
+const BASE_URL = "http://192.168.0.4:3000"; // your LAN IP
+const SOCKET_URL = "http://192.168.0.4:3000";
+const LOCATIONIQ_KEY = "pk.3d89a3dff9f53e4a29a4948c199756e4"; // replace with your key
 
 export default function DriverDashboard() {
-  // data + UI state
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [pagedDrivers, setPagedDrivers] = useState<Driver[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
-
   const [loading, setLoading] = useState(false);
 
-  // search + sort + pagination
   const [searchText, setSearchText] = useState("");
   const [sortColumn, setSortColumn] = useState<keyof Driver | "">("");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -48,7 +45,6 @@ export default function DriverDashboard() {
   const [pageSize, setPageSize] = useState(10);
   const [totalPages, setTotalPages] = useState<number[]>([]);
 
-  // form modal
   const [isFormVisible, setFormVisible] = useState(false);
   const [isEditMode, setEditMode] = useState(false);
   const [editDriverId, setEditDriverId] = useState<number | null>(null);
@@ -65,18 +61,13 @@ export default function DriverDashboard() {
   const [popupMessage, setPopupMessage] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // ---------- Effect: load drivers + setup socket ----------
+  // ---------- Load drivers + socket ----------
   useEffect(() => {
     fetchDrivers();
-    // connect socket
+
     socketRef.current = io(SOCKET_URL, { transports: ["websocket"] });
-
-    socketRef.current.on("connect", () => {
-      console.log("Socket connected:", socketRef.current.id);
-    });
-
+    socketRef.current.on("connect", () => console.log("Socket connected:", socketRef.current.id));
     socketRef.current.on("newbooking", (data: any) => {
-      console.log("New booking:", data);
       setNotifications((p) => [data, ...p]);
       showPopup(`${data.name} — ${data.area}`);
     });
@@ -102,7 +93,7 @@ export default function DriverDashboard() {
     }
   };
 
-  // ---------- Pagination helpers ----------
+  // ---------- Pagination ----------
   const calculatePages = (data: Driver[], pageSz: number) => {
     const pages = Math.max(1, Math.ceil((data?.length || 0) / pageSz));
     setTotalPages(Array.from({ length: pages }, (_, i) => i + 1));
@@ -163,14 +154,9 @@ export default function DriverDashboard() {
   // ---------- LocationIQ autocomplete ----------
   const searchLocation = (q: string) => {
     setLocation(q);
-
     if (locationTimerRef.current) clearTimeout(locationTimerRef.current);
-    if (q.length < 3) {
-      setLocationSuggestions([]);
-      return;
-    }
+    if (q.length < 3) return setLocationSuggestions([]);
 
-    // debounce
     locationTimerRef.current = setTimeout(async () => {
       try {
         const res = await axios.get(
@@ -192,7 +178,7 @@ export default function DriverDashboard() {
     setLocationSuggestions([]);
   };
 
-  // ---------- Form / CRUD ----------
+  // ---------- Form CRUD ----------
   const openCreate = () => {
     setEditMode(false);
     setEditDriverId(null);
@@ -216,10 +202,7 @@ export default function DriverDashboard() {
   };
 
   const submitForm = async () => {
-    if (!name.trim() || !mobile.trim()) {
-      Alert.alert("Validation", "Name and Mobile are required.");
-      return;
-    }
+    if (!name.trim() || !mobile.trim()) return Alert.alert("Validation", "Name and Mobile are required.");
 
     try {
       const body = { name, mobile, location, lat, lng };
@@ -255,7 +238,7 @@ export default function DriverDashboard() {
     }
   };
 
-  // ---------- popups ----------
+  // ---------- Popups ----------
   const showPopup = (msg: string) => {
     setPopupMessage(msg);
     setTimeout(() => setPopupMessage(""), 4000);
@@ -271,10 +254,13 @@ export default function DriverDashboard() {
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.container}>
-        {/* Popup message */}
-        {popupMessage ? <View style={styles.popup}><Text style={styles.popupText}>{popupMessage}</Text></View> : null}
+        {popupMessage ? (
+          <View style={styles.popup}>
+            <Text style={styles.popupText}>{popupMessage}</Text>
+          </View>
+        ) : null}
 
-        {/* Header / Add button */}
+        {/* Header */}
         <View style={styles.headerRow}>
           <Text style={styles.title}>Drivers Management</Text>
           <TouchableOpacity style={styles.addBtn} onPress={openCreate}>
@@ -282,39 +268,35 @@ export default function DriverDashboard() {
           </TouchableOpacity>
         </View>
 
-        {/* Search & page size */}
+        {/* Search & Page Size */}
         <View style={styles.controls}>
           <TextInput
             placeholder="Search name / location / mobile..."
             style={styles.searchInput}
             value={searchText}
-            onChangeText={(t) => setSearchText(t)}
+            onChangeText={setSearchText}
           />
-
           <View style={styles.selectRow}>
             <Text style={styles.small}>Rows</Text>
-            <TouchableOpacity style={styles.pageBtn} onPress={() => setPageSize(5)}>
-              <Text style={pageSize === 5 ? styles.activePageText : undefined}>5</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.pageBtn} onPress={() => setPageSize(10)}>
-              <Text style={pageSize === 10 ? styles.activePageText : undefined}>10</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.pageBtn} onPress={() => setPageSize(15)}>
-              <Text style={pageSize === 15 ? styles.activePageText : undefined}>15</Text>
-            </TouchableOpacity>
+            {[5, 10, 15].map((sz) => (
+              <TouchableOpacity key={sz} style={styles.pageBtn} onPress={() => setPageSize(sz)}>
+                <Text style={pageSize === sz ? styles.activePageText : undefined}>{sz}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
-        {/* Loading */}
-        {loading ? <ActivityIndicator style={{ marginTop: 20 }} /> : null}
+        {loading && <ActivityIndicator style={{ marginTop: 20 }} />}
 
-        {/* List */}
+        {/* Drivers List */}
         <FlatList
           style={{ flex: 1 }}
           data={pagedDrivers}
           keyExtractor={(item) => item.id.toString()}
           ListEmptyComponent={() => (
-            <View style={styles.empty}><Text>No drivers found.</Text></View>
+            <View style={styles.empty}>
+              <Text>No drivers found.</Text>
+            </View>
           )}
           renderItem={({ item }) => (
             <View style={styles.card}>
@@ -322,16 +304,15 @@ export default function DriverDashboard() {
                 <Text style={styles.cardTitle}>{item.name}</Text>
                 <Text style={styles.cardId}>#{item.id}</Text>
               </View>
-
               <Text style={styles.small}>Mobile: {item.mobile}</Text>
               <Text style={styles.small}>Location: {item.location}</Text>
-              <Text style={styles.small}>Lat: {item.lat || "--"} | Lng: {item.lng || "--"}</Text>
-
+              <Text style={styles.small}>
+                Lat: {item.lat || "--"} | Lng: {item.lng || "--"}
+              </Text>
               <View style={styles.row}>
                 <TouchableOpacity style={styles.btnPrimary} onPress={() => openEdit(item)}>
                   <Text style={styles.btnPrimaryText}>Edit</Text>
                 </TouchableOpacity>
-
                 <TouchableOpacity style={styles.btnDanger} onPress={() => confirmDelete(item.id)}>
                   <Text style={styles.btnDangerText}>Delete</Text>
                 </TouchableOpacity>
@@ -340,24 +321,25 @@ export default function DriverDashboard() {
           )}
         />
 
-        {/* Pagination controls */}
+        {/* Pagination */}
         <View style={styles.pagination}>
           <TouchableOpacity disabled={currentPage === 1} onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}>
             <Text style={[styles.pageNav, currentPage === 1 && styles.disabled]}>{"<<"}</Text>
           </TouchableOpacity>
-
           {totalPages.map((p) => (
             <TouchableOpacity key={p} onPress={() => setCurrentPage(p)}>
               <Text style={[styles.pageNum, p === currentPage && styles.activePageNum]}>{p}</Text>
             </TouchableOpacity>
           ))}
-
-          <TouchableOpacity disabled={currentPage === totalPages.length} onPress={() => setCurrentPage((p) => Math.min(totalPages.length, p + 1))}>
+          <TouchableOpacity
+            disabled={currentPage === totalPages.length}
+            onPress={() => setCurrentPage((p) => Math.min(totalPages.length, p + 1))}
+          >
             <Text style={[styles.pageNav, currentPage === totalPages.length && styles.disabled]}>{">>"}</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Form Modal */}
+        {/* Modal Form */}
         <Modal visible={isFormVisible} animationType="slide" transparent>
           <View style={styles.modalOverlay}>
             <View style={styles.modal}>
@@ -365,10 +347,20 @@ export default function DriverDashboard() {
                 <Text style={styles.modalTitle}>{isEditMode ? "Edit Driver" : "Create Driver"}</Text>
 
                 <TextInput placeholder="Full name" value={name} onChangeText={setName} style={styles.input} />
-                <TextInput placeholder="Mobile" value={mobile} onChangeText={setMobile} style={styles.input} keyboardType="phone-pad" />
+                <TextInput
+                  placeholder="Mobile"
+                  value={mobile}
+                  onChangeText={setMobile}
+                  style={styles.input}
+                  keyboardType="phone-pad"
+                />
+                <TextInput
+                  placeholder="Location (type...)"
+                  value={location}
+                  onChangeText={searchLocation}
+                  style={styles.input}
+                />
 
-                <TextInput placeholder="Location (type...)" value={location} onChangeText={(t) => searchLocation(t)} style={styles.input} />
-                {/* suggestions */}
                 {locationSuggestions.length > 0 && (
                   <View style={styles.suggestBox}>
                     {locationSuggestions.map((s, i) => (
@@ -388,8 +380,7 @@ export default function DriverDashboard() {
                   <TouchableOpacity style={styles.btnPrimary} onPress={submitForm}>
                     <Text style={styles.btnPrimaryText}>{isEditMode ? "Update" : "Create"}</Text>
                   </TouchableOpacity>
-
-                  <TouchableOpacity style={[styles.btnSecondary]} onPress={() => setFormVisible(false)}>
+                  <TouchableOpacity style={styles.btnSecondary} onPress={() => setFormVisible(false)}>
                     <Text>Cancel</Text>
                   </TouchableOpacity>
                 </View>
@@ -398,7 +389,6 @@ export default function DriverDashboard() {
           </View>
         </Modal>
 
-        {/* Success overlay (small banner) */}
         {showSuccess && (
           <View style={styles.successOverlay}>
             <Text style={styles.successText}>Operation successful</Text>
@@ -423,7 +413,6 @@ const styles = StyleSheet.create({
   pageBtn: { padding: 6, borderWidth: 1, borderColor: "#ddd", borderRadius: 6 },
   activePageText: { color: "#007bff", fontWeight: "700" },
   small: { color: "#555" },
-
   card: { backgroundColor: "#fff", padding: 12, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: "#e6e6e6" },
   rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   cardTitle: { fontSize: 16, fontWeight: "700" },
@@ -433,34 +422,22 @@ const styles = StyleSheet.create({
   btnPrimaryText: { color: "#fff", fontWeight: "600" },
   btnDanger: { backgroundColor: "#dc3545", padding: 8, borderRadius: 6 },
   btnDangerText: { color: "#fff", fontWeight: "600" },
-
+  btnSecondary: { borderWidth: 1, borderColor: "#ddd", padding: 8, borderRadius: 6, alignItems: "center" },
   pagination: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, paddingVertical: 10 },
   pageNum: { padding: 6 },
   activePageNum: { fontWeight: "700", color: "#fff", backgroundColor: "#007bff", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
   pageNav: { padding: 6, fontWeight: "700" },
   disabled: { opacity: 0.4 },
-
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "center", alignItems: "center", padding: 20 },
   modal: { width: "100%", maxWidth: 800, backgroundColor: "#fff", borderRadius: 12, padding: 16 },
   modalTitle: { fontSize: 18, fontWeight: "700", marginBottom: 12 },
   input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 10, marginBottom: 10 },
-
-  suggestBox: { maxHeight: 150, borderWidth: 1, borderColor: "#ddd", borderRadius: 6, backgroundColor: "#fff", marginBottom: 6 },
-  suggestItem: { padding: 8, borderBottomWidth: 1, borderBottomColor: "#eee" },
-  suggestText: { fontSize: 13 },
-
-  empty: { alignItems: "center", padding: 30 },
-
-  popup: { position: "absolute", top: 12, left: 12, right: 12, backgroundColor: "#d1e7dd", padding: 10, borderRadius: 8, zIndex: 999 },
-  popupText: { color: "#0f5132" },
-
-  successOverlay: { position: "absolute", bottom: 20, left: 20, right: 20, backgroundColor: "#198754", padding: 10, borderRadius: 8, alignItems: "center" },
-  successText: { color: "#fff", fontWeight: "700" },
-  btnSecondary: {
-  backgroundColor: "#6c757d",
-  padding: 10,
-  borderRadius: 6,
-  alignItems: "center",
-},
-
+  suggestBox: { maxHeight: 150, borderWidth: 1, borderColor: "#ddd", borderRadius: 6, backgroundColor: "#fff" },
+  suggestItem: { padding: 10, borderBottomWidth: 1, borderBottomColor: "#eee" },
+  suggestText: { color: "#333" },
+  empty: { padding: 20, alignItems: "center" },
+  popup: { position: "absolute", top: 10, left: 20, right: 20, backgroundColor: "#000", padding: 10, borderRadius: 6, zIndex: 10 },
+  popupText: { color: "#fff", textAlign: "center" },
+  successOverlay: { position: "absolute", top: "50%", left: 0, right: 0, backgroundColor: "#28a745", padding: 12 },
+  successText: { color: "#fff", textAlign: "center", fontWeight: "700" },
 });
