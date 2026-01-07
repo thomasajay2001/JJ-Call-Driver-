@@ -1,20 +1,28 @@
-import { navigate } from "expo-router/build/global-state/routing";
-import React from "react";
+import { useNavigate } from "react-router-dom";
 
-interface Props {
-  onLogout: () => void;
-}
+export default function Sidebar({ onLogout }) {
+  const navigate = useNavigate();
 
-const Sidebar: React.FC<Props> = ({ onLogout }) => {
   return (
     <div style={styles.sidebar}>
       <h2 style={styles.logo}>Admin Panel</h2>
 
       <ul style={styles.menu}>
-        <li style={styles.menuItem} onClick={()=>navigate('')}>📊 Dashboard</li>
-        <li style={styles.menuItem}>📖 Bookings</li>
-        <li style={styles.menuItem} onClick={()=>navigate('/driver-dashboard')}>🚗 Drivers</li>
-        <li style={styles.menuItem}>👥 Users</li>
+        <li style={styles.menuItem} onClick={() => navigate("/dashboard")}>
+          📊 Dashboard
+        </li>
+
+        <li style={styles.menuItem} onClick={() => navigate("/bookings")}>
+          📖 Bookings
+        </li>
+
+        <li style={styles.menuItem} onClick={() => navigate("/driver-dashboard")}>
+          🚗 Drivers
+        </li>
+
+        <li style={styles.menuItem} onClick={() => navigate("/users")}>
+          👥 Users
+        </li>
 
         <li style={{ ...styles.menuItem, ...styles.logout }} onClick={onLogout}>
           Logout
@@ -22,8 +30,7 @@ const Sidebar: React.FC<Props> = ({ onLogout }) => {
       </ul>
     </div>
   );
-};
-
+}
 const styles = {
   sidebar: {
     width: "240px",
@@ -31,14 +38,14 @@ const styles = {
     background: "linear-gradient(180deg, #1f2933, #111827)",
     color: "#fff",
     padding: "20px",
-    position: "fixed" as const,
+    position: "fixed",
     left: 0,
     top: 0,
-    boxSizing: "border-box" as const,
+    boxSizing: "border-box",
   },
 
   logo: {
-    textAlign: "center" as const,
+    textAlign: "center",
     marginBottom: "30px",
     fontSize: "22px",
     fontWeight: "bold",
@@ -61,9 +68,7 @@ const styles = {
   logout: {
     marginTop: "30px",
     backgroundColor: "#7f1d1d",
-    textAlign: "center" as const,
+    textAlign: "center",
     fontWeight: "bold",
   },
 };
-
-export default Sidebar;

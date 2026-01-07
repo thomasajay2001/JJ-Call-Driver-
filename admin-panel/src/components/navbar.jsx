@@ -1,13 +1,8 @@
-import React from "react";
 
-interface Props {
-  onLogout: () => void;
-}
-
-const Navbar: React.FC<Props> = ({ onLogout }) => {
+export default function Navbar({ onLogout }) {
   return (
     <div style={styles.navbar}>
-      <h3 style={styles.logo}>Admin Dashboard</h3>
+      <h3 style={styles.logo}></h3>
 
       <div style={styles.right}>
         <span style={styles.user}>👤 Admin</span>
@@ -17,8 +12,7 @@ const Navbar: React.FC<Props> = ({ onLogout }) => {
       </div>
     </div>
   );
-};
-
+}
 const styles = {
   navbar: {
     height: "60px",
@@ -28,9 +22,9 @@ const styles = {
     alignItems: "center",
     justifyContent: "space-between",
     padding: "0 25px",
-    position: "fixed" as const,
+    position: "fixed",
     top: 0,
-    left: 240, // MUST match sidebar width
+    left: 240, // same as sidebar width
     right: 0,
     zIndex: 1000,
     boxShadow: "0 2px 10px rgba(0,0,0,0.4)",
@@ -62,5 +56,3 @@ const styles = {
     cursor: "pointer",
   },
 };
-
-export default Navbar;

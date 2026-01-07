@@ -1,9 +1,8 @@
-import React from "react";
 import { useNavigate } from "react-router-dom";
-import Navbar from "../components/navbar";
+import Navbar from "../components/Navbar";
 import Sidebar from "../components/sidebar";
 
-const Dashboard: React.FC = () => {
+export default function Dashboard() {
   const navigate = useNavigate();
 
   const logout = () => {
@@ -21,23 +20,24 @@ const Dashboard: React.FC = () => {
 
         <div style={styles.cards}>
           <div style={styles.card}>
-           <p>Total Bookings</p>
+            <p>Total Bookings</p>
             <h3>120</h3>
           </div>
+
           <div style={styles.card}>
-           <p>Active Drivers</p>
+            <p>Active Drivers</p>
             <h3>35</h3>
           </div>
+
           <div style={styles.card}>
-           <p>Live Trips</p>
+            <p>Live Trips</p>
             <h3>8</h3>
           </div>
         </div>
       </div>
     </div>
   );
-};
-
+}
 const styles = {
   content: {
     marginLeft: "240px",
@@ -58,8 +58,6 @@ const styles = {
     padding: "25px",
     borderRadius: "12px",
     boxShadow: "0 4px 15px rgba(0,0,0,0.1)",
-    textAlign: "center" as const,
+    textAlign: "center",
   },
 };
-
-export default Dashboard;
