@@ -9,7 +9,7 @@ import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-nativ
 
 
 export default function Login() {
-const BASE_URL = 'http://192.168.0.4:3000';
+const BASE_URL = 'http://192.168.0.8:3000';
   const [loginType, setLoginType] = useState("user"); // user | driver
 
   // USER LOGIN STATES

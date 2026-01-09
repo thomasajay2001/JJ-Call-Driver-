@@ -19,7 +19,7 @@ import io from "socket.io-client";
 /* =======================
    CONFIG - set your backend
    ======================= */
-const BASE_URL = 'http://192.168.0.4:3000';
+const BASE_URL = 'http://192.168.0.8:3000';
 /* ======================= */
 
 type Suggestion = {
@@ -127,10 +127,17 @@ useEffect(() => {
 useEffect(() => {
   if (!bookingId || !socketRef.current) return;
 
-  socketRef.current.emit("joinBookingRoom", { bookingId });
-  console.log("📌 Joined booking room:", bookingId);
-
+  if (socketRef.current.connected) {
+    socketRef.current.emit("joinBookingRoom", { bookingId });
+    console.log("📌 Joined booking room:", bookingId);
+  } else {
+    socketRef.current.once("connect", () => {
+      socketRef.current.emit("joinBookingRoom", { bookingId });
+      console.log("📌 Joined booking room (after connect):", bookingId);
+    });
+  }
 }, [bookingId]);
+
 
   // when selected coordsPreview changes, auto load nearby drivers and animate map
  useEffect(() => {

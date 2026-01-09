@@ -10,7 +10,7 @@ const http = require('http');
 app.use(cors());
 
 const server = http.createServer(app);
-const BASE_URL = "http://192.168.0.4:3000";
+const BASE_URL = "http://192.168.0.8:3000";
 const { Server } = require("socket.io");
 const io = new Server(server, {
   cors: { origin: "*" }
@@ -24,7 +24,7 @@ const mysql = require('mysql2');
 const db = mysql.createConnection({
   host: 'localhost',      
   user: 'root',            
-  password: 'Gomathi@123',            
+  password: 'q2m@123',            
   database: 'jjdrivers'         
 });
 
@@ -40,36 +40,40 @@ db.connect(err => {
 io.on("connection", (socket) => {
   console.log("✅ Socket connected:", socket.id);
 
-    socket.on("joinBookingRoom", ({ bookingId }) => {
+  socket.on("joinAdminRoom", () => {
+    socket.join("admins");
+    console.log("👑 Admin joined admins room");
+  });
+
+  socket.on("joinBookingRoom", ({ bookingId }) => {
     socket.join(`booking_${bookingId}`);
-    console.log("Customer joined booking room:", `booking_${bookingId}`);
+    console.log("Customer joined booking room:", bookingId);
   });
 
- socket.on("joinDriverRoom", ({ driverId }) => {
+  socket.on("joinDriverRoom", ({ driverId }) => {
     socket.join(`driver_${driverId}`);
-    console.log("ROOM JOINED:", `driver_${driverId}`);
+    socket.driverId = driverId;
+    console.log("Driver joined:", driverId);
   });
-
-  
 
   socket.on("joinCustomer", (customerId) => {
     socket.join(`customer_${customerId}`);
+    console.log("Customer joined:", customerId);
   });
 
-
-  
   socket.on("disconnect", async () => {
     console.log("❌ Socket disconnected:", socket.id);
 
     if (socket.driverId) {
       await db.promise().query(
-        "UPDATE drivers SET status='online' WHERE id=?",
+        "UPDATE drivers SET status='offline' WHERE id=?",
         [socket.driverId]
       );
       console.log("Driver offline:", socket.driverId);
     }
   });
 });
+
 
 
 app.post('/api/login', upload.none(),(req, res) => {
@@ -152,7 +156,7 @@ app.post("/api/trip-booking", (req, res) => {
     driverId
   } = req.body;
 
-  if (!name || !phone || !pickup || !drop ) {
+  if (!name || !phone || !pickup || !drop) {
     return res.status(400).json({
       success: false,
       message: "Missing required fields"
@@ -179,15 +183,23 @@ app.post("/api/trip-booking", (req, res) => {
         name,
         phone,
         pickup,
-        drop
+        drop,
+        driverId
       };
 
-io.to(`driver_${driverId}`).emit("newBooking", booking);
-          console.log(booking)
-      res.json({ success: true ,bookingId:booking.bookingId});
+      // ✅ Emit to driver
+      io.to(`driver_${driverId}`).emit("newBooking", booking);
+
+      // ✅ Emit to admin
+      io.to("admins").emit("newBooking", booking);
+
+      console.log("📢 New booking emitted:", booking);
+
+      res.json({ success: true, bookingId: booking.bookingId });
     }
   );
 });
+
 
 
 
