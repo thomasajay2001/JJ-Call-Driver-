@@ -10,7 +10,7 @@ const http = require('http');
 app.use(cors());
 
 const server = http.createServer(app);
-const BASE_URL = "http://192.168.0.7:3000";
+const BASE_URL = "http://192.168.0.8:3000";
 const { Server } = require("socket.io");
 const io = new Server(server, {
   cors: { origin: "*" }

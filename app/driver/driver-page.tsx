@@ -14,7 +14,7 @@ interface Booking {
   phone: string;
 }
 
-const BASE_URL = 'http://192.168.0.7:3000'; // replace with your IP
+const BASE_URL = 'http://192.168.0.8:3000'; // replace with your IP
 
 const DriverDashboard = () => {
   const [driverId, setDriverId] = useState<string>('');
