@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
-import Navbar from "../components/Navbar";
-import Sidebar from "../components/sidebar";
 
-const BASE_URL = "http://192.168.0.8:3000";
-const SOCKET_URL = "http://192.168.0.8:3000";
+
+const BASE_URL = "http://192.168.0.77:3000";
+const SOCKET_URL = "http://192.168.0.77:3000";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -68,8 +67,7 @@ const [bookings, setBookings] = useState([]);
   // ✅ JSX render
   return (
     <div>
-      <Sidebar onLogout={logout} />
-      <Navbar onLogout={logout} />
+      
 
       {/* ================= CONTENT ================= */}
       <div style={styles.content}>

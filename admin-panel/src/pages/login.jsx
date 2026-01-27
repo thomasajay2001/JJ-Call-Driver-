@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const Login: React.FC = () => {
+const Login = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
@@ -51,21 +51,23 @@ const styles = {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
+    padding: "15px",
   },
 
   card: {
-    width: "340px",
+    width: "100%",
+    maxWidth: "340px",
     background: "#fff",
     padding: "30px",
     borderRadius: "14px",
     boxShadow: "0 20px 40px rgba(0,0,0,0.3)",
-    textAlign: "center" as const,
+    textAlign: "center",
   },
 
   title: {
     marginBottom: "5px",
     fontSize: "24px",
-    fontWeight: 700,
+    fontWeight: "700",
     color: "#111827",
   },
 
@@ -89,7 +91,7 @@ const styles = {
     width: "100%",
     padding: "12px",
     fontSize: "16px",
-    fontWeight: 600,
+    fontWeight: "600",
     background: "#111827",
     color: "#fff",
     border: "none",

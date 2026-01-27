@@ -12,7 +12,7 @@ export default function Sidebar({ onLogout }) {
           📊 Dashboard
         </li>
 
-        <li style={styles.menuItem} onClick={() => navigate("/bookings")}>
+        <li style={styles.menuItem} onClick={() => navigate("/booking")}>
           📖 Bookings
         </li>
 
