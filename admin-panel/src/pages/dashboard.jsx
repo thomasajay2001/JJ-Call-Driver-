@@ -4,29 +4,22 @@ import { io } from "socket.io-client";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/sidebar";
 
-const BASE_URL = "http://192.168.0.8:3000";
-const SOCKET_URL = "http://192.168.0.8:3000";
+const BASE_URL = "http://192.168.0.6:3000";
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const socketRef = useRef(null);
 
-const [bookings, setBookings] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+
   const logout = () => {
     localStorage.removeItem("adminLoggedIn");
     navigate("/");
   };
-  const [notifications, setNotifications] = useState([]);
 
-  // ✅ useEffect BEFORE return
   useEffect(() => {
-    const role = localStorage.getItem("role");
-    //if (role !== "admin") return;
-
-    const socket = io(BASE_URL, {
-      transports: ["websocket"],
-    });
-
+    const socket = io(BASE_URL, { transports: ["websocket"] });
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -35,37 +28,37 @@ const [bookings, setBookings] = useState([]);
     });
 
     socket.on("newBooking", (data) => {
-  console.log("📥 New booking received:", data);
+      console.log("📥 New booking received:", data);
 
-  setBookings((prev) => [data, ...prev]);
+      setBookings((prev) => [data, ...prev]);
 
-  setNotifications((prev) => [
-    {
-      id: Date.now(),
-      ...data,
-    },
-    ...prev,
-  ]);
+      const id = Date.now();
 
-  // Auto remove after 5 seconds
-  setTimeout(() => {
-    setNotifications((prev) =>
-      prev.filter((n) => n.id !== data.id)
-    );
-  }, 5000);
-});
+      setNotifications((prev) => [
+        {
+          id,
+          ...data,
+          fade: false,
+        },
+        ...prev,
+      ]);
 
+      // Start fade after 6 seconds
+      setTimeout(() => {
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === id ? { ...n, fade: true } : n)),
+        );
+      }, 6000);
 
-    socket.on("bookingConfirmed", (data) => {
-      console.log("📌 Booking confirmed:", data);
+      // Remove after fade animation
+      setTimeout(() => {
+        setNotifications((prev) => prev.filter((n) => n.id !== id));
+      }, 6500);
     });
 
-    return () => {
-      socket.disconnect();
-    };
+    return () => socket.disconnect();
   }, []);
 
-  // ✅ JSX render
   return (
     <div>
       <Sidebar onLogout={logout} />
@@ -100,10 +93,14 @@ const [bookings, setBookings] = useState([]);
       <div style={styles.notificationWrapper}>
         <div style={styles.notificationRow}>
           {notifications.map((n) => (
-            <div key={n.id} style={styles.notificationCard}>
-              <div style={styles.notificationHeader}>
-                🚖 New Booking Alert
-              </div>
+            <div
+              key={n.id}
+              style={{
+                ...styles.notificationCard,
+                ...(n.fade ? styles.fadeOut : {}),
+              }}
+            >
+              <div style={styles.notificationHeader}> New Booking Alert</div>
 
               <div style={styles.notificationBody}>
                 <div style={styles.row}>
@@ -146,7 +143,6 @@ const styles = {
     padding: "90px 32px 32px",
     background: "#f5f7fb",
     minHeight: "100vh",
-    fontFamily: "Inter, system-ui, sans-serif",
   },
 
   pageHeader: {
@@ -156,14 +152,11 @@ const styles = {
   pageTitle: {
     fontSize: "26px",
     fontWeight: 600,
-    margin: 0,
-    color: "#111827",
   },
 
   pageSubtitle: {
     fontSize: "14px",
     color: "#6b7280",
-    marginTop: "6px",
   },
 
   cards: {
@@ -173,7 +166,7 @@ const styles = {
   },
 
   card: {
-    background: "#ffffff",
+    background: "#fff",
     padding: "28px",
     borderRadius: "14px",
     boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
@@ -183,64 +176,48 @@ const styles = {
   cardTitle: {
     fontSize: "14px",
     color: "#6b7280",
-    marginBottom: "8px",
   },
 
   cardValue: {
     fontSize: "32px",
     fontWeight: 600,
-    color: "#111827",
   },
 
-  /* ===== Notifications ===== */
+  notificationWrapper: {
+    position: "fixed",
+    bottom: "28px",
+    left: "240px",
+    zIndex: 9999,
+    width: "calc(100% - 240px)",
+    overflowX: "auto",
+  },
 
-notificationWrapper: {
-  position: "fixed",
-  bottom: "28px",
-  left: "240px",            // right after sidebar
-  zIndex: 9999,
-  display: "flex",
-  width: "calc(100% - 240px - 32px)", // full width minus sidebar & padding
-  overflowX: "auto",       // horizontal scroll
-  gap: "18px",
-  padding: "0 16px",       // some breathing room
-  scrollbarWidth: "thin",  // Firefox
-},
-
-notificationRow: {
-  display: "flex",
-  gap: "22px",
-  flexWrap: "nowrap",       // ensure side-by-side
-},
-
-// Optional: style scrollbar for Chrome, Edge, Safari
-notificationWrapperScrollbar: `
-  &::-webkit-scrollbar {
-    height: 8px;
-  }
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  &::-webkit-scrollbar-thumb {
-    background-color: rgba(0,0,0,0.25);
-    border-radius: 4px;
-  }
-`,
-
+  notificationRow: {
+    display: "flex",
+    gap: "22px",
+    padding: "0 16px",
+  },
 
   notificationCard: {
     minWidth: "520px",
-    maxWidth: "520px",
-    background: "#ffffff",
+    background: "#fff",
     borderRadius: "18px",
     boxShadow: "0 30px 70px rgba(0,0,0,0.28)",
     overflow: "hidden",
-    flexShrink: 0,
+
+    transition: "opacity 0.5s ease, transform 0.5s ease",
+    opacity: 1,
+    transform: "translateY(0)",
+  },
+
+  fadeOut: {
+    opacity: 0,
+    transform: "translateY(20px)",
   },
 
   notificationHeader: {
     background: "linear-gradient(135deg, #1e3a8a, #2563eb)",
-    color: "#ffffff",
+    color: "#fff",
     padding: "20px 24px",
     fontSize: "18px",
     fontWeight: 600,
@@ -256,22 +233,17 @@ notificationWrapperScrollbar: `
   row: {
     display: "flex",
     gap: "12px",
-    alignItems: "center",
   },
 
   label: {
     minWidth: "90px",
     fontSize: "13px",
     fontWeight: 700,
-    color: "#111827",
     textTransform: "uppercase",
-    letterSpacing: "0.6px",
   },
 
   value: {
     fontSize: "15px",
-    fontWeight: 500,
-    color: "#1f2937",
   },
 
   routeBox: {
@@ -281,22 +253,15 @@ notificationWrapperScrollbar: `
     background: "#f9fafb",
     padding: "16px",
     borderRadius: "12px",
-    marginTop: "8px",
-    alignItems: "center",
   },
 
   routeLabel: {
     fontSize: "13px",
     fontWeight: 700,
-    textTransform: "uppercase",
-    marginBottom: "6px",
-    color: "#374151",
   },
 
   routeValue: {
     fontSize: "14px",
-    color: "#111827",
-    lineHeight: "1.5",
   },
 
   arrow: {

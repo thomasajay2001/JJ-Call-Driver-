@@ -1,15 +1,19 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import axios from "axios";
 import { router } from "expo-router";
 import { useState } from "react";
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-
-
+import {
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 export default function Login() {
-const BASE_URL = 'http://192.168.0.8:3000';
+  const BASE_URL = "http://192.168.0.6:3000";
   const [loginType, setLoginType] = useState("user"); // user | driver
 
   // USER LOGIN STATES
@@ -66,19 +70,20 @@ const BASE_URL = 'http://192.168.0.8:3000';
     }
 
     try {
-      const res = await axios.post(`${BASE_URL}/api/verify-otp`, { phone, otp });
-       if (res.data.success) {
-  setMessage("OTP Verified! Login Success");
+      const res = await axios.post(`${BASE_URL}/api/verify-otp`, {
+        phone,
+        otp,
+      });
+      if (res.data.success) {
+        setMessage("OTP Verified! Login Success");
 
-  await AsyncStorage.setItem("role", "customer");
-  await AsyncStorage.setItem("customerPhone", phone);
+        await AsyncStorage.setItem("role", "customer");
+        await AsyncStorage.setItem("customerPhone", phone);
 
-  router.push("/customer/customer-page");
-
-
+        router.push("/customer/customer-page");
 
         // navigation.navigate("home"); // After login
-      } else {  
+      } else {
         setErrorMessage("Invalid OTP");
       }
     } catch (err) {
@@ -89,57 +94,53 @@ const BASE_URL = 'http://192.168.0.8:3000';
   // --------------------------
   // DRIVER LOGIN
   // --------------------------
-const driverLogin = async () => {
-  clearMessages();
+  const driverLogin = async () => {
+    clearMessages();
 
-  if (!driverId.trim()) {
-    setErrorMessage("Enter Driver ID");
-    return;
-  }
-
-  if (driverPhone.length !== 10) {
-    setErrorMessage("Enter 10-digit phone number");
-    return;
-  }
-
-  try {
-    const res = await axios.get(`${BASE_URL}/api/drivers`);
-
-    const list = res.data || [];
-
-    const driver = list.find(
-      (d:any) => String(d.id) === String(driverId.trim())
-    );
-
-    if (!driver) {
-      setErrorMessage("Driver ID not found");
+    if (!driverId.trim()) {
+      setErrorMessage("Enter Driver ID");
       return;
     }
 
-    if (String(driver.mobile) !== String(driverPhone)) {
-      setErrorMessage("Phone number does not match");
+    if (driverPhone.length !== 10) {
+      setErrorMessage("Enter 10-digit phone number");
       return;
     }
 
-    // SUCCESS
-    setMessage("Driver Login Success!");
+    try {
+      const res = await axios.get(`${BASE_URL}/api/drivers`);
 
-    await AsyncStorage.setItem("role", "driver");
-    await AsyncStorage.setItem("driverId", driverId);
-await axios.post(`${BASE_URL}/api/driver/updateStatus`, {
-  driverId,
-  status: "online"
-});
-    router.push("/screens/settings");
+      const list = res.data || [];
 
-  } catch (err) {
-    console.log("Login error:", err);
-    setErrorMessage("Failed to login driver");
-  }
-};
+      const driver = list.find(
+        (d: any) => String(d.id) === String(driverId.trim()),
+      );
 
+      if (!driver) {
+        setErrorMessage("Driver ID not found");
+        return;
+      }
 
+      if (String(driver.mobile) !== String(driverPhone)) {
+        setErrorMessage("Phone number does not match");
+        return;
+      }
 
+      // SUCCESS
+      setMessage("Driver Login Success!");
+
+      await AsyncStorage.setItem("role", "driver");
+      await AsyncStorage.setItem("driverId", driverId);
+      await axios.post(`${BASE_URL}/api/driver/updateStatus`, {
+        driverId,
+        status: "online",
+      });
+      router.push("/screens/settings");
+    } catch (err) {
+      console.log("Login error:", err);
+      setErrorMessage("Failed to login driver");
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -150,15 +151,21 @@ await axios.post(`${BASE_URL}/api/driver/updateStatus`, {
 
         {/* SWITCH LOGIN TYPE */}
         <View style={styles.switchRow}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.switchBtn, loginType === "user" && styles.activeBtn]}
-            onPress={() => { setLoginType("user"); setOtpSent(false); }}
+            onPress={() => {
+              setLoginType("user");
+              setOtpSent(false);
+            }}
           >
             <Text style={styles.switchText}>User Login</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.switchBtn, loginType === "driver" && styles.activeBtn]}
+          <TouchableOpacity
+            style={[
+              styles.switchBtn,
+              loginType === "driver" && styles.activeBtn,
+            ]}
             onPress={() => setLoginType("driver")}
           >
             <Text style={styles.switchText}>Driver Login</Text>
@@ -195,7 +202,11 @@ await axios.post(`${BASE_URL}/api/driver/updateStatus`, {
               <>
                 <Text style={styles.label}>OTP</Text>
                 <View style={styles.inputWrapper}>
-                  <Ionicons name="lock-closed-outline" size={20} style={styles.icon} />
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={20}
+                    style={styles.icon}
+                  />
                   <TextInput
                     style={styles.input}
                     placeholder="Enter OTP"
@@ -263,23 +274,61 @@ await axios.post(`${BASE_URL}/api/driver/updateStatus`, {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F5F7FA" },
-  formBox: { width: "90%", padding: 20, backgroundColor: "#fff", borderRadius: 12, elevation: 5 },
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F5F7FA",
+  },
+  formBox: {
+    width: "90%",
+    padding: 20,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    elevation: 5,
+  },
   logoCircle: { alignSelf: "center", marginBottom: 20 },
-  switchRow: { flexDirection: "row", justifyContent: "space-around", marginBottom: 20 },
-  switchBtn: { padding: 10, width: "45%", backgroundColor: "#ddd", borderRadius: 8 },
+  switchRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginBottom: 20,
+  },
+  switchBtn: {
+    padding: 10,
+    width: "45%",
+    backgroundColor: "#ddd",
+    borderRadius: 8,
+  },
   activeBtn: { backgroundColor: "#007bff" },
   switchText: { textAlign: "center", color: "#000", fontWeight: "600" },
   subtitle: { textAlign: "center", marginBottom: 20, color: "#555" },
   label: { fontWeight: "600", marginBottom: 5, marginTop: 10 },
-  inputWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#bbb", borderRadius: 8, paddingHorizontal: 10, marginBottom: 5 },
+  inputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#bbb",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    marginBottom: 5,
+  },
   icon: { marginRight: 6 },
   input: { flex: 1, height: 45 },
-  btnPrimary: { backgroundColor: "#007bff", padding: 12, borderRadius: 8, marginTop: 10 },
-  btnSuccess: { backgroundColor: "green", padding: 12, borderRadius: 8, marginTop: 10 },
+  btnPrimary: {
+    backgroundColor: "#007bff",
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  btnSuccess: {
+    backgroundColor: "green",
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 10,
+  },
   btnText: { color: "#fff", textAlign: "center", fontWeight: "600" },
   link: { textAlign: "center", marginTop: 10, color: "#007bff" },
   success: { color: "green", marginTop: 10, textAlign: "center" },
   error: { color: "red", marginTop: 10, textAlign: "center" },
-  footer: { textAlign: "center", marginTop: 15, color: "#666", fontSize: 12 }
+  footer: { textAlign: "center", marginTop: 15, color: "#666", fontSize: 12 },
 });
