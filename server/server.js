@@ -1,11 +1,11 @@
-const express = require('express');
+const express = require("express");
 const app = express();
-const cors = require('cors');
-const bodyParser = require('body-parser');
-const multer = require('multer');
+const cors = require("cors");
+const bodyParser = require("body-parser");
+const multer = require("multer");
 const upload = multer();
-const axios = require('axios');
-const http = require('http');
+const axios = require("axios");
+const http = require("http");
 
 app.use(cors());
 
@@ -13,29 +13,29 @@ const server = http.createServer(app);
 const BASE_URL = "http://192.168.0.9:3000";
 const { Server } = require("socket.io");
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: { origin: "*" },
 });
 
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-const mysql = require('mysql2');
+const mysql = require("mysql2");
 
 const db = mysql.createConnection({
+
   host: 'localhost',      
   user: 'root',            
   password: 'Gomathi@123',            
   database: 'jjdrivers'         
 });
 
-db.connect(err => {
+db.connect((err) => {
   if (err) {
-    console.error('Database connection failed:', err);
+    console.error("Database connection failed:", err);
   } else {
-    console.log('Connected to MySQL Database');
+    console.log("Connected to MySQL Database");
   }
 });
-
 
 io.on("connection", (socket) => {
   console.log("✅ Socket connected:", socket.id);
@@ -65,37 +65,41 @@ io.on("connection", (socket) => {
     console.log("❌ Socket disconnected:", socket.id);
 
     if (socket.driverId) {
-      await db.promise().query(
-        "UPDATE drivers SET status='offline' WHERE id=?",
-        [socket.driverId]
-      );
+      await db
+        .promise()
+        .query("UPDATE drivers SET status='offline' WHERE id=?", [
+          socket.driverId,
+        ]);
       console.log("Driver offline:", socket.driverId);
     }
   });
 });
 
-
-
-app.post('/api/login', upload.none(),(req, res) => {
+app.post("/api/login", upload.none(), (req, res) => {
   const username = req.body.username;
-  const password= req.body.password;
+  const password = req.body.password;
   const query = "SELECT * FROM supportTeam WHERE username = ? AND password = ?";
   db.query(query, [username, password], (err, results) => {
     if (err) {
-      console.error('Error during login:', err);
-      return res.status(500).json({ success: false, message: 'Database error' });
+      console.error("Error during login:", err);
+      return res
+        .status(500)
+        .json({ success: false, message: "Database error" });
     }
     if (results.length > 0) {
-      res.json({ success: true, message: 'Login successful', user: results[0] });
+      res.json({
+        success: true,
+        message: "Login successful",
+        user: results[0],
+      });
     } else {
-      res.json({ success: false, message: 'Invalid username or password' });
+      res.json({ success: false, message: "Invalid username or password" });
     }
   });
 });
 
-
 app.post("/api/send-otp", async (req, res) => {
-  const  phone  = req.body.phone;
+  const phone = req.body.phone;
 
   // Generate 6-digit random OTP
   const otp = Math.floor(100000 + Math.random() * 900000);
@@ -103,11 +107,14 @@ app.post("/api/send-otp", async (req, res) => {
   try {
     console.log(`Generated OTP for ${phone}: ${otp}`);
 
-    const query = "INSERT INTO otp_verification (phone, otp, created_at) VALUES (?, ?, NOW())";
+    const query =
+      "INSERT INTO otp_verification (phone, otp, created_at) VALUES (?, ?, NOW())";
     db.query(query, [phone, otp], (err) => {
       if (err) {
         console.error("DB Insert Error:", err);
-        return res.status(500).json({ success: false, message: "Database error" });
+        return res
+          .status(500)
+          .json({ success: false, message: "Database error" });
       }
 
       res.json({ success: true, message: "OTP generated successfully", otp });
@@ -118,8 +125,7 @@ app.post("/api/send-otp", async (req, res) => {
   }
 });
 
-
-app.post("/api/verify-otp",(req, res) => {
+app.post("/api/verify-otp", (req, res) => {
   const { phone, otp } = req.body;
 
   const query =
@@ -134,7 +140,6 @@ app.post("/api/verify-otp",(req, res) => {
     const validOtp = results[0].otp;
 
     if (validOtp == otp) {
-
       // Optional: delete OTP after verification
       db.query("DELETE FROM otp_verification WHERE phone = ?", [phone]);
 
@@ -146,20 +151,13 @@ app.post("/api/verify-otp",(req, res) => {
 });
 
 app.post("/api/trip-booking", (req, res) => {
-  const {
-    name,
-    phone,
-    pickup,
-    pickupLat,
-    pickupLng,
-    drop,
-    driverId
-  } = req.body;
+  const { name, phone, pickup, pickupLat, pickupLng, drop, driverId } =
+    req.body;
 
   if (!name || !phone || !pickup || !drop) {
     return res.status(400).json({
       success: false,
-      message: "Missing required fields"
+      message: "Missing required fields",
     });
   }
 
@@ -184,7 +182,7 @@ app.post("/api/trip-booking", (req, res) => {
         phone,
         pickup,
         drop,
-        driverId
+        driverId,
       };
 
       // ✅ Emit to driver
@@ -196,9 +194,10 @@ app.post("/api/trip-booking", (req, res) => {
       console.log("📢 New booking emitted:", booking);
 
       res.json({ success: true, bookingId: booking.bookingId });
-    }
+    },
   );
 });
+
 
 
 
@@ -221,85 +220,80 @@ app.post("/api/accept-booking", async (req, res) => {
 
   try {
     // 1️⃣ Get booking + customer socket room
-    const [bookings] = await db.promise().query(
-      "SELECT * FROM bookings WHERE id=? AND status='pending'",
-      [bookingId]
-    );
+    const [bookings] = await db
+      .promise()
+      .query("SELECT * FROM bookings WHERE id=? AND status='pending'", [
+        bookingId,
+      ]);
 
     if (!bookings.length) {
       return res.json({ success: false, message: "Already accepted" });
     }
 
     // 2️⃣ Get driver details
-    const [drivers] = await db.promise().query(
-      "SELECT name, mobile FROM drivers WHERE id=?",
-      [driverId]
-    );
+    const [drivers] = await db
+      .promise()
+      .query("SELECT name, mobile FROM drivers WHERE id=?", [driverId]);
 
     const driver = drivers[0];
     console.log(driver);
 
     // 3️⃣ Update booking
-    await db.promise().query(
-      "UPDATE bookings SET status='accepted', driver_id=? WHERE id=?",
-      [driverId, bookingId]
-    );
+    await db
+      .promise()
+      .query("UPDATE bookings SET status='accepted', driver_id=? WHERE id=?", [
+        driverId,
+        bookingId,
+      ]);
 
     // 4️⃣ Save accept history
     await db.promise().query(
       `INSERT INTO accept_booking 
        (booking_id, driver_id, driver_name, driver_mobile)
        VALUES (?,?,?,?)`,
-      [bookingId, driverId, driver.name, driver.mobile]
+      [bookingId, driverId, driver.name, driver.mobile],
     );
 
     // 5️⃣ Driver status
-    await db.promise().query(
-      "UPDATE drivers SET status='inride' WHERE id=?",
-      [driverId]
-    );
+    await db
+      .promise()
+      .query("UPDATE drivers SET status='inride' WHERE id=?", [driverId]);
 
     // 🔔 6️⃣ SOCKET → CUSTOMER
     io.to(`booking_${bookingId}`).emit("driverAssigned", {
       bookingId,
       driverName: driver.name,
-      driverMobile: driver.mobile
+      driverMobile: driver.mobile,
     });
-    console.log(bookingId,driver.name,driver.mobile)
+    console.log(bookingId, driver.name, driver.mobile);
 
     // 🔔 7️⃣ SOCKET → DRIVER
     io.to(`driver_${driverId}`).emit("bookingConfirmed", {
-      bookingId
+      bookingId,
     });
 
     res.json({ success: true });
-
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false,bookingId:result.insertId });
+    res.status(500).json({ success: false, bookingId: result.insertId });
   }
 });
-
-
-
 
 app.post("/api/complete-ride", async (req, res) => {
   const { bookingId, driverId } = req.body;
 
   try {
-    await db.promise().query(
-      "UPDATE bookings SET status='completed' WHERE id=?",
-      [bookingId]
-    );
+    await db
+      .promise()
+      .query("UPDATE bookings SET status='completed' WHERE id=?", [bookingId]);
 
-    await db.promise().query(
-      "UPDATE drivers SET status='online' WHERE id=?",
-      [driverId]
-    );
+    await db
+      .promise()
+      .query("UPDATE drivers SET status='online' WHERE id=?", [driverId]);
 
     io.emit("bookingStatusUpdate", {
       bookingId,
-      status: "completed"
+      status: "completed",
     });
 
     res.json({ success: true });
@@ -307,7 +301,6 @@ app.post("/api/complete-ride", async (req, res) => {
     res.status(500).json({ success: false });
   }
 });
-
 
 // app.post("/api/bookingaccepted", (req, res) => {
 //   const { name, mobile } = req.body;
@@ -342,34 +335,43 @@ app.post("/api/complete-ride", async (req, res) => {
 //   });
 // });
 
+app.get("/api/customer", async (req, res) => {
+  var result = [];
+  db.query(
+    "SELECT ID, NAME,PHONE,AREA,TRIPTYPE,DATEOFTRAVEL,CREATED_TIME FROM CUSTOMERS ORDER BY ID DESC",
+    function (error, results, fields) {
+      if (error) {
+        logger.error(`Error fetching customers: ${error.message}`);
+        res.send(JSON.stringify({ status: false }));
+        return;
+      }
+      for (i = 0; i < results.length; i++) {
+        result.push({
+          id: results[i].ID,
+          Name: results[i].NAME,
+          phone: results[i].PHONE,
+          area: results[i].AREA,
+          triptype: results[i].TRIPTYPE,
+          dateoftravel: results[i].DATEOFTRAVEL,
+          createdtime: results[i].CREATED_TIME,
+        });
+      }
+      console.log(`Fetched ${results.length} customer records`);
+      res.send(JSON.stringify(result));
+    },
+  );
+});
 
-app.get('/api/customer', async (req, res) => {
-    var result = [];
-    db.query('SELECT ID, NAME,PHONE,AREA,TRIPTYPE,DATEOFTRAVEL,CREATED_TIME FROM CUSTOMERS ORDER BY ID DESC', function (error, results, fields) {
-        if (error) {
-             logger.error(`Error fetching customers: ${error.message}`);
-            res.send(JSON.stringify({status: false}));
-            return; 
-        }
-        for(i = 0; i < results.length; i++) {
-            result.push({'id': results[i].ID, 'Name': results[i].NAME, 'phone': results[i].PHONE, 'area': results[i].AREA, 'triptype': results[i].TRIPTYPE, 'dateoftravel': results[i].DATEOFTRAVEL,'createdtime': results[i].CREATED_TIME});
-        }
-        console.log(`Fetched ${results.length} customer records`);
-        res.send(JSON.stringify(result));
-    });
-})
-
-
-
-app.post('/api/adddrivers', upload.none(), (req, res) => {
+app.post("/api/adddrivers", upload.none(), (req, res) => {
   const name = req.body.name;
   const mobile = parseInt(req.body.mobile);
   const location = req.body.location;
-  
+
   const lat = req.body.lat;
   const lng = req.body.lng;
 
-  const sql = "INSERT INTO DRIVERS (NAME, MOBILE, LOCATION, LAT, LNG) VALUES (?,?, ?, ?, ?)";
+  const sql =
+    "INSERT INTO DRIVERS (NAME, MOBILE, LOCATION, LAT, LNG) VALUES (?,?, ?, ?, ?)";
   db.query(sql, [name, mobile, location, lat, lng], (err, results) => {
     if (err) {
       console.error("error inserting data:", err);
@@ -380,31 +382,31 @@ app.post('/api/adddrivers', upload.none(), (req, res) => {
   });
 });
 
-
-app.get('/api/drivers', (req, res) => {
-  db.query('SELECT ID, NAME, MOBILE, LOCATION, STATUS, VEHICLE, LAT, LNG  FROM drivers ORDER BY ID DESC',
+app.get("/api/drivers", (req, res) => {
+  db.query(
+    "SELECT ID, NAME, MOBILE, LOCATION, STATUS, VEHICLE, LAT, LNG  FROM drivers ORDER BY ID DESC",
     function (error, results) {
       if (error) {
         console.log(`Error fetching drivers: ${error.message}`);
         return res.send(JSON.stringify({ status: false }));
       }
 
-      const result = results.map(r => ({
+      const result = results.map((r) => ({
         id: r.ID,
         name: r.NAME,
         mobile: r.MOBILE,
         location: r.LOCATION,
-        vehicle:r.VEHICLE,
-        status:r.STATUS,
-              lat: parseFloat(r.LAT),
-      lng: parseFloat(r.LNG)
+        vehicle: r.VEHICLE,
+        status: r.STATUS,
+        lat: parseFloat(r.LAT),
+        lng: parseFloat(r.LNG),
       }));
       res.send(JSON.stringify(result));
-    }
+    },
   );
 });
 
-app.put('/api/updatedriver/:id', upload.none(), (req, res) => {
+app.put("/api/updatedriver/:id", upload.none(), (req, res) => {
   const driverId = req.params.id;
   const name = req.body.name;
   const mobile = req.body.mobile;
@@ -412,8 +414,9 @@ app.put('/api/updatedriver/:id', upload.none(), (req, res) => {
   const lat = req.body.lat;
   const lng = req.body.lng;
 
-  const sql = "UPDATE DRIVERS SET NAME=?, MOBILE=?, LOCATION=?, LAT=?, LNG=? WHERE ID=?";
-  db.query(sql, [name,mobile, location, lat, lng, driverId], (err, result) => {
+  const sql =
+    "UPDATE DRIVERS SET NAME=?, MOBILE=?, LOCATION=?, LAT=?, LNG=? WHERE ID=?";
+  db.query(sql, [name, mobile, location, lat, lng, driverId], (err, result) => {
     if (err) {
       console.error("error updating driver:", err);
       return res.status(500).send({ message: "Database error" });
@@ -428,8 +431,7 @@ app.put('/api/updatedriver/:id', upload.none(), (req, res) => {
   });
 });
 
-
-app.delete('/api/deletedriver/:id', (req, res) => {
+app.delete("/api/deletedriver/:id", (req, res) => {
   const driverId = req.params.id; // get driver id from URL
   const sql = "DELETE FROM DRIVERS WHERE ID = ?";
   db.query(sql, [driverId], (err, result) => {
@@ -445,7 +447,7 @@ app.delete('/api/deletedriver/:id', (req, res) => {
   });
 });
 
-app.post('/api/driver/updateLocation', (req, res) => {
+app.post("/api/driver/updateLocation", (req, res) => {
   const { driverId, lat, lng } = req.body;
 
   const sql = "UPDATE DRIVERS SET LAT = ?, LNG = ? WHERE ID = ?";
@@ -458,7 +460,7 @@ app.post('/api/driver/updateLocation', (req, res) => {
   });
 });
 
-app.post('/api/driver/updateStatus', (req, res) => {
+app.post("/api/driver/updateStatus", (req, res) => {
   const { driverId, status } = req.body;
 
   const sql = "UPDATE DRIVERS SET STATUS = ? WHERE ID = ?";
@@ -470,7 +472,6 @@ app.post('/api/driver/updateStatus', (req, res) => {
     res.send({ success: true, message: "Status updated" });
   });
 });
-
 
 app.get('/api/bookings',(req,res)=>{
   db.query('SELECT ID,CUSTOMER_NAME,CUSTOMER_MOBILE,PICKUP,DROP_LOCATION,STATUS,DRIVER_ID FROM bookings ORDER BY ID DESC',
@@ -496,5 +497,6 @@ app.get('/api/bookings',(req,res)=>{
 
 
 const PORT = 3000;
-server.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
-
+server.listen(PORT, () =>
+  console.log(`Server running on http://localhost:${PORT}`),
+);
