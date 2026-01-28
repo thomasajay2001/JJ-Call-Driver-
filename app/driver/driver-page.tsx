@@ -1,77 +1,76 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
-import * as Location from 'expo-location';
-import React, { useEffect, useRef, useState } from 'react';
-import { Button, ScrollView, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
-import io from 'socket.io-client';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
+import * as Location from "expo-location";
+import React, { useEffect, useRef, useState } from "react";
+import { Button, ScrollView, StyleSheet, Text, View } from "react-native";
+import MapView, { Marker } from "react-native-maps";
+import io from "socket.io-client";
 
 interface Booking {
   bookingId: number;
   name: string;
   pickup: string;
-  drop:string;
+  drop: string;
   phone: string;
 }
 
 const BASE_URL = 'http://192.168.0.9:3000'; // replace with your IP
 
 const DriverDashboard = () => {
-  const [driverId, setDriverId] = useState<string>('');
-  const [name, setName] = useState('');
-  const [vehicle, setVehicle] = useState('Vehicle');
-const [status, setStatus] = useState<'online' | 'offline' | 'inride' | 'completed'>('offline');
-  const [mobile, setMobile] = useState('');
+  const [driverId, setDriverId] = useState<string>("");
+  const [name, setName] = useState("");
+  const [vehicle, setVehicle] = useState("Vehicle");
+  const [status, setStatus] = useState<
+    "online" | "offline" | "inride" | "completed"
+  >("offline");
+  const [mobile, setMobile] = useState("");
   const [lat, setLat] = useState(0);
   const [lng, setLng] = useState(0);
-  const [locationError, setLocationError] = useState('');
+  const [locationError, setLocationError] = useState("");
   const [isSharing, setIsSharing] = useState(false);
   const [notifications, setNotifications] = useState<Booking[]>([]);
-  const [popupMessage, setPopupMessage] = useState('');
+  const [popupMessage, setPopupMessage] = useState("");
 
-const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const socketRef = useRef<any>(null);
   // Fetch driver profile and initialize socket
-useEffect(() => {
-  const init = async () => {
-    const role = await AsyncStorage.getItem("role");
-    if (role !== "driver") return;
+  useEffect(() => {
+    const init = async () => {
+      const role = await AsyncStorage.getItem("role");
+      if (role !== "driver") return;
 
-    const id = await AsyncStorage.getItem("driverId");
-    if (!id) return;
+      const id = await AsyncStorage.getItem("driverId");
+      if (!id) return;
 
-    setDriverId(id);
+      setDriverId(id);
 
-    const socket = io(BASE_URL, {
-      transports: ["websocket"],
-    });
+      const socket = io(BASE_URL, {
+        transports: ["websocket"],
+      });
 
- loadDriverProfile(id);
-    socketRef.current = socket;
+      loadDriverProfile(id);
+      socketRef.current = socket;
 
-    socket.on("connect", () => {
-      console.log("✅ Driver socket connected", socket.id);
-      socket.emit("joinDriverRoom", { driverId: id });
-    });
+      socket.on("connect", () => {
+        console.log("✅ Driver socket connected", socket.id);
+        socket.emit("joinDriverRoom", { driverId: id });
+      });
 
-    socket.on("newBooking", (data) => {
-      console.log("📩 New Booking:", data);
-      setNotifications(prev => [...prev, data]);
-      showPopup(data);
-    });
+      socket.on("newBooking", (data) => {
+        console.log("📩 New Booking:", data);
+        setNotifications((prev) => [...prev, data]);
+        showPopup(data);
+      });
 
-    socket.on("bookingConfirmed", (data) => {
-  console.log("Booking accepted:", data);
-});
-  };
+      socket.on("bookingConfirmed", (data) => {
+        console.log("Booking accepted:", data);
+      });
+    };
 
-  init();
+    init();
 
-  return () => socketRef.current?.disconnect();
-}, []);
-
-
-
+    return () => socketRef.current?.disconnect();
+  }, []);
 
   const loadDriverProfile = async (id: string) => {
     try {
@@ -89,24 +88,25 @@ useEffect(() => {
   };
 
   const showPopup = (booking: Booking) => {
-    setPopupMessage(`New Booking from ${booking.name}, Area: ${booking.pickup}`);
-    setTimeout(() => setPopupMessage(''), 4000);
+    setPopupMessage(
+      `New Booking from ${booking.name}, Area: ${booking.pickup}`,
+    );
+    setTimeout(() => setPopupMessage(""), 4000);
     console.log(booking);
-
   };
-const startRide = async () => {
-  setStatus('inride');
-  await sendStatusToBackend('inride');
-  alert("Ride Started");
-};
+  const startRide = async () => {
+    setStatus("inride");
+    await sendStatusToBackend("inride");
+    alert("Ride Started");
+  };
 
-const completeRide = async () => {
-  setStatus('completed');
-  await sendStatusToBackend('completed');
-  alert("Ride Completed");
-};
+  const completeRide = async () => {
+    setStatus("completed");
+    await sendStatusToBackend("completed");
+    alert("Ride Completed");
+  };
 
-  const sendStatusToBackend = async (s:any) => {
+  const sendStatusToBackend = async (s: any) => {
     if (!driverId) return;
     try {
       await axios.post(`${BASE_URL}/api/driver/updateStatus`, {
@@ -118,91 +118,84 @@ const completeRide = async () => {
     }
   };
 
-  
-
-const sendLocationToBackend = async (latVal: number, lngVal: number) => {
-  if (!driverId) return;
-  try {
-    await axios.post(`${BASE_URL}/api/driver/updateLocation`, {
-      driverId,
-      lat: latVal,
-      lng: lngVal,
-    });
-  } catch (err) {
-    console.error(err);
-  }
-};
-
+  const sendLocationToBackend = async (latVal: number, lngVal: number) => {
+    if (!driverId) return;
+    try {
+      await axios.post(`${BASE_URL}/api/driver/updateLocation`, {
+        driverId,
+        lat: latVal,
+        lng: lngVal,
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const updateLocationOnce = async () => {
-  try {
-    const { coords } = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.High,
-    });
+    try {
+      const { coords } = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
 
-    setLat(coords.latitude);
-    setLng(coords.longitude);
+      setLat(coords.latitude);
+      setLng(coords.longitude);
 
-    sendLocationToBackend(coords.latitude, coords.longitude);
-  } catch (err) {
-    setLocationError('Unable to fetch location.');
-  }
-};
+      sendLocationToBackend(coords.latitude, coords.longitude);
+    } catch (err) {
+      setLocationError("Unable to fetch location.");
+    }
+  };
 
   const startSharing = async () => {
     console.log("START SHARING CLICKED");
-  console.log("DriverId:", driverId);
-  const { status: permStatus } =
-    await Location.requestForegroundPermissionsAsync();
+    console.log("DriverId:", driverId);
+    const { status: permStatus } =
+      await Location.requestForegroundPermissionsAsync();
 
-  if (permStatus !== 'granted') {
-    setLocationError('Permission to access location was denied');
-    return;
-  }
+    if (permStatus !== "granted") {
+      setLocationError("Permission to access location was denied");
+      return;
+    }
 
-  setIsSharing(true);
-  await sendStatusToBackend('online');
-  setStatus('online');
+    setIsSharing(true);
+    await sendStatusToBackend("online");
+    setStatus("online");
 
-  updateLocationOnce();
-  intervalRef.current = setInterval(updateLocationOnce, 5000);
-};
+    updateLocationOnce();
+    intervalRef.current = setInterval(updateLocationOnce, 5000);
+  };
 
-
-  const stopSharing = async() => {
+  const stopSharing = async () => {
     setIsSharing(false);
-   await sendStatusToBackend('offline');
-setStatus('offline');
+    await sendStatusToBackend("offline");
+    setStatus("offline");
 
     if (intervalRef.current) clearInterval(intervalRef.current);
   };
 
-const onAccept = async (booking: Booking) => {
-  try {
-    const res = await axios.post(`${BASE_URL}/api/accept-booking`, {
-      bookingId: booking.bookingId,   // ✅ IMPORTANT
-      driverId: driverId       // ✅ From AsyncStorage / state
-    });
+  const onAccept = async (booking: Booking) => {
+    try {
+      const res = await axios.post(`${BASE_URL}/api/accept-booking`, {
+        bookingId: booking.bookingId, // ✅ IMPORTANT
+        driverId: driverId, // ✅ From AsyncStorage / state
+      });
 
-    if (res.data.success) {
-      alert("Booking accepted");
+      if (res.data.success) {
+        alert("Booking accepted");
 
-      setNotifications(prev =>
-        prev.filter(b => b.bookingId !== booking.bookingId)
-      );
-    } else {
-      alert(res.data.message);
+        setNotifications((prev) =>
+          prev.filter((b) => b.bookingId !== booking.bookingId),
+        );
+      } else {
+        alert(res.data.message);
+      }
+    } catch (err) {
+      console.error("Accept booking error:", err);
     }
-
-  } catch (err) {
-    console.error("Accept booking error:", err);
-  }
-};
-
-
+  };
 
   const onDecline = (booking: Booking) => {
-    setNotifications(prev => prev.filter(b => b !== booking));
+    setNotifications((prev) => prev.filter((b) => b !== booking));
   };
 
   return (
@@ -215,14 +208,19 @@ const onAccept = async (booking: Booking) => {
         <Text style={styles.cardTitle}>Driver Details</Text>
         <Text>Name: {name}</Text>
         <Text>Vehicle: {vehicle}</Text>
-        <Text>{status === 'online' && (
-  <Button title="Start Ride" onPress={startRide} color="green" />
-)}
+        <Text>
+          {status === "online" && (
+            <Button title="Start Ride" onPress={startRide} color="green" />
+          )}
 
-{status === 'inride' && (
-  <Button title="Complete Ride" onPress={completeRide} color="orange" />
-)}
-</Text>
+          {status === "inride" && (
+            <Button
+              title="Complete Ride"
+              onPress={completeRide}
+              color="orange"
+            />
+          )}
+        </Text>
 
         {notifications.map((n, idx) => (
           <View key={idx} style={styles.booking}>
@@ -237,7 +235,9 @@ const onAccept = async (booking: Booking) => {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Location Sharing</Text>
-        {locationError ? <Text style={styles.error}>{locationError}</Text> : null}
+        {locationError ? (
+          <Text style={styles.error}>{locationError}</Text>
+        ) : null}
 
         {!isSharing ? (
           <Button title="Go Online" onPress={startSharing} />
@@ -255,7 +255,10 @@ const onAccept = async (booking: Booking) => {
               longitudeDelta: 0.01,
             }}
           >
-            <Marker coordinate={{ latitude: lat, longitude: lng }} title={name} />
+            <Marker
+              coordinate={{ latitude: lat, longitude: lng }}
+              title={name}
+            />
           </MapView>
         )}
       </View>
@@ -267,27 +270,32 @@ export default DriverDashboard;
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 10 },
-  title: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginVertical: 10 },
+  title: {
+    fontSize: 22,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginVertical: 10,
+  },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     padding: 15,
     borderRadius: 12,
     marginVertical: 10,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.1,
     shadowRadius: 5,
     elevation: 3,
   },
-  cardTitle: { fontWeight: 'bold', fontSize: 16, marginBottom: 8 },
+  cardTitle: { fontWeight: "bold", fontSize: 16, marginBottom: 8 },
   booking: { marginVertical: 5 },
   popup: {
-    backgroundColor: '#e0ecff',
-    color: '#1a3ca2',
+    backgroundColor: "#e0ecff",
+    color: "#1a3ca2",
     padding: 10,
     borderRadius: 8,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 10,
   },
-  map: { width: '100%', height: 400, marginTop: 10, borderRadius: 12 },
-  error: { color: 'red', marginBottom: 5 },
+  map: { width: "100%", height: 400, marginTop: 10, borderRadius: 12 },
+  error: { color: "red", marginBottom: 5 },
 });

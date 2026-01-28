@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import io from "socket.io-client";
 
 
+
 const BASE_URL = "http://192.168.0.9:3000";
 const SOCKET_URL = "http://192.168.0.9:3000";
 
@@ -73,7 +74,7 @@ export default function DriverDashboard() {
   const filtered = drivers.filter(
     (d) =>
       d.name.toLowerCase().includes(search.toLowerCase()) ||
-      d.mobile.includes(search)
+      d.mobile.includes(search),
   );
 
   return (

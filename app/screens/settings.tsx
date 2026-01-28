@@ -1,13 +1,5 @@
-// import { Text, View } from 'react-native';
-
-// export default function Settings() {
-//   return (
-//     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-//       <Text>My Rides</Text>
-//     </View>
-//   );
-// }
-import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
+import { Ionicons } from "@expo/vector-icons";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import React from "react";
 
 import DriverHeader from "./header";
@@ -16,9 +8,9 @@ import RideTab from "./myRides";
 import ProfileTab from "./profile";
 import RatingsTab from "./rating";
 
-const Tab = createMaterialTopTabNavigator();
+const Tab = createBottomTabNavigator();
 
-const DriverDashboard = ({
+const settings = ({
   name,
   vehicle,
   status,
@@ -31,9 +23,39 @@ const DriverDashboard = ({
 }: any) => {
   return (
     <>
+      {/* 🔝 FIXED DRIVER HEADER */}
       <DriverHeader name={name} vehicle={vehicle} status={status} />
 
-      <Tab.Navigator>
+      {/* 🔻 BOTTOM NAVIGATION */}
+      <Tab.Navigator
+        screenOptions={({ route }) => ({
+          headerShown: false,
+          tabBarActiveTintColor: "#F6B100",
+          tabBarInactiveTintColor: "#888",
+          tabBarStyle: {
+            height: 40,
+            paddingBottom: 8,
+            paddingTop: 5,
+          },
+
+          tabBarIcon: ({ color, size }) => {
+            let iconName: any = "home";
+
+            if (route.name === "Home") iconName = "home";
+            if (route.name === "Ride") iconName = "car";
+            if (route.name === "Ratings") iconName = "star";
+            if (route.name === "Profile") iconName = "person";
+
+            return (
+              <Ionicons
+                name={iconName}
+                size={size || 22}
+                color={color}
+              />
+            );
+          },
+        })}
+      >
         <Tab.Screen name="Home">
           {() => (
             <HomeTab
@@ -70,4 +92,4 @@ const DriverDashboard = ({
   );
 };
 
-export default DriverDashboard;
+export default settings;
