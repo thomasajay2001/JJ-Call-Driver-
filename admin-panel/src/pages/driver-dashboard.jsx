@@ -1,11 +1,15 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
 import io from "socket.io-client";
-import Navbar from "../components/Navbar";
-import Sidebar from "../components/sidebar";
 
+<<<<<<< HEAD
 const BASE_URL = "http://192.168.0.6:3000";
 const SOCKET_URL = "http://192.168.0.6:3000";
+=======
+
+const BASE_URL = "http://192.168.0.7:3000";
+const SOCKET_URL = "http://192.168.0.7:3000";
+>>>>>>> f0f2bd269083bde49582ee16b41a07c941645916
 
 export default function DriverDashboard() {
   const [drivers, setDrivers] = useState([]);
@@ -79,8 +83,7 @@ export default function DriverDashboard() {
 
   return (
     <>
-      <Sidebar />
-      <Navbar />
+     
 
       <div style={styles.container}>
         <h2>Drivers Management</h2>

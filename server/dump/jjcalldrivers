@@ -52,7 +52,7 @@ CREATE TABLE bookings (
 
   driver_id INT NULL,
 
-  status ENUM('pending','accepted','inride','completed') DEFAULT 'pending',
+  status ENUM('pending','accepted','assigned','inride','completed') DEFAULT 'pending',
 
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -62,7 +62,6 @@ CREATE TABLE bookings (
     ON DELETE SET NULL
 );
 
-DROP TABLE IF EXISTS accept_booking;
 DROP TABLE IF EXISTS accept_booking;
 
 CREATE TABLE accept_booking (

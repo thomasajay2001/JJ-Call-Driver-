@@ -10,7 +10,11 @@ const http = require("http");
 app.use(cors());
 
 const server = http.createServer(app);
+<<<<<<< HEAD
 const BASE_URL = "http://192.168.0.6:3000";
+=======
+const BASE_URL = "http://192.168.0.7:3000";
+>>>>>>> f0f2bd269083bde49582ee16b41a07c941645916
 const { Server } = require("socket.io");
 const io = new Server(server, {
   cors: { origin: "*" },
@@ -22,10 +26,17 @@ app.use(bodyParser.urlencoded({ extended: true }));
 const mysql = require("mysql2");
 
 const db = mysql.createConnection({
+<<<<<<< HEAD
   host: "localhost",
   user: "root",
   password: "q2m@123",
   database: "jjdrivers",
+=======
+  host: 'localhost',      
+  user: 'root',            
+  password: 'Gomathi@123',            
+  database: 'jjdrivers'         
+>>>>>>> f0f2bd269083bde49582ee16b41a07c941645916
 });
 
 db.connect((err) => {
@@ -197,6 +208,24 @@ app.post("/api/trip-booking", (req, res) => {
   );
 });
 
+<<<<<<< HEAD
+=======
+
+
+app.put("/api/bookings/:id", async (req, res) => {
+  const { id } = req.params;
+  const { driver, status } = req.body;
+
+  await db.promise().query(
+    "UPDATE bookings SET driver_id=?, status=? WHERE id=?",
+    [driver, status, id]
+  );
+
+  res.json({ success: true });
+});
+
+
+>>>>>>> f0f2bd269083bde49582ee16b41a07c941645916
 /* ================= ACCEPT BOOKING ================= */
 app.post("/api/accept-booking", async (req, res) => {
   const { bookingId, driverId } = req.body;
@@ -456,6 +485,33 @@ app.post("/api/driver/updateStatus", (req, res) => {
   });
 });
 
+<<<<<<< HEAD
+=======
+
+app.get('/api/bookings',(req,res)=>{
+  db.query('SELECT ID,CUSTOMER_NAME,CUSTOMER_MOBILE,PICKUP,DROP_LOCATION,STATUS,DRIVER_ID FROM bookings ORDER BY ID DESC',
+    function(error,results){
+  if (error) {
+      console.error("error updating driver:", error);
+      return res.status(500).send({ message: "Database error" });
+    }
+
+      const result = results.map(r => ({
+        id: r.ID,
+        name: r.CUSTOMER_NAME,
+        mobile: r.CUSTOMER_MOBILE,
+        pickup:r.PICKUP,
+        drop: r.DROP_LOCATION,
+        status:r.STATUS,
+        driver:r.DRIVER_ID,
+      }));
+      res.send(JSON.stringify(result));
+    }
+  )
+})
+
+
+>>>>>>> f0f2bd269083bde49582ee16b41a07c941645916
 const PORT = 3000;
 server.listen(PORT, () =>
   console.log(`Server running on http://localhost:${PORT}`),
