@@ -19,7 +19,7 @@ import io from "socket.io-client";
 /* =======================
    CONFIG - set your backend
    ======================= */
-const BASE_URL = 'http://192.168.0.9:3000';
+const BASE_URL = 'http://192.168.0.5:3000';
 /* ======================= */
 
 type Suggestion = {

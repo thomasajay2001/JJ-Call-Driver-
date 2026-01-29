@@ -13,7 +13,7 @@ import {
 } from "react-native";
 
 export default function Login() {
-const BASE_URL = 'http://192.168.0.9:3000';
+const BASE_URL = 'http://192.168.0.5:3000';
   const [loginType, setLoginType] = useState("user"); // user | driver
 
   // USER LOGIN STATES

@@ -4,8 +4,8 @@ import io from "socket.io-client";
 
 
 
-const BASE_URL = "http://192.168.0.9:3000";
-const SOCKET_URL = "http://192.168.0.9:3000";
+const BASE_URL = "http://192.168.0.5:3000";
+const SOCKET_URL = "http://192.168.0.5:3000";
 
 export default function DriverDashboard() {
   const [drivers, setDrivers] = useState([]);

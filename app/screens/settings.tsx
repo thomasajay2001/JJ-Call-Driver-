@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import React from "react";
 
-import DriverHeader from "./header";
 import HomeTab from "./home";
 import RideTab from "./myRides";
 import ProfileTab from "./profile";
@@ -24,7 +23,6 @@ const settings = ({
   return (
     <>
       {/* 🔝 FIXED DRIVER HEADER */}
-      <DriverHeader name={name} vehicle={vehicle} status={status} />
 
       {/* 🔻 BOTTOM NAVIGATION */}
       <Tab.Navigator
@@ -32,11 +30,7 @@ const settings = ({
           headerShown: false,
           tabBarActiveTintColor: "#F6B100",
           tabBarInactiveTintColor: "#888",
-          tabBarStyle: {
-            height: 40,
-            paddingBottom: 8,
-            paddingTop: 5,
-          },
+         
 
           tabBarIcon: ({ color, size }) => {
             let iconName: any = "home";
@@ -66,7 +60,7 @@ const settings = ({
           )}
         </Tab.Screen>
 
-        <Tab.Screen name="Ride">
+        <Tab.Screen name="My Bookings">
           {() => (
             <RideTab
               status={status}
