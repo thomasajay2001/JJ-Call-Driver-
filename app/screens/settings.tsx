@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import React from "react";
 
-import DriverHeader from "./header";
 import HomeTab from "./home";
 import RideTab from "./myRides";
 import ProfileTab from "./profile";
@@ -23,9 +22,6 @@ const settings = ({
 }: any) => {
   return (
     <>
-      {/* 🔝 FIXED DRIVER HEADER */}
-      <DriverHeader name={name} vehicle={vehicle} status={status} />
-
       {/* 🔻 BOTTOM NAVIGATION */}
       <Tab.Navigator
         screenOptions={({ route }) => ({
@@ -46,13 +42,7 @@ const settings = ({
             if (route.name === "Ratings") iconName = "star";
             if (route.name === "Profile") iconName = "person";
 
-            return (
-              <Ionicons
-                name={iconName}
-                size={size || 22}
-                color={color}
-              />
-            );
+            return <Ionicons name={iconName} size={size || 22} color={color} />;
           },
         })}
       >
@@ -79,13 +69,7 @@ const settings = ({
         <Tab.Screen name="Ratings" component={RatingsTab} />
 
         <Tab.Screen name="Profile">
-          {() => (
-            <ProfileTab
-              name={name}
-              mobile={mobile}
-              vehicle={vehicle}
-            />
-          )}
+          {() => <ProfileTab name={name} mobile={mobile} vehicle={vehicle} />}
         </Tab.Screen>
       </Tab.Navigator>
     </>
