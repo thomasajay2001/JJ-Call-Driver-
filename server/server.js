@@ -10,7 +10,7 @@ const http = require("http");
 app.use(cors());
 
 const server = http.createServer(app);
-const BASE_URL = "http://192.168.0.9:3000";
+const BASE_URL = "http://192.168.0.5:3000";
 const { Server } = require("socket.io");
 const io = new Server(server, {
   cors: { origin: "*" },
@@ -278,28 +278,95 @@ app.post("/api/accept-booking", async (req, res) => {
     res.status(500).json({ success: false, bookingId: result.insertId });
   }
 });
+app.get("/api/bookings/customer", (req, res) => {
+  const { phone } = req.query;
+
+  console.log(phone);
+
+  const sql = `
+    SELECT *
+    FROM bookings
+    WHERE customer_mobile = ?
+      AND DATE(created_at) = CURDATE()
+    ORDER BY id DESC
+  `;
+
+  db.query(sql, [phone], (err, result) => {
+    if (err) return res.status(500).send(err);
+    res.json(result);  
+    console.log(result);
+  });
+});
+
+
+app.get("/api/bookings/driver", (req, res) => {
+  const { driverId } = req.query;
+
+  const sql = `
+    SELECT *
+    FROM bookings
+    WHERE driver_id = ?
+      AND status IN ('assigned','inride')
+      AND DATE(created_at) = CURDATE()
+    ORDER BY id DESC
+  `;
+
+  db.query(sql, [driverId], (err, result) => {
+    if (err) return res.status(500).send(err);
+    res.json(result);
+    console.log(result);
+  });
+});
+
+app.post("/api/bookings/start", (req, res) => {
+  const { bookingId } = req.body;
+
+  db.query(
+    "UPDATE bookings SET status='inride' WHERE id=?",
+    [bookingId],
+    () => res.send({ success: true })
+  );
+});
+
+
 
 app.post("/api/complete-ride", async (req, res) => {
-  const { bookingId, driverId } = req.body;
+  const { bookingId} = req.body;
 
   try {
     await db
-      .promise()
       .query("UPDATE bookings SET status='completed' WHERE id=?", [bookingId]);
-
-    await db
-      .promise()
-      .query("UPDATE drivers SET status='online' WHERE id=?", [driverId]);
-
-    io.emit("bookingStatusUpdate", {
-      bookingId,
-      status: "completed",
-    });
-
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false });
   }
+});
+
+
+app.get("/api/drivers/profile", (req, res) => {
+  const { driverId } = req.query;
+
+  const sql = `
+    SELECT 
+      d.ID,
+      d.NAME,
+      d.MOBILE,
+      d.VEHICLE,
+      COUNT(b.id) AS total_rides
+    FROM drivers d
+    LEFT JOIN bookings b 
+      ON d.ID = b.driver_id 
+      AND b.status = 'completed'
+    WHERE d.ID = ?
+    GROUP BY d.ID
+  `;
+
+  db.query(sql, [driverId], (err, result) => {
+    if (err) return res.status(500).send(err);
+
+    res.json(result);
+    console.log(result) 
+  });
 });
 
 // app.post("/api/bookingaccepted", (req, res) => {

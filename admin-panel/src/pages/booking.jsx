@@ -1,7 +1,7 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
 
-const BASE_URL = "http://192.168.0.9:3000";
+const BASE_URL = "http://192.168.0.5:3000";
 
 const Booking = () => {
     const [bookings, setBookings] = useState([]);
