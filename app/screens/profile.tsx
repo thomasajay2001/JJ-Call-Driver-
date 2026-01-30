@@ -2,13 +2,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
 
-const BASE_URL = "http://192.168.0.5:3000";
+const BASE_URL = "http://192.168.0.3:3000";
 
 const ProfileTab = () => {
   const [profile, setProfile] = useState<any>([]);

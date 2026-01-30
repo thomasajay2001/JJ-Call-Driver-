@@ -22,7 +22,6 @@ const settings = ({
 }: any) => {
   return (
     <>
-      {/* 🔝 FIXED DRIVER HEADER */}
 
       {/* 🔻 BOTTOM NAVIGATION */}
       <Tab.Navigator
@@ -40,13 +39,7 @@ const settings = ({
             if (route.name === "Ratings") iconName = "star";
             if (route.name === "Profile") iconName = "person";
 
-            return (
-              <Ionicons
-                name={iconName}
-                size={size || 22}
-                color={color}
-              />
-            );
+            return <Ionicons name={iconName} size={size || 22} color={color} />;
           },
         })}
       >
@@ -73,13 +66,7 @@ const settings = ({
         <Tab.Screen name="Ratings" component={RatingsTab} />
 
         <Tab.Screen name="Profile">
-          {() => (
-            <ProfileTab
-              name={name}
-              mobile={mobile}
-              vehicle={vehicle}
-            />
-          )}
+          {() => <ProfileTab name={name} mobile={mobile} vehicle={vehicle} />}
         </Tab.Screen>
       </Tab.Navigator>
     </>

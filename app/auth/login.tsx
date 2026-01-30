@@ -5,15 +5,15 @@ import axios from "axios";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 export default function Login() {
-const BASE_URL = 'http://192.168.0.5:3000';
+const BASE_URL = 'http://192.168.0.3:3000';
   const [loginType, setLoginType] = useState("user"); // user | driver
 
   // USER LOGIN STATES

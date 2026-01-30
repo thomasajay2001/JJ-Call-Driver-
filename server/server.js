@@ -10,7 +10,7 @@ const http = require("http");
 app.use(cors());
 
 const server = http.createServer(app);
-const BASE_URL = "http://192.168.0.5:3000";
+const BASE_URL = "http://192.168.0.3:3000";
 const { Server } = require("socket.io");
 const io = new Server(server, {
   cors: { origin: "*" },
@@ -351,7 +351,6 @@ app.get("/api/drivers/profile", (req, res) => {
       d.ID,
       d.NAME,
       d.MOBILE,
-      d.VEHICLE,
       COUNT(b.id) AS total_rides
     FROM drivers d
     LEFT JOIN bookings b 
@@ -431,15 +430,23 @@ app.get("/api/customer", async (req, res) => {
 
 app.post("/api/adddrivers", upload.none(), (req, res) => {
   const name = req.body.name;
+  const paymentmode = req.body.paymentmode;
   const mobile = parseInt(req.body.mobile);
   const location = req.body.location;
-
+  const experience=req.body.experience;
+  const feeDetails=req.body.feeDetails;
+  const dob = req.body.dob;
+  const bloodgrp = req.body.bloodgrp;
+  const age = req.body.age;
+  const licenceNo = req.body.licenceNo;
+  const gender = req.body.gender;
+  const car_type = req.body.car_type;
   const lat = req.body.lat;
   const lng = req.body.lng;
 
   const sql =
-    "INSERT INTO DRIVERS (NAME, MOBILE, LOCATION, LAT, LNG) VALUES (?,?, ?, ?, ?)";
-  db.query(sql, [name, mobile, location, lat, lng], (err, results) => {
+    "INSERT INTO DRIVERS (NAME, MOBILE, LOCATION, EXPERIENCE, FEES_DETAILS, DOB, BLOODGRP, AGE, GENDER, CAR_TYPE, LICENCENO, LAT, LNG, PAYMENT_METHOD) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+  db.query(sql, [name, mobile, location,experience,feeDetails,dob,bloodgrp,age,gender,car_type,licenceNo,lat,lng,paymentmode], (err, results) => {
     if (err) {
       console.error("error inserting data:", err);
       return res.status(500).send({ message: "Database Error" });
@@ -451,7 +458,7 @@ app.post("/api/adddrivers", upload.none(), (req, res) => {
 
 app.get("/api/drivers", (req, res) => {
   db.query(
-    "SELECT ID, NAME, MOBILE, LOCATION, STATUS, VEHICLE, LAT, LNG  FROM drivers ORDER BY ID DESC",
+    "SELECT ID, NAME, MOBILE, LOCATION, STATUS, CAR_TYPE, EXPERIENCE, FEES_DETAILS, DOB, BLOODGRP, AGE, GENDER, LICENCENO, LAT, LNG, PAYMENT_METHOD  FROM drivers ORDER BY ID DESC",
     function (error, results) {
       if (error) {
         console.log(`Error fetching drivers: ${error.message}`);
@@ -463,7 +470,15 @@ app.get("/api/drivers", (req, res) => {
         name: r.NAME,
         mobile: r.MOBILE,
         location: r.LOCATION,
-        vehicle: r.VEHICLE,
+        car_type: r.CAR_TYPE,
+        experience: r.EXPERIENCE,
+        feeDetails: r.FEES_DETAILS,
+          dob: r.DOB,
+        bloodgrp: r.BLOODGRP,
+        age: r.AGE,
+        gender:r.GENDER,
+        licenceNo: r.LICENCENO,
+        paymentmode: r.PAYMENT_METHOD,
         status: r.STATUS,
         lat: parseFloat(r.LAT),
         lng: parseFloat(r.LNG),
