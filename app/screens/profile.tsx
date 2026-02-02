@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
+import Constants from "expo-constants";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -8,7 +9,7 @@ import {
   View,
 } from "react-native";
 
-const BASE_URL = "http://192.168.0.9:3000";
+const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
 
 const ProfileTab = () => {
   const [profile, setProfile] = useState<any>([]);

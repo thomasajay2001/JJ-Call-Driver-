@@ -1,25 +1,27 @@
 import axios from "axios";
+import Constants from "expo-constants";
 import * as Location from "expo-location";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Keyboard,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Keyboard,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import MapView, { Marker, Region } from "react-native-maps";
 import io from "socket.io-client";
 
+
 /* =======================
    CONFIG - set your backend
    ======================= */
-const BASE_URL = 'http://192.168.0.3:3000';
+const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
 /* ======================= */
 
 type Suggestion = {

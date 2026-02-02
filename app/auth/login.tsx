@@ -2,19 +2,22 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import axios from "axios";
+import Constants from "expo-constants";
 import { router } from "expo-router";
 import { useState } from "react";
+
 import {
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 export default function Login() {
-const BASE_URL = 'http://192.168.0.3:3000';
-  const [loginType, setLoginType] = useState("user"); // user | driver
+ const [loginType, setLoginType] = useState("user"); // user | driver
+
+const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
 
   // USER LOGIN STATES
   const [phone, setPhone] = useState("");

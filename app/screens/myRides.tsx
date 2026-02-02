@@ -2,14 +2,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
-const BASE_URL = "http://192.168.0.3:3000";
+import Constants from "expo-constants";
+
+const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
 
 const RideTab = () => {
   const [booking, setBooking] = useState<any>(null);
@@ -44,7 +46,6 @@ const RideTab = () => {
       }
 
       setBooking(res?.data?.[0] || null);
-      console.log("BOOKING:", res?.data?.[0]);
     } catch (err) {
       console.log("Booking error", err);
     } finally {

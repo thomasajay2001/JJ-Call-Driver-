@@ -1,22 +1,24 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Dimensions,
-    FlatList,
-    Keyboard,
-    Modal,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Dimensions,
+  FlatList,
+  Keyboard,
+  Modal,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import MapView, { Region } from "react-native-maps";
 
+
 const { width, height } = Dimensions.get("window");
-const BASE_URL = "http://192.168.0.9:3000";
+const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
 
 /* ================= COLORS ================= */
 const COLORS = {

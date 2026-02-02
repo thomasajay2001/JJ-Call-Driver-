@@ -10,7 +10,7 @@ const http = require("http");
 app.use(cors());
 
 const server = http.createServer(app);
-const BASE_URL = "http://192.168.0.9:3000";
+const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL;
 const { Server } = require("socket.io");
 const io = new Server(server, {
   cors: { origin: "*" },
@@ -494,12 +494,24 @@ app.put("/api/updatedriver/:id", upload.none(), (req, res) => {
   const name = req.body.name;
   const mobile = req.body.mobile;
   const location = req.body.location;
+
+
+  const paymentmode = req.body.paymentmode;
+
+  const experience=req.body.experience;
+  const feeDetails=req.body.feeDetails;
+  const dob = req.body.dob;
+  const bloodgrp = req.body.bloodgrp;
+  const age = req.body.age;
+  const licenceNo = req.body.licenceNo;
+  const gender = req.body.gender;
+  const car_type = req.body.car_type;
   const lat = req.body.lat;
   const lng = req.body.lng;
 
   const sql =
-    "UPDATE DRIVERS SET NAME=?, MOBILE=?, LOCATION=?, LAT=?, LNG=? WHERE ID=?";
-  db.query(sql, [name, mobile, location, lat, lng, driverId], (err, result) => {
+    "UPDATE DRIVERS SET NAME=?, MOBILE=?, LOCATION=?, EXPERIENCE=?, FEES_DETAILS=?, DOB=?, BLOODGRP=?, AGE=?, GENDER=?, CAR_TYPE=?, LICENCENO=?, PAYMENT_METHOD=?, LAT=?, LNG=? WHERE ID=?";
+  db.query(sql, [name, mobile, location, experience, feeDetails, dob, bloodgrp, age, gender, car_type, licenceNo, paymentmode, lat, lng, driverId], (err, result) => {
     if (err) {
       console.error("error updating driver:", err);
       return res.status(500).send({ message: "Database error" });

@@ -4,8 +4,8 @@ import io from "socket.io-client";
 
 
 
-const BASE_URL = "http://192.168.0.3:3000";
-const SOCKET_URL = "http://192.168.0.3:3000";
+const BASE_URL = import.meta.env.VITE_BASE_URL;
+const SOCKET_URL = "http://192.168.0.9:3000";
 
 export default function DriverDashboard() {
   const [drivers, setDrivers] = useState([]);
@@ -25,6 +25,7 @@ export default function DriverDashboard() {
   const [experience, setExperience] = useState("");
   const [car_type, setCarType] = useState("");
   const [paymentmode, setPaymentmode] = useState("");
+  const [status, setStatus] = useState("");
 
   // 🔹 Load drivers + socket
   useEffect(() => {
@@ -67,7 +68,7 @@ export default function DriverDashboard() {
     setMobile(d.mobile);
     setLocation(d.location);
     setBloodgrp(d.bloodgrp);
-    setDob(d.dob);
+    setDob(d.dob ? d.dob.split("T")[0] : "");
     setAge(d.age);
     setGender(d.gender);
     setCarType(d.car_type);
@@ -75,13 +76,15 @@ export default function DriverDashboard() {
     setFeeDetails(d.feeDetails);
     setExperience(d.experience);
     setPaymentmode(d.paymentmode);
+    setStatus(d.status)
     setShowForm(true);
+    console.log(d)
   };
 
   const submitForm = async () => {
     if (!name || !mobile) return alert("Required fields");
 
-    const body = { name, mobile, location, experience, feeDetails, dob, bloodgrp, age, gender, car_type, licenceNo, paymentmode };
+    const body = { name, mobile, location, experience, feeDetails, dob, bloodgrp, age, gender, car_type, licenceNo, paymentmode, status };
 
     if (editId) {
       await axios.put(`${BASE_URL}/api/updatedriver/${editId}`, body);
@@ -239,8 +242,8 @@ export default function DriverDashboard() {
 
         <select value={gender} onChange={(e) => setGender(e.target.value)}>
           <option value="">Gender</option>
-          <option>Male</option>
-          <option>Female</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
         </select>
         <input placeholder="status" 
         value={status} 
@@ -252,21 +255,21 @@ export default function DriverDashboard() {
 
         <select value={car_type} onChange={(e) => setCarType(e.target.value)}>
           <option value="">Car Type</option>
-          <option>Automatic</option>
-          <option>Manual</option>
-          <option>Both</option>
+          <option value="auto">Automatic</option>
+          <option value="manual">Manual</option>
+          <option value="both">Both</option>
         </select>
 
         <select value={paymentmode} onChange={(e) => setPaymentmode(e.target.value)}>
           <option value="">Payment Mode</option>
-          <option>Online</option>
-          <option>Offline</option>
+          <option value="online">Online</option>
+          <option value="offline">Offline</option>
         </select>
 
         <select value={feeDetails} onChange={(e) => setFeeDetails(e.target.value)}>
           <option value="">Fee Status</option>
-          <option>Paid</option>
-          <option>Not Paid</option>
+          <option value="paid">Paid</option>
+          <option value="not Paid">Not Paid</option>
         </select>
 
         <input placeholder="Experience"

@@ -1,7 +1,7 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
 
-const BASE_URL = "http://192.168.0.3:3000";
+const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 const Booking = () => {
     const [bookings, setBookings] = useState([]);
