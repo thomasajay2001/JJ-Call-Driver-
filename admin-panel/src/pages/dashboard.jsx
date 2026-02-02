@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 
-const BASE_URL = "http://192.168.0.3:3000";
-const SOCKET_URL = "http://192.168.0.3:3000";
+const BASE_URL = "http://192.168.0.5:3000";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -27,29 +26,17 @@ export default function Dashboard() {
     });
 
     socket.on("newBooking", (data) => {
-      console.log("📥 New booking received:", data);
-
       setBookings((prev) => [data, ...prev]);
-
       const id = Date.now();
 
-      setNotifications((prev) => [
-        {
-          id,
-          ...data,
-          fade: false,
-        },
-        ...prev,
-      ]);
+      setNotifications((prev) => [{ id, ...data, fade: false }, ...prev]);
 
-      // Start fade after 6 seconds
       setTimeout(() => {
         setNotifications((prev) =>
           prev.map((n) => (n.id === id ? { ...n, fade: true } : n)),
         );
       }, 6000);
 
-      // Remove after fade animation
       setTimeout(() => {
         setNotifications((prev) => prev.filter((n) => n.id !== id));
       }, 6500);
@@ -59,100 +46,92 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div>
-      
+    <div style={styles.container}>
+      <div style={styles.header}>
+        <h2 style={styles.title}>Dashboard</h2>
+        <p style={styles.subtitle}>Live system overview</p>
+      </div>
 
-      {/* ================= CONTENT ================= */}
-      <div style={styles.content}>
-        <div style={styles.pageHeader}>
-          <h2 style={styles.pageTitle}>Dashboard</h2>
-          <p style={styles.pageSubtitle}>Live system overview</p>
+      <div style={styles.cards}>
+        <div style={styles.card}>
+          <p style={styles.cardLabel}>Total Bookings</p>
+          <h3 style={styles.cardValue}>{bookings.length}</h3>
         </div>
 
-        <div style={styles.cards}>
-          <div style={styles.card}>
-            <p style={styles.cardTitle}>Total Bookings</p>
-            <h3 style={styles.cardValue}>{bookings.length}</h3>
-          </div>
+        <div style={styles.card}>
+          <p style={styles.cardLabel}>Active Drivers</p>
+          <h3 style={styles.cardValue}>35</h3>
+        </div>
 
-          <div style={styles.card}>
-            <p style={styles.cardTitle}>Active Drivers</p>
-            <h3 style={styles.cardValue}>35</h3>
-          </div>
-
-          <div style={styles.card}>
-            <p style={styles.cardTitle}>Live Trips</p>
-            <h3 style={styles.cardValue}>8</h3>
-          </div>
+        <div style={styles.card}>
+          <p style={styles.cardLabel}>Live Trips</p>
+          <h3 style={styles.cardValue}>8</h3>
         </div>
       </div>
 
-      {/* ================= NOTIFICATIONS ================= */}
+      {/* ================= Notifications ================= */}
       <div style={styles.notificationWrapper}>
-        <div style={styles.notificationRow}>
-          {notifications.map((n) => (
-            <div
-              key={n.id}
-              style={{
-                ...styles.notificationCard,
-                ...(n.fade ? styles.fadeOut : {}),
-              }}
-            >
-              <div style={styles.notificationHeader}> New Booking Alert</div>
+        {notifications.map((n) => (
+          <div
+            key={n.id}
+            style={{
+              ...styles.notificationCard,
+              ...(n.fade ? styles.fadeOut : {}),
+            }}
+          >
+            <div style={styles.notificationHeader}>🚖 New Booking Alert</div>
 
-              <div style={styles.notificationBody}>
-                <div style={styles.row}>
-                  <span style={styles.label}>Customer</span>
-                  <span style={styles.value}>{n.name}</span>
+            <div style={styles.notificationBody}>
+              <div style={styles.row}>
+                <span style={styles.label}>Customer</span>
+                <span style={styles.value}>{n.name}</span>
+              </div>
+
+              <div style={styles.row}>
+                <span style={styles.label}>Phone</span>
+                <span style={styles.value}>{n.phone}</span>
+              </div>
+
+              <div style={styles.routeBox}>
+                <div>
+                  <span style={styles.routeLabel}>Pickup</span>
+                  <div style={styles.routeValue}>{n.pickup}</div>
                 </div>
 
-                <div style={styles.row}>
-                  <span style={styles.label}>Phone</span>
-                  <span style={styles.value}>{n.phone}</span>
-                </div>
+                <div style={styles.arrow}>→</div>
 
-                <div style={styles.routeBox}>
-                  <div>
-                    <span style={styles.routeLabel}>Pickup</span>
-                    <div style={styles.routeValue}>{n.pickup}</div>
-                  </div>
-
-                  <div style={styles.arrow}>→</div>
-
-                  <div>
-                    <span style={styles.routeLabel}>Drop</span>
-                    <div style={styles.routeValue}>{n.drop}</div>
-                  </div>
+                <div>
+                  <span style={styles.routeLabel}>Drop</span>
+                  <div style={styles.routeValue}>{n.drop}</div>
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-/* ===================== STYLES ===================== */
-
 const styles = {
-  content: {
-    marginLeft: "240px",
-    padding: "90px 32px 32px",
-    background: "#f5f7fb",
+  container: {
+    marginLeft: "260px",
+    padding: "50px 32px 32px",
+    background: "#f3f4f6", // soft gray, matches our professional look
     minHeight: "100vh",
   },
 
-  pageHeader: {
+  header: {
     marginBottom: "28px",
   },
 
-  pageTitle: {
-    fontSize: "26px",
-    fontWeight: 600,
+  title: {
+    fontSize: "28px",
+    fontWeight: 700,
+    color: "#111827",
   },
 
-  pageSubtitle: {
+  subtitle: {
     fontSize: "14px",
     color: "#6b7280",
   },
@@ -164,46 +143,49 @@ const styles = {
   },
 
   card: {
-    background: "#fff",
+    background: "#ffffff",
     padding: "28px",
     borderRadius: "14px",
-    boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
+    boxShadow: "0 12px 24px rgba(0,0,0,0.06)",
     textAlign: "center",
+    transition: "all 0.3s ease",
+    cursor: "pointer",
   },
 
-  cardTitle: {
+  cardLabel: {
     fontSize: "14px",
     color: "#6b7280",
   },
 
   cardValue: {
     fontSize: "32px",
-    fontWeight: 600,
+    fontWeight: 700,
+    color: "#1e3a8a", // deep blue accent
+  },
+
+  cardHover: {
+    transform: "translateY(-4px)",
+    boxShadow: "0 16px 32px rgba(0,0,0,0.1)",
   },
 
   notificationWrapper: {
     position: "fixed",
     bottom: "28px",
-    left: "240px",
+    left: "260px",
     zIndex: 9999,
-    width: "calc(100% - 240px)",
-    overflowX: "auto",
-  },
-
-  notificationRow: {
+    width: "calc(100% - 260px)",
     display: "flex",
-    gap: "22px",
-    padding: "0 16px",
+    flexDirection: "column",
+    gap: "16px",
   },
 
   notificationCard: {
-    minWidth: "520px",
-    background: "#fff",
-    borderRadius: "18px",
-    boxShadow: "0 30px 70px rgba(0,0,0,0.28)",
+    minWidth: "480px",
+    background: "#ffffff",
+    borderRadius: "12px",
+    boxShadow: "0 12px 28px rgba(0,0,0,0.15)",
     overflow: "hidden",
-
-    transition: "opacity 0.5s ease, transform 0.5s ease",
+    transition: "all 0.5s ease",
     opacity: 1,
     transform: "translateY(0)",
   },
@@ -214,18 +196,18 @@ const styles = {
   },
 
   notificationHeader: {
-    background: "linear-gradient(135deg, #1e3a8a, #2563eb)",
+    background: "#1e3a8a", // sidebar blue accent
     color: "#fff",
-    padding: "20px 24px",
-    fontSize: "18px",
+    padding: "16px 20px",
+    fontSize: "16px",
     fontWeight: 600,
   },
 
   notificationBody: {
-    padding: "24px",
+    padding: "20px",
     display: "flex",
     flexDirection: "column",
-    gap: "14px",
+    gap: "12px",
   },
 
   row: {
@@ -234,37 +216,44 @@ const styles = {
   },
 
   label: {
-    minWidth: "90px",
+    minWidth: "80px",
     fontSize: "13px",
-    fontWeight: 700,
+    fontWeight: 600,
     textTransform: "uppercase",
+    color: "#374151",
   },
 
   value: {
-    fontSize: "15px",
+    fontSize: "14px",
+    color: "#111827",
   },
 
   routeBox: {
     display: "grid",
     gridTemplateColumns: "1fr auto 1fr",
-    gap: "16px",
+    gap: "12px",
     background: "#f9fafb",
-    padding: "16px",
-    borderRadius: "12px",
+    padding: "12px",
+    borderRadius: "10px",
   },
 
   routeLabel: {
     fontSize: "13px",
-    fontWeight: 700,
+    fontWeight: 600,
+    color: "#4b5563",
   },
 
   routeValue: {
     fontSize: "14px",
+    color: "#111827",
   },
 
   arrow: {
-    fontSize: "22px",
+    fontSize: "20px",
     fontWeight: 700,
     color: "#2563eb",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
 };
