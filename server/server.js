@@ -10,7 +10,7 @@ const http = require("http");
 app.use(cors());
 
 const server = http.createServer(app);
-const BASE_URL = "http://192.168.0.3:3000";
+const BASE_URL = "http://192.168.0.9:3000";
 const { Server } = require("socket.io");
 const io = new Server(server, {
   cors: { origin: "*" },
@@ -351,6 +351,8 @@ app.get("/api/drivers/profile", (req, res) => {
       d.ID,
       d.NAME,
       d.MOBILE,
+      d.BLOODGRP,
+      d.LICENCENO,
       COUNT(b.id) AS total_rides
     FROM drivers d
     LEFT JOIN bookings b 
@@ -364,7 +366,6 @@ app.get("/api/drivers/profile", (req, res) => {
     if (err) return res.status(500).send(err);
 
     res.json(result);
-    console.log(result) 
   });
 });
 

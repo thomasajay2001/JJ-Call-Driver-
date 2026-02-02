@@ -2,17 +2,26 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
-const BASE_URL = "http://192.168.0.3:3000";
+const BASE_URL = "http://192.168.0.9:3000";
 
 const ProfileTab = () => {
   const [profile, setProfile] = useState<any>([]);
   const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    const getRole = async () => {
+      const roleValue = await AsyncStorage.getItem("role");
+      setRole(roleValue);
+    };
+    getRole();
+  }, []);
 
   const fetchProfile = async () => {
     try {
@@ -51,9 +60,10 @@ const ProfileTab = () => {
   }
 
   return (
-    <View style={styles.container}>
+   <View style={styles.container}>
 
-      {/* PROFILE HEADER */}
+  {role === "driver" && (
+    <>
       <View style={styles.profileCard}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>
@@ -65,26 +75,58 @@ const ProfileTab = () => {
         <Text style={styles.role}>Driver</Text>
       </View>
 
-      {/* INFO CARDS */}
       <View style={styles.infoCard}>
         <Text style={styles.label}>📞 Mobile</Text>
         <Text style={styles.value}>{profile.MOBILE}</Text>
       </View>
 
       <View style={styles.infoCard}>
-        <Text style={styles.label}>🚗 Vehicle</Text>
-        <Text style={styles.value}>{profile.VEHICLE}</Text>
+        <Text style={styles.label}>🩸 Blood Group</Text>
+        <Text style={styles.value}>{profile.BLOODGRP || "-"}</Text>
       </View>
 
-      {/* MY RIDES */}
+      <View style={styles.infoCard}>
+        <Text style={styles.label}>🪪 Licence No</Text>
+        <Text style={styles.value}>{profile.LICENCENO || "-"}</Text>
+      </View>
+
       <View style={styles.rideCard}>
         <Text style={styles.rideTitle}>My Rides</Text>
         <Text style={styles.rideCount}>
           {profile.total_rides || 0} rides completed
         </Text>
       </View>
+    </>
+  )}
+  {role === "customer" && (
+    <>
+      <View style={styles.profileCard}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>
+            {profile.NAME?.charAt(0)}
+          </Text>
+        </View>
 
-    </View>
+        <Text style={styles.name}>{profile.NAME}</Text>
+        <Text style={styles.role}>Customer</Text>
+      </View>
+
+      <View style={styles.infoCard}>
+        <Text style={styles.label}>📞 Mobile</Text>
+        <Text style={styles.value}>{profile.MOBILE}</Text>
+      </View>
+
+      <View style={styles.rideCard}>
+        <Text style={styles.rideTitle}>My Booking</Text>
+        <Text style={styles.rideCount}>
+          {profile.total_rides || 0} rides completed
+        </Text>
+      </View>
+    </>
+  )}
+</View>
+
+
   );
 };
 
@@ -137,24 +179,30 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  infoCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    elevation: 3,
-  },
+ infoCard: {
+  backgroundColor: "#FFFFFF",
+  borderRadius: 16,
+  padding: 16,
+  marginBottom: 12,
+  elevation: 4,
+  shadowColor: "#000",
+  shadowOpacity: 0.08,
+  shadowRadius: 6,
+  shadowOffset: { width: 0, height: 3 },
+},
 
-  label: {
-    color: "#888",
-    fontSize: 13,
-  },
+label: {
+  color: "#888",
+  fontSize: 13,
+  letterSpacing: 0.5,
+},
 
-  value: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginTop: 6,
-  },
+value: {
+  fontSize: 16,
+  fontWeight: "700",
+  marginTop: 6,
+  color: "#222",
+},
 
   rideCard: {
     backgroundColor: "#FFF6D6",

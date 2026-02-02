@@ -1,23 +1,36 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  Keyboard,
-  Modal,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Dimensions,
+    FlatList,
+    Keyboard,
+    Modal,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import MapView, { Region } from "react-native-maps";
 
-const BASE_URL = "http://192.168.0.7:3000";
+const { width, height } = Dimensions.get("window");
+const BASE_URL = "http://192.168.0.9:3000";
 
+/* ================= COLORS ================= */
+const COLORS = {
+  primary: "#2563EB", // classic blue
+  secondary: "#3B82F6", // lighter blue
+  bg: "#F8FAFC", // soft background
+  surface: "#FFFFFF",
+  textMain: "#1E293B",
+  textMuted: "#64748B",
+  border: "#CBD5E1",
+  danger: "#EF4444",
+};
+
+/* ================= TYPES ================= */
 type Suggestion = {
   place_id?: string;
   display_name: string;
@@ -25,11 +38,19 @@ type Suggestion = {
   lon: string;
 };
 
+type Notification = {
+  bookingId: string;
+  name: string;
+  pickup: string;
+  drop: string;
+  amount?: number;
+};
+
+/* ================= COMPONENT ================= */
 const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
   const [role, setRole] = useState("");
   const [showBookingForm, setShowBookingForm] = useState(false);
 
-  /* ================= FORM STATE ================= */
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [area, setArea] = useState("");
@@ -41,8 +62,8 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   const [coordsPreview, setCoordsPreview] = useState<{
-    lat: number;
-    lng: number;
+    latitude: number;
+    longitude: number;
   } | null>(null);
   const mapRef = useRef<MapView | null>(null);
 
@@ -50,12 +71,11 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
     AsyncStorage.getItem("role").then((r) => setRole(r || ""));
   }, []);
 
-  /* ================= LOCATION SUGGESTIONS ================= */
+  /* ================= LOCATION SEARCH ================= */
   const searchLocation = async (field: "area" | "darea") => {
     const q = field === "area" ? area : darea;
     if (!q || q.length < 2) {
-      if (field === "area") setSuggestions([]);
-      else setDropsuggestions([]);
+      field === "area" ? setSuggestions([]) : setDropsuggestions([]);
       return;
     }
 
@@ -63,28 +83,27 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
       setLoadingSuggestions(true);
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
         q,
-      )}&addressdetails=1&limit=6`;
+      )}&limit=6`;
       const r = await fetch(url, {
         headers: { "User-Agent": "JJCallDriverApp/1.0" },
       });
       const data = (await r.json()) as Suggestion[];
-      if (field === "area") setSuggestions(data || []);
-      else setDropsuggestions(data || []);
-    } catch (e) {
-      console.warn("suggest", e);
+      field === "area"
+        ? setSuggestions(data || [])
+        : setDropsuggestions(data || []);
     } finally {
       setLoadingSuggestions(false);
     }
   };
 
   const selectPlace = (item: Suggestion) => {
-    const lat = Number(item.lat);
-    const lng = Number(item.lon);
+    const latitude = Number(item.lat);
+    const longitude = Number(item.lon);
     setArea(item.display_name);
     setSuggestions([]);
     Keyboard.dismiss();
-    setCoordsPreview({ lat, lng });
-    mapRef.current?.animateToRegion(regionFrom(lat, lng), 500);
+    setCoordsPreview({ latitude, longitude });
+    mapRef.current?.animateToRegion(regionFrom(latitude, longitude), 500);
   };
 
   const selectDropArea = (item: Suggestion) => {
@@ -93,14 +112,9 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
     Keyboard.dismiss();
   };
 
-  /* ================= BOOKING FORM SUBMIT ================= */
   const onSubmit = async () => {
-    if (!name.trim()) return alert("Enter name");
-    if (!/^\d{10}$/.test(phone)) return alert("Enter valid phone");
-    if (!area.trim()) return alert("Enter pickup area");
-    if (!darea.trim()) return alert("Enter drop area");
-    if (!triptype) return alert("Select trip type");
-
+    if (!name || !phone || !area || !darea || !triptype)
+      return alert("Please fill all fields");
     try {
       const response = await fetch(`${BASE_URL}/api/trip-booking`, {
         method: "POST",
@@ -109,253 +123,239 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
           name,
           phone,
           pickup: area,
-          pickupLat: coordsPreview?.lat || null, // optional
-          pickupLng: coordsPreview?.lng || null, // optional
+          pickupLat: coordsPreview?.latitude || null,
+          pickupLng: coordsPreview?.longitude || null,
           drop: darea,
-          driverId: null, // if driver assigned later
+          driverId: null,
         }),
       });
 
       const data = await response.json();
-
       if (data.success) {
-        alert(`Booking submitted! ID: ${data.bookingId}`);
         setShowBookingForm(false);
         setName("");
         setPhone("");
         setArea("");
         setDArea("");
         setTriptype("");
-        setSuggestions([]);
-        setDropsuggestions([]);
-      } else {
-        alert("Failed to submit booking");
+        alert("Booking submitted successfully");
       }
-    } catch (err) {
-      console.error(err);
-      alert("Error submitting booking");
+    } catch {
+      alert("Something went wrong");
     }
   };
 
+  /* ================= FAKE DATA ================= */
+  const features = [
+    { id: "1", title: "Local Ride", icon: "🚖" },
+    { id: "2", title: "Outstation", icon: "🛣️" },
+    { id: "3", title: "Schedule", icon: "⏰" },
+    { id: "4", title: "Trips", icon: "📜" },
+  ];
+
+  const tips = [
+    "Drive smart & safe! 🚀",
+    "Check your earnings daily 💰",
+    "Keep vehicle clean 🧽",
+    "Top drivers are punctual ⏱️",
+  ];
+
+  const promotions = [
+    {
+      id: "1",
+      image: "https://i.imgur.com/5Rt8VwD.png",
+      text: "Refer & Earn!",
+    },
+    {
+      id: "2",
+      image: "https://i.imgur.com/X1cU1p5.png",
+      text: "20% Off Today",
+    },
+  ];
+
+  const liveRides = [
+    { id: "1", name: "Ravi", pickup: "MG Road", drop: "Airport", amount: 120 },
+    {
+      id: "2",
+      name: "Anita",
+      pickup: "Main Street",
+      drop: "City Mall",
+      amount: 150,
+    },
+  ];
+
   return (
-    <>
-      <StatusBar backgroundColor="#F6B100" translucent={false} />
-      <View style={{ flex: 1, backgroundColor: "#FFF9E5" }}>
-        {/* ================= TOP BAR ================= */}
-        <View style={styles.topBar}>
-          <TouchableOpacity>
-            <Image
-              source={{
-                uri: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
-              }}
-              style={styles.profileIcon}
-            />
-          </TouchableOpacity>
+    <View style={styles.container}>
+      <StatusBar backgroundColor={COLORS.primary} barStyle="light-content" />
 
-          <View style={styles.searchBox}>
-            <TextInput
-              placeholder="Where are you going?"
-              placeholderTextColor="#999"
-              style={styles.searchInput}
-            />
-          </View>
+      {/* HERO MAP */}
+      <View style={styles.heroContainer}>
+        <MapView
+          ref={mapRef}
+          style={styles.heroMap}
+          initialRegion={{
+            latitude: 13.0827,
+            longitude: 80.2707,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          }}
+        />
 
-          <TouchableOpacity>
-            <Text style={styles.bell}>🔔</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ================= SLIDER ================= */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.slider}
-        >
-          <View style={styles.banner}>
-            <Text style={styles.bannerText}>🔥 20% OFF on rides</Text>
-          </View>
-          <View style={styles.banner}>
-            <Text style={styles.bannerText}>🚕 Safe rides everyday</Text>
-          </View>
-          <View style={styles.banner}>
-            <Text style={styles.bannerText}>💛 JJ CallDrivers</Text>
-          </View>
-        </ScrollView>
-
-        {/* ================= BODY ================= */}
-        <ScrollView style={{ padding: 12 }}>
-          {/* DRIVER UI */}
-          {role === "driver" &&
-            notifications.map((b: any) => (
-              <View key={b.bookingId} style={styles.driverCard}>
-                <View style={styles.row}>
-                  <Text style={styles.bold}>{b.name}</Text>
-                  <Text style={styles.price}>₹ {b.amount || 120}</Text>
-                </View>
-
-                <Text>📍 {b.pickup}</Text>
-                <Text>🏁 {b.drop}</Text>
-
-                <View style={styles.btnRow}>
-                  <TouchableOpacity
-                    style={styles.accept}
-                    onPress={() => onAccept(b)}
-                  >
-                    <Text style={styles.btnText}>ACCEPT</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.reject}
-                    onPress={() => onDecline(b)}
-                  >
-                    <Text style={styles.btnText}>DECLINE</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-
-          {/* CUSTOMER UI */}
-          {role === "customer" &&
-            notifications.map((b: any) => (
-              <View key={b.bookingId} style={styles.customerCard}>
-                <Text style={styles.point}>📍 {b.pickup}</Text>
-                <Text style={styles.point}>🏁 {b.drop}</Text>
-
-                <View style={styles.statusBox}>
-                  <Text style={styles.statusText}>
-                    {b.status || "Searching nearby drivers"}
-                  </Text>
-                </View>
-              </View>
-            ))}
-        </ScrollView>
-
-        {/* ================= BOOK NOW BUTTON ================= */}
-        <View style={styles.stickyFooter}>
-          <TouchableOpacity
-            style={styles.bookNowBtn}
-            onPress={() => setShowBookingForm(true)}
-          >
-            <Text style={styles.bookNowText}>Book Now</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ================= BOOKING FORM MODAL ================= */}
-        <Modal visible={showBookingForm} animationType="slide" transparent>
-          <View style={popupStyles.overlay}>
-            <View style={popupStyles.popup}>
+        <View style={styles.floatingCard}>
+          <Text style={styles.floatingTitle}>Pickup Location</Text>
+          <TextInput
+            style={styles.floatingInput}
+            placeholder="Enter Pickup Location"
+            value={area}
+            onChangeText={(t) => {
+              setArea(t);
+              searchLocation("area");
+            }}
+          />
+          {loadingSuggestions && area.length > 2 && (
+            <ActivityIndicator style={{ marginTop: 8 }} />
+          )}
+          <FlatList
+            data={suggestions}
+            keyExtractor={(i) => i.place_id || i.display_name}
+            keyboardShouldPersistTaps="handled"
+            style={styles.suggestionList}
+            renderItem={({ item }) => (
               <TouchableOpacity
-                style={popupStyles.closeBtn}
-                onPress={() => setShowBookingForm(false)}
+                style={styles.suggestionItem}
+                onPress={() => selectPlace(item)}
               >
-                <Text style={{ fontSize: 18 }}>✖</Text>
+                <Text style={styles.suggestionText}>
+                  📍 {item.display_name}
+                </Text>
               </TouchableOpacity>
-
-              <ScrollView>
-                <Text style={popupStyles.title}>Customer Details</Text>
-
-                <TextInput
-                  style={popupStyles.input}
-                  placeholder="Full Name"
-                  value={name}
-                  onChangeText={setName}
-                />
-                <TextInput
-                  style={popupStyles.input}
-                  placeholder="Phone Number"
-                  keyboardType="numeric"
-                  value={phone}
-                  onChangeText={setPhone}
-                />
-
-                {/* Pickup Area */}
-                <TextInput
-                  style={popupStyles.input}
-                  placeholder="Pickup Area"
-                  value={area}
-                  onChangeText={(text) => {
-                    setArea(text);
-                    searchLocation("area");
-                  }}
-                />
-                {loadingSuggestions && <ActivityIndicator />}
-                <FlatList
-                  data={suggestions}
-                  keyExtractor={(item) => item.place_id || item.display_name}
-                  keyboardShouldPersistTaps="handled"
-                  nestedScrollEnabled={true} // ✅ Fix warning
-                  style={{ maxHeight: 150 }}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity onPress={() => selectPlace(item)}>
-                      <Text style={popupStyles.suggestionItem}>
-                        {item.display_name}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                />
-
-                {/* Drop Area */}
-                <TextInput
-                  style={popupStyles.input}
-                  placeholder="Drop Area"
-                  value={darea}
-                  onChangeText={(text) => {
-                    setDArea(text);
-                    searchLocation("darea");
-                  }}
-                />
-                {loadingSuggestions && <ActivityIndicator />}
-                <FlatList
-                  data={dropsuggestions}
-                  keyExtractor={(item) => item.place_id || item.display_name}
-                  keyboardShouldPersistTaps="handled"
-                  nestedScrollEnabled={true} // ✅ Fix warning
-                  style={{ maxHeight: 150 }}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity onPress={() => selectDropArea(item)}>
-                      <Text style={popupStyles.suggestionItem}>
-                        {item.display_name}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                />
-
-                {/* Trip Type */}
-                <View style={popupStyles.tripRow}>
-                  <TouchableOpacity
-                    style={[
-                      popupStyles.tripBtn,
-                      triptype === "local" && { backgroundColor: "#F6B100" },
-                    ]}
-                    onPress={() => setTriptype("local")}
-                  >
-                    <Text>Local</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      popupStyles.tripBtn,
-                      triptype === "outstation" && {
-                        backgroundColor: "#F6B100",
-                      },
-                    ]}
-                    onPress={() => setTriptype("outstation")}
-                  >
-                    <Text>Outstation</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <TouchableOpacity
-                  style={popupStyles.submitBtn}
-                  onPress={onSubmit}
-                >
-                  <Text style={popupStyles.submitText}>Submit Details</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+            )}
+          />
+        </View>
       </View>
-    </>
+
+      {/* FEATURES */}
+      <Text style={styles.sectionTitle}>Quick Actions</Text>
+      <View style={styles.featuresGrid}>
+        {features.map((f) => (
+          <TouchableOpacity key={f.id} style={styles.featureCard}>
+            <Text style={{ fontSize: 28 }}>{f.icon}</Text>
+            <Text style={styles.featureText}>{f.title}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* BOOK BUTTON */}
+      <TouchableOpacity
+        style={styles.bookBtn}
+        onPress={() => setShowBookingForm(true)}
+      >
+        <Text style={styles.bookBtnText}>Book a Ride</Text>
+      </TouchableOpacity>
+
+      {/* BOOKING MODAL */}
+      <Modal visible={showBookingForm} animationType="slide" transparent>
+        <View style={modal.overlay}>
+          <View style={modal.sheet}>
+            <TouchableOpacity
+              style={modal.closeBtn}
+              onPress={() => setShowBookingForm(false)}
+            >
+              <Text style={modal.closeText}>✕</Text>
+            </TouchableOpacity>
+            <Text style={modal.title}>Trip Details</Text>
+
+            <TextInput
+              style={modal.input}
+              placeholder="Full Name"
+              value={name}
+              onChangeText={setName}
+            />
+            <TextInput
+              style={modal.input}
+              placeholder="Phone Number"
+              keyboardType="numeric"
+              value={phone}
+              onChangeText={setPhone}
+            />
+
+            <TextInput
+              style={modal.input}
+              placeholder="Pickup location"
+              value={area}
+              onChangeText={(t) => {
+                setArea(t);
+                searchLocation("area");
+              }}
+            />
+            {loadingSuggestions && area.length > 2 && (
+              <ActivityIndicator style={{ marginVertical: 8 }} />
+            )}
+            <FlatList
+              data={suggestions}
+              keyExtractor={(i) => i.place_id || i.display_name}
+              keyboardShouldPersistTaps="handled"
+              style={modal.suggestionList}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={modal.suggestionItem}
+                  onPress={() => selectPlace(item)}
+                >
+                  <Text style={modal.suggestionText}>
+                    📍 {item.display_name}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+
+            <TextInput
+              style={modal.input}
+              placeholder="Drop location"
+              value={darea}
+              onChangeText={(t) => {
+                setDArea(t);
+                searchLocation("darea");
+              }}
+            />
+            {loadingSuggestions && darea.length > 2 && (
+              <ActivityIndicator style={{ marginVertical: 8 }} />
+            )}
+            <FlatList
+              data={dropsuggestions}
+              keyExtractor={(i) => i.place_id || i.display_name}
+              keyboardShouldPersistTaps="handled"
+              style={modal.suggestionList}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={modal.suggestionItem}
+                  onPress={() => selectDropArea(item)}
+                >
+                  <Text style={modal.suggestionText}>
+                    🏁 {item.display_name}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+
+            <View style={modal.tripRow}>
+              {["local", "outstation"].map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[modal.tripBtn, triptype === t && modal.tripActive]}
+                  onPress={() => setTriptype(t as any)}
+                >
+                  <Text>{t.toUpperCase()}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity style={modal.submitBtn} onPress={onSubmit}>
+              <Text style={modal.submitText}>Confirm Booking</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 };
 
@@ -363,156 +363,216 @@ export default HomeTab;
 
 /* ================= STYLES ================= */
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    backgroundColor: "#F6B100",
-  },
-  profileIcon: { width: 36, height: 36, borderRadius: 18 },
-  searchBox: {
-    flex: 1,
-    backgroundColor: "#fff",
-    marginHorizontal: 10,
-    borderRadius: 25,
-    paddingHorizontal: 15,
-    height: 42,
-    justifyContent: "center",
-  },
-  searchInput: { fontSize: 14 },
-  bell: { fontSize: 22 },
-  slider: { marginTop: 10, paddingLeft: 12 },
-  banner: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
+  container: { flex: 1, backgroundColor: COLORS.bg },
+
+  heroContainer: { width, height: height * 0.38 },
+  heroMap: { width: "100%", height: "100%" },
+
+  floatingCard: {
+    position: "absolute",
+    bottom: 16,
+    left: 16,
+    right: 16,
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
     padding: 18,
-    marginRight: 12,
-    elevation: 3,
-    width: 260,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 5,
   },
-  bannerText: { fontSize: 16, fontWeight: "700", color: "#F6B100" },
-  driverCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 15,
-    marginBottom: 15,
-    elevation: 4,
-  },
-  row: { flexDirection: "row", justifyContent: "space-between" },
-  bold: { fontWeight: "700" },
-  price: { fontWeight: "bold", color: "#F6B100" },
-  btnRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 15,
-  },
-  accept: {
-    backgroundColor: "#F6B100",
-    padding: 12,
-    borderRadius: 8,
-    width: "48%",
-    alignItems: "center",
-  },
-  reject: {
-    backgroundColor: "#222",
-    padding: 12,
-    borderRadius: 8,
-    width: "48%",
-    alignItems: "center",
-  },
-  bookNowBtn: {
-    backgroundColor: "#F6B100",
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-    elevation: 4,
-  },
-  bookNowText: {
-    color: "#fff",
-    fontSize: 16,
+  floatingTitle: {
+    fontSize: 18,
     fontWeight: "700",
-    letterSpacing: 0.5,
+    marginBottom: 8,
+    color: COLORS.textMain,
   },
-  btnText: { color: "#fff", fontWeight: "bold" },
-  customerCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 20,
-    marginBottom: 15,
-  },
-  point: { fontSize: 15, marginVertical: 6 },
-  statusBox: {
-    marginTop: 15,
-    backgroundColor: "#FFF3C4",
+  floatingInput: {
+    backgroundColor: COLORS.bg,
+    borderRadius: 12,
     padding: 12,
-    borderRadius: 10,
+    fontSize: 14,
+    color: COLORS.textMain,
   },
-  stickyFooter: {
+  suggestionList: { maxHeight: 120, marginTop: 8, borderRadius: 12 },
+  suggestionItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+  },
+  suggestionText: { fontSize: 14, color: COLORS.textMain },
+
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
+    color: COLORS.textMain,
+  },
+
+  featuresGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+  },
+  featureCard: {
+    width: width * 0.44,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  featureText: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: 8,
+    color: COLORS.textMain,
+  },
+
+  promoCard: {
+    width: width * 0.7,
+    height: 140,
+    borderRadius: 16,
+    marginRight: 12,
+    overflow: "hidden",
+  },
+  promoImage: { width: "100%", height: "100%" },
+  promoOverlay: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 16,
-    backgroundColor: "#FFF9E5",
+    backgroundColor: "rgba(0,0,0,0.2)",
+    padding: 8,
   },
-  statusText: { textAlign: "center", color: "#F6B100", fontWeight: "700" },
+  promoText: { color: "#FFF", fontWeight: "700", fontSize: 14 },
+
+  quoteCard: {
+    backgroundColor: COLORS.surface,
+    padding: 16,
+    borderRadius: 16,
+    marginRight: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  quoteText: { fontSize: 13, fontWeight: "500", color: COLORS.textMain },
+
+  liveRideCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  cardTitle: { fontSize: 16, fontWeight: "700", color: COLORS.textMain },
+  location: { fontSize: 14, color: COLORS.textMuted, marginTop: 2 },
+  amount: { fontSize: 15, fontWeight: "700", color: COLORS.primary },
+
+  bookBtn: {
+    position: "absolute",
+    bottom: 20,
+    left: 16,
+    right: 16,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 18,
+    borderRadius: 20,
+    alignItems: "center",
+    elevation: 5,
+  },
+  bookBtnText: { fontSize: 18, fontWeight: "800", color: "#FFF" },
 });
 
-/* ================= POPUP FORM STYLES ================= */
-const popupStyles = StyleSheet.create({
+/* ================= MODAL ================= */
+const modal = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
   },
-  popup: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: "90%",
+  sheet: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 22,
+    paddingTop: 40,
   },
-  closeBtn: { alignSelf: "flex-end" },
+  closeBtn: {
+    position: "absolute",
+    top: 14,
+    right: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: COLORS.bg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  closeText: { fontSize: 18, fontWeight: "700" },
   title: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: "700",
-    marginBottom: 15,
     textAlign: "center",
+    marginBottom: 14,
   },
   input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
+    backgroundColor: COLORS.bg,
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 10,
+    fontSize: 14,
+    color: COLORS.textMain,
   },
-  suggestionItem: { padding: 10, borderBottomWidth: 1, borderColor: "#eee" },
   tripRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginVertical: 10,
+    marginVertical: 18,
   },
   tripBtn: {
     width: "48%",
-    padding: 12,
-    backgroundColor: "#FFF3C4",
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  submitBtn: {
-    backgroundColor: "#F6B100",
     padding: 14,
-    borderRadius: 12,
-    marginTop: 10,
+    borderRadius: 14,
+    backgroundColor: COLORS.bg,
     alignItems: "center",
   },
-  submitText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  tripActive: { backgroundColor: COLORS.primary },
+  submitBtn: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 18,
+    borderRadius: 18,
+    alignItems: "center",
+  },
+  submitText: { fontSize: 16, fontWeight: "800", color: "#FFF" },
+  suggestionList: { maxHeight: 180, marginTop: 6, borderRadius: 14 },
+  suggestionItem: {
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+  },
+  suggestionText: { fontSize: 14, color: COLORS.textMain },
 });
 
-/* ================= HELPERS ================= */
-const regionFrom = (lat: number, lng: number, delta = 0.01): Region => ({
-  latitude: lat,
-  longitude: lng,
+/* ================= HELPER ================= */
+const regionFrom = (
+  latitude: number,
+  longitude: number,
+  delta = 0.01,
+): Region => ({
+  latitude,
+  longitude,
   latitudeDelta: delta,
   longitudeDelta: delta,
 });
