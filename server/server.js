@@ -151,7 +151,7 @@ app.post("/api/verify-otp", (req, res) => {
 });
 
 app.post("/api/trip-booking", (req, res) => {
-  const { name, phone, pickup, pickupLat, pickupLng, drop, driverId } =
+  const { name, phone, pickup, pickupLat, pickupLng, drop, driverId ,bookingphnno} =
     req.body;
 
   if (!name || !phone || !pickup || !drop) {
@@ -163,13 +163,13 @@ app.post("/api/trip-booking", (req, res) => {
 
   const sql = `
     INSERT INTO bookings
-    (customer_name, customer_mobile, pickup, pickup_lat, pickup_lng, drop_location, driver_id, status)
-    VALUES (?,?,?,?,?,?,?, 'pending')
+    (customer_name, customer_mobile, pickup, pickup_lat, pickup_lng, drop_location, driver_id, bookingphnno, status)
+    VALUES (?,?,?,?,?,?,?, ?, 'pending')
   `;
 
   db.query(
     sql,
-    [name, phone, pickup, pickupLat, pickupLng, drop, driverId],
+    [name, phone, pickup, pickupLat, pickupLng, drop, driverId, bookingphnno],
     (err, result) => {
       if (err) {
         console.error(err);

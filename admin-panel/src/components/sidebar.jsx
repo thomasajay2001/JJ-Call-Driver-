@@ -1,74 +1,133 @@
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 export default function Sidebar({ onLogout }) {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const menu = [
+    { label: "Dashboard", path: "/dashboard" },
+    { label: "Bookings", path: "/booking" },
+    { label: "Drivers", path: "/driver-dashboard" },
+    { label: "Users", path: "/users" },
+  ];
 
   return (
-    <div style={styles.sidebar}>
-      <h2 style={styles.logo}>Admin Panel</h2>
+    <aside style={styles.sidebar}>
+      {/* Glowing Brand */}
+      <div style={styles.brandBox}>
+        <div style={styles.brand}>ADMIN</div>
+        <div style={styles.brandGlow} />
+      </div>
 
-      <ul style={styles.menu}>
-        <li style={styles.menuItem} onClick={() => navigate("/dashboard")}>
-          📊 Dashboard
-        </li>
+      {/* Menu Items */}
+      <div style={styles.menu}>
+        {menu.map((item) => {
+          const active = location.pathname === item.path;
+          return (
+            <div
+              key={item.path}
+              style={{
+                ...styles.menuItem,
+                ...(active && styles.menuItemActive),
+              }}
+              onClick={() => navigate(item.path)}
+            >
+              {item.label}
+              {active && <div style={styles.activeGlow} />}
+            </div>
+          );
+        })}
+      </div>
 
-        <li style={styles.menuItem} onClick={() => navigate("/booking")}>
-          📖 Bookings
-        </li>
-
-        <li style={styles.menuItem} onClick={() => navigate("/driver-dashboard")}>
-          🚗 Drivers
-        </li>
-
-        <li style={styles.menuItem} onClick={() => navigate("/users")}>
-          👥 Users
-        </li>
-
-        <li style={{ ...styles.menuItem, ...styles.logout }} onClick={onLogout}>
-          Logout
-        </li>
-      </ul>
-    </div>
+      {/* Footer */}
+      <div style={styles.footer}>
+        <button style={styles.logout} onClick={onLogout}>
+          LOGOUT
+        </button>
+      </div>
+    </aside>
   );
 }
+
 const styles = {
   sidebar: {
-    width: "240px",
+    width: "280px",
     height: "100vh",
-    background: "linear-gradient(180deg, #1f2933, #111827)",
-    color: "#fff",
-    padding: "20px",
+    background: "rgba(12, 12, 40, 0.9)", // deep navy background
+    backdropFilter: "blur(14px)",
+    boxShadow: "4px 0 20px rgba(0,0,0,0.5)",
+    display: "flex",
+    flexDirection: "column",
+    color: "#e5e7eb",
     position: "fixed",
     left: 0,
     top: 0,
-    boxSizing: "border-box",
+    overflow: "hidden",
+    fontFamily: "Inter, sans-serif",
   },
 
-  logo: {
+  brandBox: {
+    position: "relative",
+    padding: "28px 20px 22px",
     textAlign: "center",
     marginBottom: "30px",
-    fontSize: "22px",
-    fontWeight: "bold",
+  },
+  brand: {
+    fontSize: "30px",
+    fontWeight: "800",
+    letterSpacing: "1.5px",
+    color: "#1e40af", // solid professional blue
+    textAlign: "center",
+    textShadow: "0 1px 2px rgba(0,0,0,0.15)", // subtle depth
   },
 
   menu: {
-    listStyle: "none",
-    padding: 0,
-    margin: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    padding: "0 16px",
   },
-
   menuItem: {
-    padding: "12px 15px",
-    marginBottom: "10px",
-    borderRadius: "8px",
+    position: "relative",
+    padding: "14px 18px",
+    fontSize: "14px",
+    fontWeight: "500",
+    borderRadius: "14px",
     cursor: "pointer",
-    transition: "0.3s",
+    color: "#cbd5f5",
+    background: "rgba(255,255,255,0.02)",
+    border: "1px solid rgba(255,255,255,0.05)",
+    backdropFilter: "blur(6px)",
+    transition: "all 0.25s ease",
+  },
+  menuItemActive: {
+    background: "rgba(59, 130, 246, 0.15)", // soft bluish frosted overlay
+    color: "#2563eb", // crisp blue text
+    fontWeight: "600",
+    transform: "scale(1.03)", // slight pop for active
+    borderLeft: "4px solid #2563eb", // subtle side indicator
+    borderRadius: "12px",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.12)", // subtle depth shadow
+    backdropFilter: "blur(6px)", // soft frosted effect
+    transition: "all 0.25s ease",
+    position: "relative",
   },
 
+  footer: {
+    marginTop: "auto",
+    padding: "20px",
+    borderTop: "1px solid rgba(255,255,255,0.05)",
+  },
   logout: {
-    marginTop: "30px",
-    backgroundColor: "#7f1d1d",
-    textAlign: "center",
-    fontWeight: "bold",
+    width: "100%",
+    padding: "12px",
+    borderRadius: "16px",
+    backgroundColor: "#1e293b", // solid dark button
+    border: "1px solid #3b82f6", // neon accent border
+    color: "#60a5fa",
+    fontWeight: "700",
+    letterSpacing: "1px",
+    cursor: "pointer",
+    transition: "all 0.3s ease",
   },
 };

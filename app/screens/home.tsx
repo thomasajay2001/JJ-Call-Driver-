@@ -58,7 +58,7 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
   const [area, setArea] = useState("");
   const [darea, setDArea] = useState("");
   const [triptype, setTriptype] = useState<"local" | "outstation" | "">("");
-
+  const [bookingphnno,setBookingPhnNo]=useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [dropsuggestions, setDropsuggestions] = useState<Suggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -71,6 +71,7 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
 
   useEffect(() => {
     AsyncStorage.getItem("role").then((r) => setRole(r || ""));
+    AsyncStorage.getItem("customerPhone").then((p) => setBookingPhnNo(p || ""));
   }, []);
 
   /* ================= LOCATION SEARCH ================= */
@@ -125,6 +126,7 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
           name,
           phone,
           pickup: area,
+          bookingphnno,
           pickupLat: coordsPreview?.latitude || null,
           pickupLng: coordsPreview?.longitude || null,
           drop: darea,
