@@ -19,6 +19,7 @@ export default function Login() {
 
 const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
 
+
   // USER LOGIN STATES
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
@@ -81,10 +82,12 @@ const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
         setMessage("OTP Verified! Login Success");
 
         await AsyncStorage.setItem("role", "customer");
+        const role = await AsyncStorage.getItem("role");
+        console.log(role, "logined");
         await AsyncStorage.setItem("customerPhone", phone);
 
         // router.push("/customer/customer-page");
-        router.push("/screens/settings")
+        router.push("/screens/settings");
 
         // navigation.navigate("home"); // After login
       } else {
@@ -134,6 +137,8 @@ const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
       setMessage("Driver Login Success!");
 
       await AsyncStorage.setItem("role", "driver");
+      const role = await AsyncStorage.getItem("role");
+      console.log("ROLE FROM ASYNC STORAGE:", role);
       await AsyncStorage.setItem("driverId", driverId);
       await axios.post(`${BASE_URL}/api/driver/updateStatus`, {
         driverId,

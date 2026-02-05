@@ -5,7 +5,6 @@ import React from "react";
 import HomeTab from "./home";
 import RideTab from "./myRides";
 import ProfileTab from "./profile";
-import RatingsTab from "./rating";
 
 const Tab = createBottomTabNavigator();
 
@@ -22,14 +21,12 @@ const settings = ({
 }: any) => {
   return (
     <>
-
       {/* 🔻 BOTTOM NAVIGATION */}
       <Tab.Navigator
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarActiveTintColor: "#F6B100",
           tabBarInactiveTintColor: "#888",
-         
 
           tabBarIcon: ({ color, size }) => {
             let iconName: any = "home";
@@ -62,8 +59,6 @@ const settings = ({
             />
           )}
         </Tab.Screen>
-
-        <Tab.Screen name="Ratings" component={RatingsTab} />
 
         <Tab.Screen name="Profile">
           {() => <ProfileTab name={name} mobile={mobile} vehicle={vehicle} />}

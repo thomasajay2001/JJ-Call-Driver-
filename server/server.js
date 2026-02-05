@@ -9,6 +9,7 @@ const http = require("http");
 
 app.use(cors());
 
+
 const server = http.createServer(app);
 const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL;
 const { Server } = require("socket.io");
@@ -37,6 +38,13 @@ db.connect((err) => {
   }
 });
 
+app.get("/", (req, res) => {
+  res.send("Server running OK ✅");
+});
+
+app.get("/test", (req, res) => {
+  res.json({ message: "API working" });
+});
 io.on("connection", (socket) => {
   console.log("✅ Socket connected:", socket.id);
 
@@ -592,6 +600,7 @@ app.get('/api/bookings',(req,res)=>{
 
 
 const PORT = 3000;
-server.listen(PORT, () =>
-  console.log(`Server running on http://localhost:${PORT}`),
-);
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server + Socket running on http://0.0.0.0:${PORT}`);
+});
+

@@ -20,6 +20,7 @@ import MapView, { Region } from "react-native-maps";
 const { width, height } = Dimensions.get("window");
 const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
 
+
 /* ================= COLORS ================= */
 const COLORS = {
   primary: "#2563EB", // classic blue
@@ -33,6 +34,9 @@ const COLORS = {
 };
 
 /* ================= TYPES ================= */
+
+type role = "customer" | "driver" | "";
+
 type Suggestion = {
   place_id?: string;
   display_name: string;
@@ -69,9 +73,12 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
   } | null>(null);
   const mapRef = useRef<MapView | null>(null);
 
+  /* ================= LOAD ROLE ================= */
   useEffect(() => {
-    AsyncStorage.getItem("role").then((r) => setRole(r || ""));
     AsyncStorage.getItem("customerPhone").then((p) => setBookingPhnNo(p || ""));
+    AsyncStorage.getItem("role").then((r) => {
+      setRole((r as role) || "");
+    });
   }, []);
 
   /* ================= LOCATION SEARCH ================= */
@@ -188,11 +195,22 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
     },
   ];
 
+  /* ================= DRIVER UI ================= */
+  if (role === "driver") {
+    return (
+      <View style={styles.center}>
+        <Text style={{ fontSize: 18, fontWeight: "700" }}>
+          🚕 Driver Dashboard
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar backgroundColor={COLORS.primary} barStyle="light-content" />
 
-      {/* HERO MAP */}
+      {/* MAP SECTION */}
       <View style={styles.heroContainer}>
         <MapView
           ref={mapRef}
@@ -205,20 +223,24 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
           }}
         />
 
+        {/* FLOATING PICKUP CARD */}
         <View style={styles.floatingCard}>
           <Text style={styles.floatingTitle}>Pickup Location</Text>
+
           <TextInput
-            style={styles.floatingInput}
-            placeholder="Enter Pickup Location"
+            style={styles.input}
+            placeholder="Enter pickup location"
             value={area}
             onChangeText={(t) => {
               setArea(t);
               searchLocation("area");
             }}
           />
+
           {loadingSuggestions && area.length > 2 && (
             <ActivityIndicator style={{ marginTop: 8 }} />
           )}
+
           <FlatList
             data={suggestions}
             keyExtractor={(i) => i.place_id || i.display_name}
@@ -238,7 +260,7 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
         </View>
       </View>
 
-      {/* FEATURES */}
+      {/* QUICK ACTIONS */}
       <Text style={styles.sectionTitle}>Quick Actions</Text>
       <View style={styles.featuresGrid}>
         {features.map((f) => (
@@ -267,6 +289,7 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
             >
               <Text style={modal.closeText}>✕</Text>
             </TouchableOpacity>
+
             <Text style={modal.title}>Trip Details</Text>
 
             <TextInput
@@ -275,6 +298,7 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
               value={name}
               onChangeText={setName}
             />
+
             <TextInput
               style={modal.input}
               placeholder="Phone Number"
@@ -292,9 +316,7 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
                 searchLocation("area");
               }}
             />
-            {loadingSuggestions && area.length > 2 && (
-              <ActivityIndicator style={{ marginVertical: 8 }} />
-            )}
+
             <FlatList
               data={suggestions}
               keyExtractor={(i) => i.place_id || i.display_name}
@@ -321,9 +343,7 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
                 searchLocation("darea");
               }}
             />
-            {loadingSuggestions && darea.length > 2 && (
-              <ActivityIndicator style={{ marginVertical: 8 }} />
-            )}
+
             <FlatList
               data={dropsuggestions}
               keyExtractor={(i) => i.place_id || i.display_name}
@@ -348,7 +368,14 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
                   style={[modal.tripBtn, triptype === t && modal.tripActive]}
                   onPress={() => setTriptype(t as any)}
                 >
-                  <Text>{t.toUpperCase()}</Text>
+                  <Text
+                    style={{
+                      color: triptype === t ? "#FFF" : COLORS.textMain,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {t.toUpperCase()}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -374,36 +401,53 @@ const styles = StyleSheet.create({
 
   floatingCard: {
     position: "absolute",
-    bottom: 16,
+    bottom: 24,
     left: 16,
     right: 16,
     backgroundColor: COLORS.surface,
-    borderRadius: 20,
-    padding: 18,
+    borderRadius: 22,
+    padding: 16,
+    zIndex: 10,
+    elevation: 8,
     shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
   },
+
   floatingTitle: {
     fontSize: 18,
     fontWeight: "700",
     marginBottom: 8,
     color: COLORS.textMain,
   },
-  floatingInput: {
+
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+
+  input: {
     backgroundColor: COLORS.bg,
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     fontSize: 14,
     color: COLORS.textMain,
   },
-  suggestionList: { maxHeight: 120, marginTop: 8, borderRadius: 12 },
+
+  suggestionList: {
+    maxHeight: 160,
+    marginTop: 8,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface,
+    overflow: "hidden",
+  },
+
   suggestionItem: {
-    padding: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderColor: COLORS.border,
   },
+
   suggestionText: { fontSize: 14, color: COLORS.textMain },
 
   sectionTitle: {
@@ -420,20 +464,18 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     justifyContent: "space-between",
     paddingHorizontal: 16,
+    rowGap: 14,
   },
+
   featureCard: {
     width: width * 0.44,
     backgroundColor: COLORS.surface,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 20,
-    marginBottom: 14,
     alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
     elevation: 3,
   },
+
   featureText: {
     fontSize: 14,
     fontWeight: "600",
@@ -441,61 +483,18 @@ const styles = StyleSheet.create({
     color: COLORS.textMain,
   },
 
-  promoCard: {
-    width: width * 0.7,
-    height: 140,
-    borderRadius: 16,
-    marginRight: 12,
-    overflow: "hidden",
-  },
-  promoImage: { width: "100%", height: "100%" },
-  promoOverlay: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "rgba(0,0,0,0.2)",
-    padding: 8,
-  },
-  promoText: { color: "#FFF", fontWeight: "700", fontSize: 14 },
-
-  quoteCard: {
-    backgroundColor: COLORS.surface,
-    padding: 16,
-    borderRadius: 16,
-    marginRight: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  quoteText: { fontSize: 13, fontWeight: "500", color: COLORS.textMain },
-
-  liveRideCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  cardTitle: { fontSize: 16, fontWeight: "700", color: COLORS.textMain },
-  location: { fontSize: 14, color: COLORS.textMuted, marginTop: 2 },
-  amount: { fontSize: 15, fontWeight: "700", color: COLORS.primary },
-
   bookBtn: {
     position: "absolute",
-    bottom: 20,
+    bottom: 8,
     left: 16,
     right: 16,
     backgroundColor: COLORS.primary,
     paddingVertical: 18,
-    borderRadius: 20,
+    borderRadius: 22,
     alignItems: "center",
-    elevation: 5,
+    elevation: 6,
   },
+
   bookBtnText: { fontSize: 18, fontWeight: "800", color: "#FFF" },
 });
 
@@ -506,67 +505,86 @@ const modal = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
   },
+
   sheet: {
     backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 22,
-    paddingTop: 40,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingTop: 48,
+    paddingHorizontal: 20,
+    paddingBottom: 24,
   },
+
   closeBtn: {
     position: "absolute",
-    top: 14,
-    right: 14,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    top: 16,
+    right: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: COLORS.bg,
     alignItems: "center",
     justifyContent: "center",
   },
+
   closeText: { fontSize: 18, fontWeight: "700" },
+
   title: {
     fontSize: 19,
     fontWeight: "700",
     textAlign: "center",
     marginBottom: 14,
   },
+
   input: {
     backgroundColor: COLORS.bg,
     borderRadius: 14,
-    padding: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     marginTop: 10,
     fontSize: 14,
-    color: COLORS.textMain,
   },
+
+  suggestionList: {
+    maxHeight: 180,
+    marginTop: 6,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface,
+  },
+
+  suggestionItem: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  suggestionText: { fontSize: 14 },
+
   tripRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginVertical: 18,
   },
+
   tripBtn: {
     width: "48%",
-    padding: 14,
-    borderRadius: 14,
+    paddingVertical: 14,
+    borderRadius: 16,
     backgroundColor: COLORS.bg,
     alignItems: "center",
   },
+
   tripActive: { backgroundColor: COLORS.primary },
+
   submitBtn: {
     backgroundColor: COLORS.primary,
     paddingVertical: 18,
-    borderRadius: 18,
+    borderRadius: 20,
     alignItems: "center",
   },
+
   submitText: { fontSize: 16, fontWeight: "800", color: "#FFF" },
-  suggestionList: { maxHeight: 180, marginTop: 6, borderRadius: 14 },
-  suggestionItem: {
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderBottomWidth: 1,
-    borderColor: COLORS.border,
-  },
-  suggestionText: { fontSize: 14, color: COLORS.textMain },
 });
 
 /* ================= HELPER ================= */
