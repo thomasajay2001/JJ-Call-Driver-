@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
+import * as Location from "expo-location";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,10 +17,8 @@ import {
 } from "react-native";
 import MapView, { Region } from "react-native-maps";
 
-
 const { width, height } = Dimensions.get("window");
 const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
-
 
 /* ================= COLORS ================= */
 const COLORS = {
@@ -52,20 +51,123 @@ type Notification = {
   amount?: number;
 };
 
+type ChennaiPlace = {
+  id: string;
+  name: string;
+  address: string;
+  lat: number;
+  lon: number;
+  icon: string;
+};
+
+/* ================= CHENNAI PLACES DATA ================= */
+const CHENNAI_POPULAR_PLACES: ChennaiPlace[] = [
+  {
+    id: "1",
+    name: "Marina Beach",
+    address: "Kamaraj Salai, Chennai",
+    lat: 13.0499,
+    lon: 80.2824,
+    icon: "🏖️",
+  },
+  {
+    id: "2",
+    name: "T Nagar",
+    address: "Thyagaraya Nagar, Chennai",
+    lat: 13.0418,
+    lon: 80.2341,
+    icon: "🛍️",
+  },
+  {
+    id: "3",
+    name: "Chennai Central",
+    address: "Railway Station, Chennai",
+    lat: 13.0827,
+    lon: 80.2707,
+    icon: "🚉",
+  },
+  {
+    id: "4",
+    name: "Phoenix MarketCity",
+    address: "Velachery Main Road, Chennai",
+    lat: 12.9926,
+    lon: 80.2207,
+    icon: "🏬",
+  },
+  {
+    id: "5",
+    name: "Besant Nagar Beach",
+    address: "Elliot's Beach, Chennai",
+    lat: 13.0006,
+    lon: 80.2661,
+    icon: "🌊",
+  },
+];
+
+/* ================= TAMIL NADU OUTSTATION PLACES ================= */
+const TAMILNADU_OUTSTATION_PLACES: ChennaiPlace[] = [
+  {
+    id: "1",
+    name: "Mahabalipuram",
+    address: "Mahabalipuram, Tamil Nadu",
+    lat: 12.6208,
+    lon: 80.1925,
+    icon: "🏛️",
+  },
+  {
+    id: "2",
+    name: "Pondicherry",
+    address: "Pondicherry, Tamil Nadu",
+    lat: 11.9416,
+    lon: 79.8083,
+    icon: "🌴",
+  },
+  {
+    id: "3",
+    name: "Mahabalipuram Temple",
+    address: "Shore Temple Road, Mahabalipuram",
+    lat: 12.6167,
+    lon: 80.1833,
+    icon: "⛩️",
+  },
+  {
+    id: "4",
+    name: "Yelagiri Hills",
+    address: "Yelagiri, Vellore District",
+    lat: 12.5833,
+    lon: 78.6333,
+    icon: "⛰️",
+  },
+  {
+    id: "5",
+    name: "Vellore Fort",
+    address: "Vellore, Tamil Nadu",
+    lat: 12.9165,
+    lon: 79.1325,
+    icon: "🏰",
+  },
+];
+
 /* ================= COMPONENT ================= */
 const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
   const [role, setRole] = useState("");
   const [showBookingForm, setShowBookingForm] = useState(false);
+  const [showPlacesPopup, setShowPlacesPopup] = useState(false);
+  const [showOutstationPopup, setShowOutstationPopup] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [bookingHistory, setBookingHistory] = useState<any[]>([]);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [area, setArea] = useState("");
   const [darea, setDArea] = useState("");
   const [triptype, setTriptype] = useState<"local" | "outstation" | "">("");
-  const [bookingphnno,setBookingPhnNo]=useState("");
+  const [bookingphnno, setBookingPhnNo] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [dropsuggestions, setDropsuggestions] = useState<Suggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [loadingLocation, setLoadingLocation] = useState(false);
 
   const [coordsPreview, setCoordsPreview] = useState<{
     latitude: number;
@@ -80,6 +182,45 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
       setRole((r as role) || "");
     });
   }, []);
+
+  /* ================= FETCH BOOKING HISTORY ================= */
+  const fetchBookingHistory = async () => {
+    try {
+      const phone = await AsyncStorage.getItem("customerPhone");
+      if (!phone) return;
+
+      const response = await fetch(
+        `${BASE_URL}/api/bookings/history?phone=${phone}`,
+      );
+      const data = await response.json();
+      if (data.success) {
+        setBookingHistory(data.bookings || []);
+      }
+    } catch (error) {
+      console.log("Error fetching history:", error);
+      // Show some mock data for demo
+      setBookingHistory([
+        {
+          id: "1",
+          name: "John Doe",
+          pickup: "Marina Beach, Chennai",
+          drop: "T Nagar, Chennai",
+          date: "2024-02-08",
+          status: "Completed",
+          triptype: "local",
+        },
+        {
+          id: "2",
+          name: "John Doe",
+          pickup: "Chennai Central",
+          drop: "Pondicherry, Tamil Nadu",
+          date: "2024-02-05",
+          status: "Completed",
+          triptype: "outstation",
+        },
+      ]);
+    }
+  };
 
   /* ================= LOCATION SEARCH ================= */
   const searchLocation = async (field: "area" | "darea") => {
@@ -122,6 +263,73 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
     Keyboard.dismiss();
   };
 
+  /* ================= SELECT CHENNAI PLACE ================= */
+  const selectChennaiPlace = (place: ChennaiPlace) => {
+    setDArea(place.address);
+    setShowPlacesPopup(false);
+    setShowBookingForm(true);
+    setTriptype("local");
+  };
+
+  /* ================= SELECT OUTSTATION PLACE ================= */
+  const selectOutstationPlace = (place: ChennaiPlace) => {
+    setDArea(place.address);
+    setShowOutstationPopup(false);
+    setShowBookingForm(true);
+    setTriptype("outstation");
+  };
+
+  /* ================= GET CURRENT LOCATION ================= */
+  const useCurrentLocation = async () => {
+    setLoadingLocation(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        alert("Permission to access location was denied");
+        setLoadingLocation(false);
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const { latitude, longitude } = location.coords;
+
+      // Reverse geocode to get address
+      const addresses = await Location.reverseGeocodeAsync({
+        latitude,
+        longitude,
+      });
+
+      if (addresses.length > 0) {
+        const address = addresses[0];
+        const displayAddress = [
+          address.name,
+          address.street,
+          address.city,
+          address.region,
+        ]
+          .filter(Boolean)
+          .join(", ");
+        setArea(displayAddress);
+      } else {
+        setArea(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+      }
+
+      setCoordsPreview({ latitude, longitude });
+      mapRef.current?.animateToRegion(
+        regionFrom(latitude, longitude, 0.05),
+        500,
+      );
+      setSuggestions([]);
+    } catch (error) {
+      alert("Error getting location: " + error);
+    } finally {
+      setLoadingLocation(false);
+    }
+  };
+
   const onSubmit = async () => {
     if (!name || !phone || !area || !darea || !triptype)
       return alert("Please fill all fields");
@@ -133,7 +341,6 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
           name,
           phone,
           pickup: area,
-          bookingphnno,
           pickupLat: coordsPreview?.latitude || null,
           pickupLng: coordsPreview?.longitude || null,
           drop: darea,
@@ -156,19 +363,33 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
     }
   };
 
+  /* ================= HANDLE FEATURE CLICK ================= */
+  const handleFeatureClick = (featureId: string) => {
+    if (featureId === "1") {
+      // Local Ride
+      setShowPlacesPopup(true);
+    } else if (featureId === "2") {
+      // Outstation
+      setShowOutstationPopup(true);
+    } else if (featureId === "3") {
+      // History
+      fetchBookingHistory();
+      setShowHistory(true);
+    } else if (featureId === "4") {
+      // Help
+      setShowHelp(true);
+    } else {
+      // Other features - show booking form directly
+      setShowBookingForm(true);
+    }
+  };
+
   /* ================= FAKE DATA ================= */
   const features = [
     { id: "1", title: "Local Ride", icon: "🚖" },
     { id: "2", title: "Outstation", icon: "🛣️" },
-    { id: "3", title: "Schedule", icon: "⏰" },
-    { id: "4", title: "Trips", icon: "📜" },
-  ];
-
-  const tips = [
-    "Drive smart & safe! 🚀",
-    "Check your earnings daily 💰",
-    "Keep vehicle clean 🧽",
-    "Top drivers are punctual ⏱️",
+    { id: "3", title: "History", icon: "📜" },
+    { id: "4", title: "Help", icon: "❓" },
   ];
 
   const promotions = [
@@ -227,15 +448,28 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
         <View style={styles.floatingCard}>
           <Text style={styles.floatingTitle}>Pickup Location</Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Enter pickup location"
-            value={area}
-            onChangeText={(t) => {
-              setArea(t);
-              searchLocation("area");
-            }}
-          />
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              placeholder="Enter pickup location"
+              value={area}
+              onChangeText={(t) => {
+                setArea(t);
+                searchLocation("area");
+              }}
+            />
+            <TouchableOpacity
+              style={styles.locationButton}
+              onPress={useCurrentLocation}
+              disabled={loadingLocation}
+            >
+              {loadingLocation ? (
+                <ActivityIndicator color={COLORS.primary} />
+              ) : (
+                <Text style={styles.locationIcon}>📍</Text>
+              )}
+            </TouchableOpacity>
+          </View>
 
           {loadingSuggestions && area.length > 2 && (
             <ActivityIndicator style={{ marginTop: 8 }} />
@@ -264,7 +498,11 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
       <Text style={styles.sectionTitle}>Quick Actions</Text>
       <View style={styles.featuresGrid}>
         {features.map((f) => (
-          <TouchableOpacity key={f.id} style={styles.featureCard}>
+          <TouchableOpacity
+            key={f.id}
+            style={styles.featureCard}
+            onPress={() => handleFeatureClick(f.id)}
+          >
             <Text style={{ fontSize: 28 }}>{f.icon}</Text>
             <Text style={styles.featureText}>{f.title}</Text>
           </TouchableOpacity>
@@ -278,6 +516,187 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
       >
         <Text style={styles.bookBtnText}>Book a Ride</Text>
       </TouchableOpacity>
+
+      {/* CHENNAI PLACES POPUP */}
+      <Modal visible={showPlacesPopup} animationType="slide" transparent>
+        <View style={modal.overlay}>
+          <View style={modal.sheet}>
+            <TouchableOpacity
+              style={modal.closeBtn}
+              onPress={() => setShowPlacesPopup(false)}
+            >
+              <Text style={modal.closeText}>✕</Text>
+            </TouchableOpacity>
+
+            <Text style={modal.title}>Popular Places in Chennai</Text>
+            <Text style={modal.subtitle}>
+              Select a destination for your local ride
+            </Text>
+
+            <View style={{ marginTop: 16 }}>
+              {CHENNAI_POPULAR_PLACES.map((place) => (
+                <TouchableOpacity
+                  key={place.id}
+                  style={modal.placeCard}
+                  onPress={() => selectChennaiPlace(place)}
+                >
+                  <View style={modal.placeIconContainer}>
+                    <Text style={modal.placeIcon}>{place.icon}</Text>
+                  </View>
+                  <View style={modal.placeInfo}>
+                    <Text style={modal.placeName}>{place.name}</Text>
+                    <Text style={modal.placeAddress}>{place.address}</Text>
+                  </View>
+                  <Text style={modal.placeArrow}>›</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* OUTSTATION PLACES POPUP */}
+      <Modal visible={showOutstationPopup} animationType="slide" transparent>
+        <View style={modal.overlay}>
+          <View style={modal.sheet}>
+            <TouchableOpacity
+              style={modal.closeBtn}
+              onPress={() => setShowOutstationPopup(false)}
+            >
+              <Text style={modal.closeText}>✕</Text>
+            </TouchableOpacity>
+
+            <Text style={modal.title}>Popular Outstation Places</Text>
+            <Text style={modal.subtitle}>
+              Select your destination in Tamil Nadu
+            </Text>
+
+            <View style={{ marginTop: 16 }}>
+              {TAMILNADU_OUTSTATION_PLACES.map((place) => (
+                <TouchableOpacity
+                  key={place.id}
+                  style={modal.placeCard}
+                  onPress={() => selectOutstationPlace(place)}
+                >
+                  <View style={modal.placeIconContainer}>
+                    <Text style={modal.placeIcon}>{place.icon}</Text>
+                  </View>
+                  <View style={modal.placeInfo}>
+                    <Text style={modal.placeName}>{place.name}</Text>
+                    <Text style={modal.placeAddress}>{place.address}</Text>
+                  </View>
+                  <Text style={modal.placeArrow}>›</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* HISTORY MODAL */}
+      <Modal visible={showHistory} animationType="slide" transparent>
+        <View style={modal.overlay}>
+          <View style={modal.sheet}>
+            <TouchableOpacity
+              style={modal.closeBtn}
+              onPress={() => setShowHistory(false)}
+            >
+              <Text style={modal.closeText}>✕</Text>
+            </TouchableOpacity>
+
+            <Text style={modal.title}>Booking History</Text>
+            <Text style={modal.subtitle}>Your previous rides</Text>
+
+            <FlatList
+              data={bookingHistory}
+              keyExtractor={(item) => item.id}
+              style={{ marginTop: 16 }}
+              contentContainerStyle={{ paddingBottom: 20 }}
+              ListEmptyComponent={
+                <View style={modal.emptyState}>
+                  <Text style={modal.emptyIcon}>📜</Text>
+                  <Text style={modal.emptyText}>No booking history yet</Text>
+                  <Text style={modal.emptySubtext}>
+                    Your completed rides will appear here
+                  </Text>
+                </View>
+              }
+              renderItem={({ item }) => (
+                <View style={modal.historyCard}>
+                  <View style={modal.historyHeader}>
+                    <View style={modal.historyTypeBadge}>
+                      <Text style={modal.historyTypeText}>
+                        {item.triptype?.toUpperCase() || "LOCAL"}
+                      </Text>
+                    </View>
+                    <Text style={modal.historyDate}>{item.date}</Text>
+                  </View>
+
+                  <View style={modal.historyRoute}>
+                    <View style={modal.historyLocation}>
+                      <Text style={modal.historyLocationIcon}>📍</Text>
+                      <Text style={modal.historyLocationText} numberOfLines={1}>
+                        {item.pickup}
+                      </Text>
+                    </View>
+                    <View style={modal.historyDivider} />
+                    <View style={modal.historyLocation}>
+                      <Text style={modal.historyLocationIcon}>🏁</Text>
+                      <Text style={modal.historyLocationText} numberOfLines={1}>
+                        {item.drop}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={modal.historyFooter}>
+                    <Text style={modal.historyStatus}>{item.status}</Text>
+                  </View>
+                </View>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* HELP MODAL */}
+      <Modal visible={showHelp} animationType="fade" transparent>
+        <View style={modal.overlay}>
+          <View style={modal.helpContainer}>
+            <TouchableOpacity
+              style={modal.closeBtn}
+              onPress={() => setShowHelp(false)}
+            >
+              <Text style={modal.closeText}>✕</Text>
+            </TouchableOpacity>
+
+            <View style={modal.helpIconContainer}>
+              <Text style={modal.helpIcon}>📞</Text>
+            </View>
+
+            <Text style={modal.helpTitle}>Need Help?</Text>
+            <Text style={modal.helpSubtitle}>
+              Our support team is here to assist you
+            </Text>
+
+            <View style={modal.supportCard}>
+              <Text style={modal.supportLabel}>JJ Call Drivers</Text>
+              <Text style={modal.supportTeam}>Support Team</Text>
+
+              <View style={modal.phoneContainer}>
+                <Text style={modal.phoneNumber}>787XXX6447</Text>
+              </View>
+
+              <TouchableOpacity style={modal.callButton}>
+                <Text style={modal.callButtonText}>📱 Call Now</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={modal.helpNote}>
+              Available 24/7 for your assistance
+            </Text>
+          </View>
+        </View>
+      </Modal>
 
       {/* BOOKING MODAL */}
       <Modal visible={showBookingForm} animationType="slide" transparent>
@@ -307,15 +726,28 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
               onChangeText={setPhone}
             />
 
-            <TextInput
-              style={modal.input}
-              placeholder="Pickup location"
-              value={area}
-              onChangeText={(t) => {
-                setArea(t);
-                searchLocation("area");
-              }}
-            />
+            <View style={[styles.inputWrapper, { marginTop: 10 }]}>
+              <TextInput
+                style={[modal.input, { flex: 1, marginTop: 0 }]}
+                placeholder="Pickup location"
+                value={area}
+                onChangeText={(t) => {
+                  setArea(t);
+                  searchLocation("area");
+                }}
+              />
+              <TouchableOpacity
+                style={styles.locationButton}
+                onPress={useCurrentLocation}
+                disabled={loadingLocation}
+              >
+                {loadingLocation ? (
+                  <ActivityIndicator color={COLORS.primary} />
+                ) : (
+                  <Text style={styles.locationIcon}>📍</Text>
+                )}
+              </TouchableOpacity>
+            </View>
 
             <FlatList
               data={suggestions}
@@ -424,13 +856,34 @@ const styles = StyleSheet.create({
 
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
-  input: {
+  inputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: COLORS.bg,
+    borderRadius: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+
+  input: {
+    flex: 1,
+    backgroundColor: "transparent",
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 14,
     fontSize: 14,
     color: COLORS.textMain,
+  },
+
+  locationButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  locationIcon: {
+    fontSize: 20,
   },
 
   suggestionList: {
@@ -503,16 +956,21 @@ const modal = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
+    justifyContent: "center",
   },
 
   sheet: {
+    width: "90%",
+    alignSelf: "center",
     backgroundColor: COLORS.surface,
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
     paddingTop: 48,
     paddingHorizontal: 20,
     paddingBottom: 24,
+    maxHeight: height * 0.85,
   },
 
   closeBtn: {
@@ -533,7 +991,15 @@ const modal = StyleSheet.create({
     fontSize: 19,
     fontWeight: "700",
     textAlign: "center",
-    marginBottom: 14,
+    marginBottom: 6,
+    color: COLORS.textMain,
+  },
+
+  subtitle: {
+    fontSize: 14,
+    textAlign: "center",
+    color: COLORS.textMuted,
+    marginBottom: 8,
   },
 
   input: {
@@ -585,6 +1051,251 @@ const modal = StyleSheet.create({
   },
 
   submitText: { fontSize: 16, fontWeight: "800", color: "#FFF" },
+
+  // Chennai Places Popup Styles
+  placeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bg,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
+    elevation: 2,
+  },
+
+  placeIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+  },
+
+  placeIcon: {
+    fontSize: 24,
+  },
+
+  placeInfo: {
+    flex: 1,
+  },
+
+  placeName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.textMain,
+    marginBottom: 4,
+  },
+
+  placeAddress: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+  },
+
+  placeArrow: {
+    fontSize: 28,
+    color: COLORS.textMuted,
+    marginLeft: 8,
+  },
+
+  // History Modal Styles
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+  },
+
+  emptyIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+
+  emptyText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.textMain,
+    marginBottom: 8,
+  },
+
+  emptySubtext: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    textAlign: "center",
+  },
+
+  historyCard: {
+    backgroundColor: COLORS.bg,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
+    elevation: 2,
+  },
+
+  historyHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+
+  historyTypeBadge: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+
+  historyTypeText: {
+    color: "#FFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  historyDate: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    fontWeight: "600",
+  },
+
+  historyRoute: {
+    marginBottom: 12,
+  },
+
+  historyLocation: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+
+  historyLocationIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+
+  historyLocationText: {
+    fontSize: 14,
+    color: COLORS.textMain,
+    flex: 1,
+  },
+
+  historyDivider: {
+    width: 2,
+    height: 12,
+    backgroundColor: COLORS.border,
+    marginLeft: 8,
+    marginBottom: 8,
+  },
+
+  historyFooter: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 12,
+  },
+
+  historyStatus: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#10B981",
+  },
+
+  // Help Modal Styles
+  helpContainer: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 30,
+    padding: 32,
+    marginHorizontal: 24,
+    alignItems: "center",
+  },
+
+  helpIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+
+  helpIcon: {
+    fontSize: 40,
+  },
+
+  helpTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: COLORS.textMain,
+    marginBottom: 8,
+  },
+
+  helpSubtitle: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    marginBottom: 24,
+  },
+
+  supportCard: {
+    backgroundColor: COLORS.bg,
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+    alignItems: "center",
+  },
+
+  supportLabel: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.primary,
+    marginBottom: 4,
+  },
+
+  supportTeam: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.textMain,
+    marginBottom: 20,
+  },
+
+  phoneContainer: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+  },
+
+  phoneNumber: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: COLORS.primary,
+    letterSpacing: 1,
+  },
+
+  callButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 16,
+    width: "100%",
+    alignItems: "center",
+  },
+
+  callButtonText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#FFF",
+  },
+
+  helpNote: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    marginTop: 20,
+  },
 });
 
 /* ================= HELPER ================= */

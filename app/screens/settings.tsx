@@ -25,7 +25,7 @@ const settings = ({
       <Tab.Navigator
         screenOptions={({ route }) => ({
           headerShown: false,
-          tabBarActiveTintColor: "#F6B100",
+          tabBarActiveTintColor: "#277aff",
           tabBarInactiveTintColor: "#888",
 
           tabBarIcon: ({ color, size }) => {

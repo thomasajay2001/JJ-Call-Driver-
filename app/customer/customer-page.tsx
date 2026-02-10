@@ -1,5 +1,4 @@
 import axios from "axios";
-import Constants from "expo-constants";
 import * as Location from "expo-location";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -17,11 +16,10 @@ import {
 import MapView, { Marker, Region } from "react-native-maps";
 import io from "socket.io-client";
 
-
 /* =======================
    CONFIG - set your backend
    ======================= */
-const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
+const BASE_URL = "http://192.168.0.5:3000"; // Hardcoded for APK reliability
 /* ======================= */
 
 type Suggestion = {
@@ -117,7 +115,7 @@ export default function CustomerDetailsScreen() {
 
   useEffect(() => {
     socketRef.current.on("driverAssigned", (data: any) => {
-      console.log("🚗 Driver Assigned:", data);
+      console.log(" Driver Assigned:", data);
       setDriverDetails(data); // show name & mobile
     });
 

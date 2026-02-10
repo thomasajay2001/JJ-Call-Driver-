@@ -1,12 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
-import Constants from "expo-constants";
 import * as Location from "expo-location";
 import React, { useEffect, useRef, useState } from "react";
 import { Button, ScrollView, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import io from "socket.io-client";
-
 
 interface Booking {
   bookingId: number;
@@ -16,7 +14,7 @@ interface Booking {
   phone: string;
 }
 
-const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
+const BASE_URL = "http://192.168.0.12:3000"; // replace with your IP
 
 const DriverDashboard = () => {
   const [driverId, setDriverId] = useState<string>("");

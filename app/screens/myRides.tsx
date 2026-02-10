@@ -9,9 +9,7 @@ import {
   View,
 } from "react-native";
 
-import Constants from "expo-constants";
-
-const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
+const BASE_URL = "http://192.168.0.12:3000";
 
 const RideTab = () => {
   const [booking, setBooking] = useState<any>(null);
@@ -35,17 +33,18 @@ const RideTab = () => {
 
       if (storedRole === "customer") {
         res = await axios.get(
-          `${BASE_URL}/api/bookings/customer?phone=${storedPhone}`
+          `${BASE_URL}/api/bookings/customer?phone=${storedPhone}`,
         );
       }
 
       if (storedRole === "driver") {
         res = await axios.get(
-          `${BASE_URL}/api/bookings/driver?driverId=${storedDriverId}`
+          `${BASE_URL}/api/bookings/driver?driverId=${storedDriverId}`,
         );
       }
 
       setBooking(res?.data?.[0] || null);
+      console.log("BOOKING:", res?.data?.[0]);
     } catch (err) {
       console.log("Booking error", err);
     } finally {
@@ -94,15 +93,12 @@ const RideTab = () => {
 
   return (
     <View style={styles.container}>
-
       {/* ================= CUSTOMER ================= */}
       {role === "customer" && (
         <View style={styles.card}>
           <Text style={styles.title}>🚕 Your Ride</Text>
 
-          <Text style={styles.statusText}>
-            Status : {booking.status}
-          </Text>
+          <Text style={styles.statusText}>Status : {booking.status}</Text>
 
           <View style={styles.locationBox}>
             <Text>📍 {booking.pickup}</Text>
@@ -124,9 +120,7 @@ const RideTab = () => {
         <View style={styles.card}>
           <Text style={styles.title}>👨‍✈️ Driver Panel</Text>
 
-          <Text style={styles.statusText}>
-            Status : {booking.status}
-          </Text>
+          <Text style={styles.statusText}>Status : {booking.status}</Text>
 
           {booking.status === "assigned" && (
             <TouchableOpacity style={styles.startBtn} onPress={startRide}>
@@ -243,4 +237,3 @@ const styles = StyleSheet.create({
     color: "#777",
   },
 });
-
