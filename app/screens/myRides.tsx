@@ -9,7 +9,7 @@ import {
     View,
 } from "react-native";
 
-const BASE_URL = "http://192.168.0.3:3000";
+const BASE_URL = "http://192.168.0.7:3000";
 
 const RideTab = () => {
   const [booking, setBooking] = useState<any>(null);
@@ -41,11 +41,12 @@ const RideTab = () => {
         res = await axios.get(
           `${BASE_URL}/api/bookings/driver?driverId=${storedDriverId}`,
         );
-
       }
-      const todayBookings = res?.data?.filter((booking: any) =>
-        new Date(booking.created_at).toDateString() === todayStr
-      ) || [];
+      const todayBookings =
+        res?.data?.filter(
+          (booking: any) =>
+            new Date(booking.created_at).toDateString() === todayStr,
+        ) || [];
 
       setBooking(todayBookings[0] || null);
     } catch (err) {
