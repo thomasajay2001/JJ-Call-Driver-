@@ -1,5 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
 import Constants from "expo-constants";
+
 import * as Location from "expo-location";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -157,7 +159,7 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
   const [showHistory, setShowHistory] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [bookingHistory, setBookingHistory] = useState<any[]>([]);
-
+  const [bookings, setBookings] = useState<any[]>([]);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [area, setArea] = useState("");
@@ -189,36 +191,13 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
       const phone = await AsyncStorage.getItem("customerPhone");
       if (!phone) return;
 
-      const response = await fetch(
-        `${BASE_URL}/api/bookings/history?phone=${phone}`,
-      );
-      const data = await response.json();
-      if (data.success) {
-        setBookingHistory(data.bookings || []);
-      }
+      const response = await axios.get(`${BASE_URL}/api/bookings/customer?phone=${phone}`,)
+      setBookingHistory(response.data);
     } catch (error) {
       console.log("Error fetching history:", error);
       // Show some mock data for demo
-      setBookingHistory([
-        {
-          id: "1",
-          name: "John Doe",
-          pickup: "Marina Beach, Chennai",
-          drop: "T Nagar, Chennai",
-          date: "2024-02-08",
-          status: "Completed",
-          triptype: "local",
-        },
-        {
-          id: "2",
-          name: "John Doe",
-          pickup: "Chennai Central",
-          drop: "Pondicherry, Tamil Nadu",
-          date: "2024-02-05",
-          status: "Completed",
-          triptype: "outstation",
-        },
-      ]);
+
+
     }
   };
 
@@ -345,6 +324,7 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
           pickupLng: coordsPreview?.longitude || null,
           drop: darea,
           driverId: null,
+          bookingphnno: await AsyncStorage.getItem("customerPhone")
         }),
       });
 
@@ -629,7 +609,15 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
                         {item.triptype?.toUpperCase() || "LOCAL"}
                       </Text>
                     </View>
-                    <Text style={modal.historyDate}>{item.date}</Text>
+                    <Text style={modal.historyDate}>{new Date(item.created_at).toLocaleDateString('en-GB', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric'
+                    })} at {new Date(item.created_at).toLocaleTimeString('en-US', {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true
+                    })}</Text>
                   </View>
 
                   <View style={modal.historyRoute}>
@@ -643,7 +631,7 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
                     <View style={modal.historyLocation}>
                       <Text style={modal.historyLocationIcon}>🏁</Text>
                       <Text style={modal.historyLocationText} numberOfLines={1}>
-                        {item.drop}
+                        {item.drop_location}
                       </Text>
                     </View>
                   </View>

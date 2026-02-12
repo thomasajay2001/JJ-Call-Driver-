@@ -15,10 +15,9 @@ import {
 } from "react-native";
 
 export default function Login() {
- const [loginType, setLoginType] = useState("user"); // user | driver
+  const [loginType, setLoginType] = useState("user"); // user | driver
 
-const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
-
+  const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
 
   // USER LOGIN STATES
   const [phone, setPhone] = useState("");
@@ -86,10 +85,7 @@ const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
         console.log(role, "logined");
         await AsyncStorage.setItem("customerPhone", phone);
 
-        // router.push("/customer/customer-page");
         router.push("/screens/settings");
-
-        // navigation.navigate("home"); // After login
       } else {
         setErrorMessage("Invalid OTP");
       }
@@ -151,6 +147,35 @@ const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
     }
   };
 
+  // --------------------------
+  // HANDLE CHANGE PHONE NUMBER
+  // --------------------------
+  const handleChangePhone = () => {
+    setOtpSent(false);
+    setOtp("");
+    clearMessages();
+  };
+
+  // --------------------------
+  // HANDLE SWITCH TO USER LOGIN
+  // --------------------------
+  const handleSwitchToUser = () => {
+    setLoginType("user");
+    setOtpSent(false);
+    setOtp("");
+    clearMessages();
+  };
+
+  // --------------------------
+  // HANDLE SWITCH TO DRIVER LOGIN
+  // --------------------------
+  const handleSwitchToDriver = () => {
+    setLoginType("driver");
+    setDriverId("");
+    setDriverPhone("");
+    clearMessages();
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.formBox}>
@@ -162,10 +187,7 @@ const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
         <View style={styles.switchRow}>
           <TouchableOpacity
             style={[styles.switchBtn, loginType === "user" && styles.activeBtn]}
-            onPress={() => {
-              setLoginType("user");
-              setOtpSent(false);
-            }}
+            onPress={handleSwitchToUser}
           >
             <Text style={styles.switchText}>User Login</Text>
           </TouchableOpacity>
@@ -175,7 +197,7 @@ const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
               styles.switchBtn,
               loginType === "driver" && styles.activeBtn,
             ]}
-            onPress={() => setLoginType("driver")}
+            onPress={handleSwitchToDriver}
           >
             <Text style={styles.switchText}>Driver Login</Text>
           </TouchableOpacity>
@@ -184,10 +206,6 @@ const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
         {/* ---------------- USER LOGIN ---------------- */}
         {loginType === "user" && (
           <>
-            {/* <Text style={styles.subtitle}>
-              {otpSent ? "Enter the OTP" : "Enter your phone number"}
-            </Text> */}
-
             {!otpSent ? (
               <>
                 <Text style={styles.label}>Phone Number</Text>
@@ -230,7 +248,7 @@ const BASE_URL = (Constants.expoConfig!.extra as any).BASE_URL;
                   <Text style={styles.btnText}>Verify & Login</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity onPress={() => setOtpSent(false)}>
+                <TouchableOpacity onPress={handleChangePhone}>
                   <Text style={styles.link}>Change Phone Number</Text>
                 </TouchableOpacity>
               </>

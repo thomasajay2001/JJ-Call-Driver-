@@ -1,14 +1,28 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import {
+    ActivityIndicator,
+    Alert,
+    Modal,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from "react-native";
 
-const BASE_URL = "http://192.168.0.5:3000";
+const BASE_URL = "http://192.168.0.3:3000";
 
 const ProfileTab = () => {
   const [profile, setProfile] = useState<any>([]);
+  const [cust, setCust] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
+  
+  // Edit name states
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState('');
 
   useEffect(() => {
     const getRole = async () => {
@@ -27,6 +41,12 @@ const ProfileTab = () => {
       );
 
       setProfile(res.data[0]);
+      const phone = await AsyncStorage.getItem("customerPhone");
+
+      const cust = await axios.get(
+        `${BASE_URL}/api/customers/profile?phone=${phone}`,
+      );
+      setCust(cust.data[0]);
     } catch (err) {
       console.log("Profile error", err);
     } finally {
@@ -37,6 +57,31 @@ const ProfileTab = () => {
   useEffect(() => {
     fetchProfile();
   }, []);
+
+  const handleSaveName = async () => {
+    if (!tempName.trim()) {
+      Alert.alert('Error', 'Please enter a valid name');
+      return;
+    }
+
+    try {
+      const phone = await AsyncStorage.getItem("customerPhone");
+      
+      await axios.put(`${BASE_URL}/api/customers/update-name`, {
+        phone: phone,
+        name: tempName.trim()
+      });
+
+      // Update local state
+      setCust({ ...cust, NAME: tempName.trim() });
+      
+      Alert.alert('Success', 'Name updated successfully');
+      setIsEditingName(false);
+    } catch (err) {
+      console.error('Update name error:', err);
+      Alert.alert('Error', 'Failed to update name');
+    }
+  };
 
   if (loading) {
     return (
@@ -97,21 +142,64 @@ const ProfileTab = () => {
               <Text style={styles.avatarText}>👤</Text>
             </View>
 
-            <Text style={styles.name}>{profile.MOBILE}</Text>
+            <TouchableOpacity 
+              style={styles.nameContainer}
+              onPress={() => {
+                setTempName(cust?.NAME || '');
+                setIsEditingName(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.name}>{cust?.NAME || cust?.PHONE}</Text>
+              <Text style={styles.editIcon}>✏️</Text>
+            </TouchableOpacity>
+            
             <Text style={styles.role}>Customer</Text>
           </View>
 
           <View style={styles.infoCard}>
             <Text style={styles.label}>📞 Mobile</Text>
-            <Text style={styles.value}>{profile.MOBILE}</Text>
+            <Text style={styles.value}>{cust?.PHONE}</Text>
           </View>
 
-          <View style={styles.rideCard}>
-            <Text style={styles.rideTitle}>My Booking</Text>
-            <Text style={styles.rideCount}>
-              {profile.total_rides || 0} rides completed
-            </Text>
-          </View>
+          {/* Edit Name Modal */}
+          <Modal
+            visible={isEditingName}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => setIsEditingName(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>Edit Name</Text>
+                
+                <TextInput
+                  style={styles.input}
+                  value={tempName}
+                  onChangeText={setTempName}
+                  placeholder="Enter your name"
+                  placeholderTextColor="#999"
+                  autoFocus={true}
+                />
+                
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity 
+                    style={[styles.button, styles.cancelButton]}
+                    onPress={() => setIsEditingName(false)}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.button, styles.saveButton]}
+                    onPress={handleSaveName}
+                  >
+                    <Text style={styles.saveButtonText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
         </>
       )}
     </View>
@@ -119,6 +207,7 @@ const ProfileTab = () => {
 };
 
 export default ProfileTab;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -157,9 +246,23 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
+  nameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+
   name: {
     fontSize: 18,
     fontWeight: "700",
+  },
+
+  editIcon: {
+    fontSize: 16,
+    opacity: 0.6,
   },
 
   role: {
@@ -208,5 +311,71 @@ const styles = StyleSheet.create({
   rideCount: {
     fontSize: 15,
     color: "#333",
+  },
+
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    width: '85%',
+    elevation: 10,
+  },
+
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 16,
+    textAlign: 'center',
+    color: '#222',
+  },
+
+  input: {
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 20,
+    color: '#222',
+  },
+
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+
+  button: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+
+  cancelButton: {
+    backgroundColor: '#F0F0F0',
+  },
+
+  cancelButtonText: {
+    color: '#666',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+
+  saveButton: {
+    backgroundColor: '#72bafd',
+  },
+
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 15,
   },
 });

@@ -2,14 +2,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
-const BASE_URL = "http://192.168.0.12:3000";
+const BASE_URL = "http://192.168.0.3:3000";
 
 const RideTab = () => {
   const [booking, setBooking] = useState<any>(null);
@@ -30,7 +30,7 @@ const RideTab = () => {
       setDriverId(storedDriverId);
 
       let res;
-
+      const todayStr = new Date().toDateString();
       if (storedRole === "customer") {
         res = await axios.get(
           `${BASE_URL}/api/bookings/customer?phone=${storedPhone}`,
@@ -41,10 +41,13 @@ const RideTab = () => {
         res = await axios.get(
           `${BASE_URL}/api/bookings/driver?driverId=${storedDriverId}`,
         );
-      }
 
-      setBooking(res?.data?.[0] || null);
-      console.log("BOOKING:", res?.data?.[0]);
+      }
+      const todayBookings = res?.data?.filter((booking: any) =>
+        new Date(booking.created_at).toDateString() === todayStr
+      ) || [];
+
+      setBooking(todayBookings[0] || null);
     } catch (err) {
       console.log("Booking error", err);
     } finally {

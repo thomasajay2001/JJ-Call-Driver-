@@ -106,31 +106,48 @@ app.post("/api/login", upload.none(), (req, res) => {
   });
 });
 
-app.post("/api/send-otp", async (req, res) => {
+app.post("/api/send-otp", (req, res) => {
   const phone = req.body.phone;
 
-  // Generate 6-digit random OTP
+  if (!phone) {
+    return res.status(400).json({ success: false, message: "Phone is required" });
+  }
+
   const otp = Math.floor(100000 + Math.random() * 900000);
 
-  try {
-    console.log(`Generated OTP for ${phone}: ${otp}`);
+  console.log(`Generated OTP for ${phone}: ${otp}`);
 
-    const query =
-      "INSERT INTO otp_verification (phone, otp, created_at) VALUES (?, ?, NOW())";
-    db.query(query, [phone, otp], (err) => {
-      if (err) {
-        console.error("DB Insert Error:", err);
-        return res
-          .status(500)
-          .json({ success: false, message: "Database error" });
+  // 1️⃣ Insert customer if not exists
+  const insertCustomerQuery = `
+    INSERT IGNORE INTO CUSTOMERS (PHONE)
+    VALUES (?)
+  `;
+
+  db.query(insertCustomerQuery, [phone], (err) => {
+    if (err) {
+      console.error("Customer Insert Error:", err);
+      return res.status(500).json({ success: false, message: "Customer error" });
+    }
+
+    // 2️⃣ Insert OTP
+    const otpQuery = `
+      INSERT INTO otp_verification (phone, otp, created_at)
+      VALUES (?, ?, NOW())
+    `;
+
+    db.query(otpQuery, [phone, otp], (err2) => {
+      if (err2) {
+        console.error("OTP Insert Error:", err2);
+        return res.status(500).json({ success: false, message: "OTP error" });
       }
 
-      res.json({ success: true, message: "OTP generated successfully", otp });
+      res.json({
+        success: true,
+        message: "OTP generated successfully",
+        otp
+      });
     });
-  } catch (error) {
-    console.error("Error generating OTP:", error);
-    res.status(500).json({ success: false, message: "Error generating OTP" });
-  }
+  });
 });
 
 app.post("/api/verify-otp", (req, res) => {
@@ -171,7 +188,7 @@ app.post("/api/trip-booking", (req, res) => {
 
   const sql = `
     INSERT INTO bookings
-    (customer_name, customer_mobile, pickup, pickup_lat, pickup_lng, drop_location, driver_id, bookingphnno, status)
+    (customer_name, customer_mobile, pickup, pickup_lat, pickup_lng, drop_location, driver_id, booking_phnno, status)
     VALUES (?,?,?,?,?,?,?, ?, 'pending')
   `;
 
@@ -213,14 +230,69 @@ app.put("/api/bookings/:id", async (req, res) => {
   const { id } = req.params;
   const { driver, status } = req.body;
 
-  await db.promise().query(
-    "UPDATE bookings SET driver_id=?, status=? WHERE id=?",
-    [driver, status, id]
-  );
+  try {
+    // Update booking
+    await db.promise().query(
+      "UPDATE bookings SET driver_id=?, status=? WHERE id=?",
+      [driver, status, id]
+    );
 
-  res.json({ success: true });
+    // Update driver status in driver table based on booking status
+    if (driver) {
+      await db.promise().query(
+        "UPDATE drivers SET STATUS=? WHERE ID=?",
+        [status, driver]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Booking update error:', error);
+    res.status(500).json({ error: 'Failed to update booking' });
+  }
 });
 
+// Support Team Login API
+app.post("/api/support/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Username and password are required' 
+      });
+    }
+
+    const [result] = await db.promise().query(
+      "SELECT * FROM SUPPORTTEAM WHERE USERNAME = ? AND PASSWORD = ?",
+      [username, password]
+    );
+
+    if (result.length > 0) {
+      res.json({ 
+        success: true, 
+        message: 'Login successful',
+        user: {
+          id: result[0].ID,
+          username: result[0].USERNAME
+        }
+      });
+    } else {
+      res.status(401).json({ 
+        success: false, 
+        error: 'Invalid username or password' 
+      });
+    }
+  } catch (error) {
+    console.error('Support login error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Login failed',
+      message: error.message 
+    });
+  }
+});
 
 /* ================= ACCEPT BOOKING ================= */
 app.post("/api/accept-booking", async (req, res) => {
@@ -294,8 +366,7 @@ app.get("/api/bookings/customer", (req, res) => {
   const sql = `
     SELECT *
     FROM bookings
-    WHERE customer_mobile = ?
-      AND DATE(created_at) = CURDATE()
+    WHERE booking_phnno = ?
     ORDER BY id DESC
   `;
 
@@ -315,7 +386,6 @@ app.get("/api/bookings/driver", (req, res) => {
     FROM bookings
     WHERE driver_id = ?
       AND status IN ('assigned','inride')
-      AND DATE(created_at) = CURDATE()
     ORDER BY id DESC
   `;
 
@@ -598,7 +668,35 @@ app.get('/api/bookings',(req,res)=>{
   )
 })
 
+app.get("/api/customers/profile", async(req, res)=>{
+  const { phone } = req.query;
+  const sql = "SELECT * FROM CUSTOMERS WHERE PHONE = ?";
+  db.query(sql, [phone], (err, results) => {
+    if (err) {
+      console.error("Error fetching customer profile:", err);
+      return res.status(500).send({ message: "Database error" });
+    }
+    if (results.length === 0) {
+      return res.status(404).send({ message: "Customer not found" });
+    }
+    res.send(results);
+  });
+});
 
+// In your customers routes file
+app.put('/api/customers/update-name', async (req, res) => {
+  try {
+    const { phone, name } = req.body;
+    
+    const query = 'UPDATE customers SET NAME = ? WHERE PHONE = ?';
+    await db.execute(query, [name, phone]);
+    
+    res.json({ success: true, message: 'Name updated successfully' });
+  } catch (error) {
+    console.error('Update name error:', error);
+    res.status(500).json({ error: 'Failed to update name' });
+  }
+});
 const PORT = 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server + Socket running on http://0.0.0.0:${PORT}`);
