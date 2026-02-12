@@ -186,21 +186,31 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
   }, []);
 
   /* ================= FETCH BOOKING HISTORY ================= */
-  const fetchBookingHistory = async () => {
-    try {
-      const phone = await AsyncStorage.getItem("customerPhone");
-      if (!phone) return;
-
-      const response = await axios.get(`${BASE_URL}/api/bookings/customer?phone=${phone}`,)
-      setBookingHistory(response.data);
-    } catch (error) {
-      console.log("Error fetching history:", error);
-      // Show some mock data for demo
-
-
+/* ================= FETCH BOOKING HISTORY ================= */
+const fetchBookingHistory = async () => {
+  try {
+    const phone = await AsyncStorage.getItem("customerPhone");
+    if (!phone) {
+      console.log("No phone number found");
+      setBookingHistory([]);
+      return;
     }
-  };
 
+    const response = await axios.get(
+      `${BASE_URL}/api/bookings/customer?phone=${phone}`
+    );
+    
+    if (response.data && Array.isArray(response.data)) {
+      setBookingHistory(response.data);
+    } else {
+      setBookingHistory([]);
+    }
+  } catch (error) {
+    console.log("Error fetching history:", error);
+    // Set empty array on error instead of crashing
+    setBookingHistory([]);
+  }
+};
   /* ================= LOCATION SEARCH ================= */
   const searchLocation = async (field: "area" | "darea") => {
     const q = field === "area" ? area : darea;
@@ -309,39 +319,40 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
     }
   };
 
-  const onSubmit = async () => {
-    if (!name || !phone || !area || !darea || !triptype)
-      return alert("Please fill all fields");
-    try {
-      const response = await fetch(`${BASE_URL}/api/trip-booking`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          phone,
-          pickup: area,
-          pickupLat: coordsPreview?.latitude || null,
-          pickupLng: coordsPreview?.longitude || null,
-          drop: darea,
-          driverId: null,
-          bookingphnno: await AsyncStorage.getItem("customerPhone")
-        }),
-      });
+const onSubmit = async () => {
+  if (!name || !phone || !area || !darea || !triptype) {
+    return alert("Please fill all fields");
+  }
+  
+  try {
+    const bookingPhone = await AsyncStorage.getItem("customerPhone");
+    
+    const response = await axios.post(`${BASE_URL}/api/trip-booking`, {
+      name,
+      phone,
+      pickup: area,
+      pickupLat: coordsPreview?.latitude || null,
+      pickupLng: coordsPreview?.longitude || null,
+      drop: darea,
+      triptype,
+      bookingphnno: bookingPhone
+    });
 
-      const data = await response.json();
-      if (data.success) {
-        setShowBookingForm(false);
-        setName("");
-        setPhone("");
-        setArea("");
-        setDArea("");
-        setTriptype("");
-        alert("Booking submitted successfully");
-      }
-    } catch {
-      alert("Something went wrong");
+    if (response.data.success) {
+      setShowBookingForm(false);
+      setName("");
+      setPhone("");
+      setArea("");
+      setDArea("");
+      setTriptype("");
+      setCoordsPreview(null);
+      alert("Booking submitted successfully");
     }
-  };
+  } catch (error) {
+    console.error("Booking error:", error);
+    alert("Something went wrong. Please try again.");
+  }
+};
 
   /* ================= HANDLE FEATURE CLICK ================= */
   const handleFeatureClick = (featureId: string) => {
@@ -397,18 +408,11 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
   ];
 
   /* ================= DRIVER UI ================= */
-  if (role === "driver") {
-    return (
-      <View style={styles.center}>
-        <Text style={{ fontSize: 18, fontWeight: "700" }}>
-          🚕 Driver Dashboard
-        </Text>
-      </View>
-    );
-  }
+  
 
   return (
     <View style={styles.container}>
+      
       <StatusBar backgroundColor={COLORS.primary} barStyle="light-content" />
 
       {/* MAP SECTION */}
@@ -806,6 +810,87 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
           </View>
         </View>
       </Modal>
+
+       {role == "driver" ? (
+    <>
+      {/* DRIVER MAP */}
+      <View style={styles.heroContainer}>
+        <MapView
+          ref={mapRef}
+          style={styles.heroMap}
+          initialRegion={{
+            latitude: 13.0827,
+            longitude: 80.2707,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          }}
+        />
+      </View>
+
+      {/* DRIVER DASHBOARD */}
+      <View style={{ padding: 20 }}>
+        <Text style={styles.sectionTitle}>Driver Dashboard</Text>
+
+        <TouchableOpacity style={styles.driverCard}>
+          <Text style={styles.driverCardText}>📋 View Assigned Rides</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.driverCard}>
+          <Text style={styles.driverCardText}>💰 Earnings</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.driverCard}>
+          <Text style={styles.driverCardText}>⭐ My Rating</Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  ) : (
+    /* ================= CUSTOMER UI ================= */
+    <>
+      {/* MAP SECTION */}
+      <View style={styles.heroContainer}>
+        <MapView
+          ref={mapRef}
+          style={styles.heroMap}
+          initialRegion={{
+            latitude: 13.0827,
+            longitude: 80.2707,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          }}
+        />
+
+        {/* FLOATING PICKUP CARD */}
+        <View style={styles.floatingCard}>
+          {/* Your existing pickup card code */}
+        </View>
+      </View>
+
+      {/* QUICK ACTIONS */}
+      <Text style={styles.sectionTitle}>Quick Actions</Text>
+      <View style={styles.featuresGrid}>
+        {features.map((f) => (
+          <TouchableOpacity
+            key={f.id}
+            style={styles.featureCard}
+            onPress={() => handleFeatureClick(f.id)}
+          >
+            <Text style={{ fontSize: 28 }}>{f.icon}</Text>
+            <Text style={styles.featureText}>{f.title}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* BOOK BUTTON */}
+      <TouchableOpacity
+        style={styles.bookBtn}
+        onPress={() => setShowBookingForm(true)}
+      >
+        <Text style={styles.bookBtnText}>Book a Ride</Text>
+      </TouchableOpacity>
+    </>
+  )}
+
     </View>
   );
 };
@@ -815,7 +900,18 @@ export default HomeTab;
 /* ================= STYLES ================= */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
+driverCard: {
+  backgroundColor: "#FFF8E1",
+  padding: 18,
+  borderRadius: 16,
+  marginBottom: 15,
+  elevation: 4,
+},
 
+driverCardText: {
+  fontSize: 16,
+  fontWeight: "700",
+},
   heroContainer: { width, height: height * 0.38 },
   heroMap: { width: "100%", height: "100%" },
 

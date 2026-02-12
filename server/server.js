@@ -175,52 +175,56 @@ app.post("/api/verify-otp", (req, res) => {
   });
 });
 
-app.post("/api/trip-booking", (req, res) => {
-  const { name, phone, pickup, pickupLat, pickupLng, drop, driverId ,bookingphnno} =
-    req.body;
+app.post("/api/trip-booking", async (req, res) => {
+  try {
+    const { 
+      name, 
+      phone, 
+      pickup, 
+      pickupLat, 
+      pickupLng, 
+      drop, 
+      bookingphnno,
+      triptype 
+    } = req.body;
 
-  if (!name || !phone || !pickup || !drop) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required fields",
+    if (!name || !phone || !pickup || !drop || !bookingphnno) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'All fields are required' 
+      });
+    }
+
+    const [result] = await db.promise().query(
+      `INSERT INTO bookings 
+        (customer_name, customer_mobile, booking_phnno, pickup, pickup_lat, pickup_lng, drop_location, triptype, status) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name, 
+        phone, 
+        bookingphnno, 
+        pickup, 
+        pickupLat || null, 
+        pickupLng || null, 
+        drop,
+        triptype || 'local',
+        'pending'
+      ]
+    );
+
+    res.json({ 
+      success: true, 
+      message: 'Booking created successfully',
+      bookingId: result.insertId
+    });
+  } catch (error) {
+    console.error('Trip booking error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to create booking',
+      message: error.message 
     });
   }
-
-  const sql = `
-    INSERT INTO bookings
-    (customer_name, customer_mobile, pickup, pickup_lat, pickup_lng, drop_location, driver_id, booking_phnno, status)
-    VALUES (?,?,?,?,?,?,?, ?, 'pending')
-  `;
-
-  db.query(
-    sql,
-    [name, phone, pickup, pickupLat, pickupLng, drop, driverId, bookingphnno],
-    (err, result) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ success: false });
-      }
-
-      const booking = {
-        bookingId: result.insertId,
-        name,
-        phone,
-        pickup,
-        drop,
-        driverId,
-      };
-
-      // ✅ Emit to driver
-      io.to(`driver_${driverId}`).emit("newBooking", booking);
-
-      // ✅ Emit to admin
-      io.to("admins").emit("newBooking", booking);
-
-      console.log("📢 New booking emitted:", booking);
-
-      res.json({ success: true, bookingId: booking.bookingId });
-    },
-  );
 });
 
 
@@ -358,25 +362,56 @@ app.post("/api/accept-booking", async (req, res) => {
     res.status(500).json({ success: false, bookingId: result.insertId });
   }
 });
-app.get("/api/bookings/customer", (req, res) => {
-  const { phone } = req.query;
+// Get customer booking history
+app.get("/api/bookings/customer", async (req, res) => {
+  try {
+    const { phone } = req.query;
 
-  console.log(phone);
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        error: "Phone number is required",
+      });
+    }
 
-  const sql = `
-    SELECT *
-    FROM bookings
-    WHERE booking_phnno = ?
-    ORDER BY id DESC
-  `;
+    const [bookings] = await db.promise().query(
+      `
+      SELECT 
+        b.id,
+        b.customer_name,
+        b.customer_mobile,
+        b.booking_phnno,
+        b.pickup,
+        b.pickup_lat,
+        b.pickup_lng,
+        b.drop_location,
+        b.driver_id,
+        b.status,
+        b.created_at,
 
-  db.query(sql, [phone], (err, result) => {
-    if (err) return res.status(500).send(err);
-    res.json(result);  
-    console.log(result);
-  });
+        d.ID AS driver_id,
+        d.NAME AS driver_name,
+        d.MOBILE AS driver_phone
+      FROM bookings b
+      LEFT JOIN drivers d 
+        ON b.driver_id = d.ID   -- ID wise match
+
+      WHERE b.booking_phnno = ?
+      ORDER BY b.created_at DESC
+      `,
+      [phone]
+    );
+
+    res.json(bookings);
+  } catch (error) {
+    console.error("Fetch bookings error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch bookings",
+      message: error.message,
+    });
+  }
 });
-
 
 app.get("/api/bookings/driver", (req, res) => {
   const { driverId } = req.query;
@@ -396,6 +431,46 @@ app.get("/api/bookings/driver", (req, res) => {
   });
 });
 
+
+app.post("/api/submit-rating", async (req, res) => {
+  try {
+    const { bookingId, rating, comment } = req.body;
+
+    await db.promise().query(
+      `UPDATE bookings 
+       SET rating = ?, feedback = ? 
+       WHERE id = ?`,
+      [rating, comment, bookingId]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Rating error:", error);
+    res.status(500).json({ success: false });
+  }
+});
+
+app.get("/api/driver-rating/:driverId", async (req, res) => {
+  try {
+    const { driverId } = req.params;
+
+    const [result] = await db.promise().query(
+      `
+      SELECT 
+        ROUND(AVG(rating),1) AS avg_rating,
+        COUNT(rating) AS total_ratings
+      FROM bookings
+      WHERE driver_id = ?
+      AND rating IS NOT NULL
+      `,
+      [driverId]
+    );
+
+    res.json(result[0]);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch rating" });
+  }
+});
 app.post("/api/bookings/start", (req, res) => {
   const { bookingId } = req.body;
 

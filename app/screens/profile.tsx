@@ -2,14 +2,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 
 const BASE_URL = "http://192.168.0.3:3000";
@@ -19,7 +19,8 @@ const ProfileTab = () => {
   const [cust, setCust] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
-  
+const [avgRating, setAvgRating] = useState<number>(0);
+const [totalRatings, setTotalRatings] = useState<number>(0);  
   // Edit name states
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
@@ -30,7 +31,25 @@ const ProfileTab = () => {
       setRole(roleValue);
     };
     getRole();
-  }, []);
+      if (role === "driver") {
+    fetchDriverRating();
+  }
+  }, [role]);
+
+  const fetchDriverRating = async () => {
+  try {
+    const driverId = await AsyncStorage.getItem("driverId");
+
+    const res = await axios.get(
+      `${BASE_URL}/api/driver-rating/${driverId}`
+    );
+
+    setAvgRating(Number(res.data?.avg_rating) || 0);
+    setTotalRatings(Number(res.data?.total_ratings) || 0);
+  } catch (error) {
+    console.log("Rating fetch error:", error);
+  }
+};
 
   const fetchProfile = async () => {
     try {
@@ -103,6 +122,7 @@ const ProfileTab = () => {
     <View style={styles.container}>
       {role === "driver" && (
         <>
+     
           <View style={styles.profileCard}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{profile.NAME?.charAt(0)}</Text>
@@ -110,6 +130,17 @@ const ProfileTab = () => {
 
             <Text style={styles.name}>{profile.NAME}</Text>
             <Text style={styles.role}>Driver</Text>
+            <View style={styles.ratingRow}>
+    {[1, 2, 3, 4, 5].map((star) => (
+      <Text key={star} style={styles.star}>
+        {star <= Math.round(avgRating) ? "⭐" : "☆"}
+      </Text>
+    ))}
+
+    <Text style={styles.ratingText}>
+      {avgRating.toFixed(1)} ({totalRatings})
+    </Text>
+  </View>
           </View>
 
           <View style={styles.infoCard}>
@@ -351,7 +382,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
+ratingCard: {
+  backgroundColor: "#fff7e6",
+  borderRadius: 18,
+  padding: 18,
+  marginTop: 15,
+  elevation: 4,
+},
 
+ratingTitle: {
+  fontSize: 16,
+  fontWeight: "700",
+  marginBottom: 8,
+},
+
+ratingRow: {
+  flexDirection: "row",
+  alignItems: "center",
+},
+
+star: {
+  fontSize: 20,
+  marginRight: 2,
+},
+
+ratingText: {
+  marginLeft: 8,
+  fontSize: 15,
+  fontWeight: "600",
+  color: "#333",
+},
   button: {
     flex: 1,
     padding: 14,

@@ -42,7 +42,7 @@ CREATE TABLE `DRIVERS`(
 `LNG` VARCHAR(50),
 PRIMARY KEY (`ID`)
 );
-
+ALTER TABLE drivers ADD COLUMN avg_rating DECIMAL(2,1) DEFAULT 0,ADD COLUMN total_ratings INT DEFAULT 0;
 DROP TABLE IF EXISTS bookings;
 CREATE TABLE bookings (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -66,7 +66,8 @@ CREATE TABLE bookings (
     REFERENCES drivers(id)
     ON DELETE SET NULL
 );
-
+ALTER TABLE bookings ADD COLUMN triptype ENUM('local', 'outstation') DEFAULT 'local';
+ALTER TABLE bookings ADD COLUMN rating INT,ADD COLUMN feedback TEXT;
 DROP TABLE IF EXISTS accept_booking;
 
 CREATE TABLE accept_booking (
