@@ -1,3 +1,4 @@
+
 DROP TABLE IF EXISTS otp_verification;
 CREATE TABLE otp_verification (
   id INT AUTO_INCREMENT PRIMARY KEY,

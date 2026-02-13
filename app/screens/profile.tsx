@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import React, { useEffect, useState } from "react";
 import {
+<<<<<<< HEAD
   ActivityIndicator,
   Alert,
   Modal,
@@ -10,20 +11,34 @@ import {
   TextInput,
   TouchableOpacity,
   View
+=======
+    ActivityIndicator,
+    Alert,
+    Modal,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+>>>>>>> e52e08f5dcc476f194c6d3beb121c06a52d37dbd
 } from "react-native";
 
-const BASE_URL = "http://192.168.0.3:3000";
+const BASE_URL = "http://192.168.0.7:3000";
 
 const ProfileTab = () => {
   const [profile, setProfile] = useState<any>([]);
   const [cust, setCust] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
+<<<<<<< HEAD
 const [avgRating, setAvgRating] = useState<number>(0);
 const [totalRatings, setTotalRatings] = useState<number>(0);  
+=======
+
+>>>>>>> e52e08f5dcc476f194c6d3beb121c06a52d37dbd
   // Edit name states
   const [isEditingName, setIsEditingName] = useState(false);
-  const [tempName, setTempName] = useState('');
+  const [tempName, setTempName] = useState("");
 
   useEffect(() => {
     const getRole = async () => {
@@ -79,26 +94,26 @@ const [totalRatings, setTotalRatings] = useState<number>(0);
 
   const handleSaveName = async () => {
     if (!tempName.trim()) {
-      Alert.alert('Error', 'Please enter a valid name');
+      Alert.alert("Error", "Please enter a valid name");
       return;
     }
 
     try {
       const phone = await AsyncStorage.getItem("customerPhone");
-      
+
       await axios.put(`${BASE_URL}/api/customers/update-name`, {
         phone: phone,
-        name: tempName.trim()
+        name: tempName.trim(),
       });
 
       // Update local state
       setCust({ ...cust, NAME: tempName.trim() });
-      
-      Alert.alert('Success', 'Name updated successfully');
+
+      Alert.alert("Success", "Name updated successfully");
       setIsEditingName(false);
     } catch (err) {
-      console.error('Update name error:', err);
-      Alert.alert('Error', 'Failed to update name');
+      console.error("Update name error:", err);
+      Alert.alert("Error", "Failed to update name");
     }
   };
 
@@ -173,10 +188,10 @@ const [totalRatings, setTotalRatings] = useState<number>(0);
               <Text style={styles.avatarText}>👤</Text>
             </View>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.nameContainer}
               onPress={() => {
-                setTempName(cust?.NAME || '');
+                setTempName(cust?.NAME || "");
                 setIsEditingName(true);
               }}
               activeOpacity={0.7}
@@ -184,7 +199,7 @@ const [totalRatings, setTotalRatings] = useState<number>(0);
               <Text style={styles.name}>{cust?.NAME || cust?.PHONE}</Text>
               <Text style={styles.editIcon}>✏️</Text>
             </TouchableOpacity>
-            
+
             <Text style={styles.role}>Customer</Text>
           </View>
 
@@ -203,7 +218,7 @@ const [totalRatings, setTotalRatings] = useState<number>(0);
             <View style={styles.modalOverlay}>
               <View style={styles.modalContent}>
                 <Text style={styles.modalTitle}>Edit Name</Text>
-                
+
                 <TextInput
                   style={styles.input}
                   value={tempName}
@@ -212,16 +227,16 @@ const [totalRatings, setTotalRatings] = useState<number>(0);
                   placeholderTextColor="#999"
                   autoFocus={true}
                 />
-                
+
                 <View style={styles.modalButtons}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[styles.button, styles.cancelButton]}
                     onPress={() => setIsEditingName(false)}
                   >
                     <Text style={styles.cancelButtonText}>Cancel</Text>
                   </TouchableOpacity>
-                  
-                  <TouchableOpacity 
+
+                  <TouchableOpacity
                     style={[styles.button, styles.saveButton]}
                     onPress={handleSaveName}
                   >
@@ -278,8 +293,8 @@ const styles = StyleSheet.create({
   },
 
   nameContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -347,39 +362,39 @@ const styles = StyleSheet.create({
   // Modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   modalContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 20,
     padding: 24,
-    width: '85%',
+    width: "85%",
     elevation: 10,
   },
 
   modalTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 16,
-    textAlign: 'center',
-    color: '#222',
+    textAlign: "center",
+    color: "#222",
   },
 
   input: {
     borderWidth: 1,
-    borderColor: '#DDD',
+    borderColor: "#DDD",
     borderRadius: 12,
     padding: 12,
     fontSize: 16,
     marginBottom: 20,
-    color: '#222',
+    color: "#222",
   },
 
   modalButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
   },
 ratingCard: {
@@ -416,26 +431,26 @@ ratingText: {
     flex: 1,
     padding: 14,
     borderRadius: 12,
-    alignItems: 'center',
+    alignItems: "center",
   },
 
   cancelButton: {
-    backgroundColor: '#F0F0F0',
+    backgroundColor: "#F0F0F0",
   },
 
   cancelButtonText: {
-    color: '#666',
-    fontWeight: '600',
+    color: "#666",
+    fontWeight: "600",
     fontSize: 15,
   },
 
   saveButton: {
-    backgroundColor: '#72bafd',
+    backgroundColor: "#72bafd",
   },
 
   saveButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+    color: "#FFFFFF",
+    fontWeight: "600",
     fontSize: 15,
   },
 });
