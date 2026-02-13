@@ -177,7 +177,6 @@ app.post("/api/verify-otp", (req, res) => {
   });
 });
 
-<<<<<<< HEAD
 app.post("/api/trip-booking", async (req, res) => {
   try {
     const { 
@@ -190,20 +189,6 @@ app.post("/api/trip-booking", async (req, res) => {
       bookingphnno,
       triptype 
     } = req.body;
-=======
-app.post("/api/trip-booking", (req, res) => {
-  const {
-    name,
-    phone,
-    pickup,
-    pickupLat,
-    pickupLng,
-    drop,
-    driverId,
-    bookingphnno,
-  } = req.body;
->>>>>>> e52e08f5dcc476f194c6d3beb121c06a52d37dbd
-
     if (!name || !phone || !pickup || !drop || !bookingphnno) {
       return res.status(400).json({ 
         success: false, 
@@ -406,7 +391,6 @@ app.get("/api/bookings/customer", async (req, res) => {
         b.status,
         b.created_at,
 
-<<<<<<< HEAD
         d.ID AS driver_id,
         d.NAME AS driver_name,
         d.MOBILE AS driver_phone
@@ -429,13 +413,11 @@ app.get("/api/bookings/customer", async (req, res) => {
       message: error.message,
     });
   }
-=======
   db.query(sql, [phone], (err, result) => {
     if (err) return res.status(500).send(err);
     res.json(result);
     console.log(result);
   });
->>>>>>> e52e08f5dcc476f194c6d3beb121c06a52d37dbd
 });
 
 app.get("/api/bookings/driver", (req, res) => {
