@@ -1,8 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-<<<<<<< HEAD
   ActivityIndicator,
   Alert,
   Modal,
@@ -10,32 +9,19 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
-=======
-    ActivityIndicator,
-    Alert,
-    Modal,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
->>>>>>> e52e08f5dcc476f194c6d3beb121c06a52d37dbd
+  View,
 } from "react-native";
 
-const BASE_URL = "http://192.168.0.7:3000";
+const BASE_URL = "http://192.168.0.5:3000";
 
 const ProfileTab = () => {
   const [profile, setProfile] = useState<any>([]);
   const [cust, setCust] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
-<<<<<<< HEAD
 const [avgRating, setAvgRating] = useState<number>(0);
 const [totalRatings, setTotalRatings] = useState<number>(0);  
-=======
 
->>>>>>> e52e08f5dcc476f194c6d3beb121c06a52d37dbd
   // Edit name states
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState("");

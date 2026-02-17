@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   StyleSheet,
@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 
-const BASE_URL = "http://192.168.0.7:3000";
+const BASE_URL = "http://192.168.0.5:3000";
 
 const RideTab = () => {
   const [booking, setBooking] = useState<any>(null);
@@ -44,16 +44,7 @@ const intervalRef = useRef<any>(null);
           `${BASE_URL}/api/bookings/driver?driverId=${storedDriverId}`
         );
       }
-<<<<<<< HEAD
-=======
-      const todayBookings =
-        res?.data?.filter(
-          (booking: any) =>
-            new Date(booking.created_at).toDateString() === todayStr,
-        ) || [];
->>>>>>> e52e08f5dcc476f194c6d3beb121c06a52d37dbd
-
-      const todayBookings =
+            const todayBookings =
         res?.data?.filter(
           (b: any) =>
             new Date(b.created_at).toDateString() === todayStr

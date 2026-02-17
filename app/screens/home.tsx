@@ -155,6 +155,7 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
   const [role, setRole] = useState("");
   const [showBookingForm, setShowBookingForm] = useState(false);
   const [showPlacesPopup, setShowPlacesPopup] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
   const [showOutstationPopup, setShowOutstationPopup] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -176,6 +177,50 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
     longitude: number;
   } | null>(null);
   const mapRef = useRef<MapView | null>(null);
+  const carouselRef = useRef<FlatList | null>(null);
+  const [currentSlide, setCurrentSlide] = useState(0);
+
+  const [errors, setErrors] = useState({
+    name: "",
+    phone: "",
+    area: "",
+    darea: "",
+    triptype: "",
+  });
+
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+  /* ================= CAROUSEL DATA ================= */
+  const carouselData = [
+    {
+      id: "1",
+      icon: "🌟",
+      title: "Trusted by Thousands",
+      description: "Over 50,000+ happy customers across Chennai",
+      rating: "4.8/5.0",
+    },
+    {
+      id: "2",
+      icon: "💰",
+      title: "Best Prices Guaranteed",
+      description: "Transparent pricing with no hidden charges",
+      rating: null,
+    },
+    {
+      id: "3",
+      icon: "🚗",
+      title: "Professional Drivers",
+      description: "Verified and experienced drivers at your service",
+      rating: null,
+    },
+    {
+      id: "4",
+      icon: "⏱️",
+      title: "24/7 Service",
+      description: "Available round the clock for your convenience",
+      rating: null,
+    },
+  ];
 
   /* ================= LOAD ROLE ================= */
   useEffect(() => {
@@ -185,32 +230,47 @@ const HomeTab = ({ notifications = [], onAccept, onDecline }: any) => {
     });
   }, []);
 
-  /* ================= FETCH BOOKING HISTORY ================= */
-/* ================= FETCH BOOKING HISTORY ================= */
-const fetchBookingHistory = async () => {
-  try {
-    const phone = await AsyncStorage.getItem("customerPhone");
-    if (!phone) {
-      console.log("No phone number found");
-      setBookingHistory([]);
-      return;
-    }
+  /* ================= AUTO SLIDE CAROUSEL ================= */
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => {
+        const nextSlide = (prev + 1) % carouselData.length;
+        carouselRef.current?.scrollToIndex({
+          index: nextSlide,
+          animated: true,
+        });
+        return nextSlide;
+      });
+    }, 3000); // Auto-slide every 3 seconds
 
-    const response = await axios.get(
-      `${BASE_URL}/api/bookings/customer?phone=${phone}`
-    );
-    
-    if (response.data && Array.isArray(response.data)) {
-      setBookingHistory(response.data);
-    } else {
+    return () => clearInterval(interval);
+  }, []);
+
+  /* ================= FETCH BOOKING HISTORY ================= */
+  const fetchBookingHistory = async () => {
+    try {
+      const phone = await AsyncStorage.getItem("customerPhone");
+      if (!phone) {
+        console.log("No phone number found");
+        setBookingHistory([]);
+        return;
+      }
+
+      const response = await axios.get(
+        `${BASE_URL}/api/bookings/customer?phone=${phone}`
+      );
+
+      if (response.data && Array.isArray(response.data)) {
+        setBookingHistory(response.data);
+      } else {
+        setBookingHistory([]);
+      }
+    } catch (error) {
+      console.log("Error fetching history:", error);
       setBookingHistory([]);
     }
-  } catch (error) {
-    console.log("Error fetching history:", error);
-    // Set empty array on error instead of crashing
-    setBookingHistory([]);
-  }
-};
+  };
+
   /* ================= LOCATION SEARCH ================= */
   const searchLocation = async (field: "area" | "darea") => {
     const q = field === "area" ? area : darea;
@@ -244,12 +304,14 @@ const fetchBookingHistory = async () => {
     Keyboard.dismiss();
     setCoordsPreview({ latitude, longitude });
     mapRef.current?.animateToRegion(regionFrom(latitude, longitude), 500);
+    setErrors({ ...errors, area: "" });
   };
 
   const selectDropArea = (item: Suggestion) => {
     setDArea(item.display_name);
     setDropsuggestions([]);
     Keyboard.dismiss();
+    setErrors({ ...errors, darea: "" });
   };
 
   /* ================= SELECT CHENNAI PLACE ================= */
@@ -280,7 +342,10 @@ const fetchBookingHistory = async () => {
       }
 
       const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
+        accuracy: Location.Accuracy.Balanced,
+      }).catch((err) => {
+        console.log("Location error:", err);
+        throw new Error("Could not get your location. Please try again.");
       });
 
       const { latitude, longitude } = location.coords;
@@ -289,6 +354,9 @@ const fetchBookingHistory = async () => {
       const addresses = await Location.reverseGeocodeAsync({
         latitude,
         longitude,
+      }).catch((err) => {
+        console.log("Geocoding error:", err);
+        return [];
       });
 
       if (addresses.length > 0) {
@@ -312,47 +380,93 @@ const fetchBookingHistory = async () => {
         500,
       );
       setSuggestions([]);
-    } catch (error) {
-      alert("Error getting location: " + error);
+      setErrors({ ...errors, area: "" }); // Clear area error when location is set
+    } catch (error: any) {
+      console.log("Location error:", error);
+      alert(error.message || "Error getting location. Please try again.");
     } finally {
       setLoadingLocation(false);
     }
   };
 
-const onSubmit = async () => {
-  if (!name || !phone || !area || !darea || !triptype) {
-    return alert("Please fill all fields");
-  }
-  
-  try {
-    const bookingPhone = await AsyncStorage.getItem("customerPhone");
-    
-    const response = await axios.post(`${BASE_URL}/api/trip-booking`, {
-      name,
-      phone,
-      pickup: area,
-      pickupLat: coordsPreview?.latitude || null,
-      pickupLng: coordsPreview?.longitude || null,
-      drop: darea,
-      triptype,
-      bookingphnno: bookingPhone
-    });
+  /* ================= FORM VALIDATION ================= */
+  const validateForm = () => {
+    let newErrors = {
+      name: "",
+      phone: "",
+      area: "",
+      darea: "",
+      triptype: "",
+    };
 
-    if (response.data.success) {
-      setShowBookingForm(false);
-      setName("");
-      setPhone("");
-      setArea("");
-      setDArea("");
-      setTriptype("");
-      setCoordsPreview(null);
-      alert("Booking submitted successfully");
+    if (!name.trim()) newErrors.name = "Name is required";
+
+    if (!phone.trim()) {
+      newErrors.phone = "Phone number is required";
+    } else if (!/^[6-9]\d{9}$/.test(phone)) {
+      newErrors.phone = "Enter valid 10-digit mobile number";
     }
-  } catch (error) {
-    console.error("Booking error:", error);
-    alert("Something went wrong. Please try again.");
-  }
-};
+
+    // Allow submission if either area text OR coordinates exist
+    if (!area.trim() && !coordsPreview) {
+      newErrors.area = "Pickup location is required";
+    }
+
+    if (!darea.trim()) newErrors.darea = "Drop location is required";
+    if (!triptype) newErrors.triptype = "Select trip type";
+
+    setErrors(newErrors);
+
+    return Object.values(newErrors).every((e) => e === "");
+  };
+
+  /* ================= SUBMIT BOOKING ================= */
+  const onSubmit = async () => {
+    if (!validateForm()) return;
+
+    try {
+      const bookingPhone = await AsyncStorage.getItem("customerPhone");
+
+      const response = await axios.post(`${BASE_URL}/api/trip-booking`, {
+        name,
+        phone,
+        pickup: area,
+        pickupLat: coordsPreview?.latitude || null,
+        pickupLng: coordsPreview?.longitude || null,
+        drop: darea,
+        triptype,
+        bookingphnno: bookingPhone,
+      });
+
+      if (response.data.success) {
+        setShowBookingForm(false);
+        setName("");
+        setPhone("");
+        setArea("");
+        setDArea("");
+        setTriptype("");
+        setCoordsPreview(null);
+        setErrors({
+          name: "",
+          phone: "",
+          area: "",
+          darea: "",
+          triptype: "",
+        });
+
+        // Show success modal
+        setShowSuccessModal(true);
+
+        // Auto-hide after 3 seconds
+        setTimeout(() => {
+          setShowSuccessModal(false);
+        }, 3000);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to submit booking. Please try again.");
+    }
+  };
 
   /* ================= HANDLE FEATURE CLICK ================= */
   const handleFeatureClick = (featureId: string) => {
@@ -408,98 +522,10 @@ const onSubmit = async () => {
   ];
 
   /* ================= DRIVER UI ================= */
-  
 
   return (
     <View style={styles.container}>
-      
       <StatusBar backgroundColor={COLORS.primary} barStyle="light-content" />
-
-      {/* MAP SECTION */}
-      <View style={styles.heroContainer}>
-        <MapView
-          ref={mapRef}
-          style={styles.heroMap}
-          initialRegion={{
-            latitude: 13.0827,
-            longitude: 80.2707,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          }}
-        />
-
-        {/* FLOATING PICKUP CARD */}
-        <View style={styles.floatingCard}>
-          <Text style={styles.floatingTitle}>Pickup Location</Text>
-
-          <View style={styles.inputWrapper}>
-            <TextInput
-              style={[styles.input, { flex: 1 }]}
-              placeholder="Enter pickup location"
-              value={area}
-              onChangeText={(t) => {
-                setArea(t);
-                searchLocation("area");
-              }}
-            />
-            <TouchableOpacity
-              style={styles.locationButton}
-              onPress={useCurrentLocation}
-              disabled={loadingLocation}
-            >
-              {loadingLocation ? (
-                <ActivityIndicator color={COLORS.primary} />
-              ) : (
-                <Text style={styles.locationIcon}>📍</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {loadingSuggestions && area.length > 2 && (
-            <ActivityIndicator style={{ marginTop: 8 }} />
-          )}
-
-          <FlatList
-            data={suggestions}
-            keyExtractor={(i) => i.place_id || i.display_name}
-            keyboardShouldPersistTaps="handled"
-            style={styles.suggestionList}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.suggestionItem}
-                onPress={() => selectPlace(item)}
-              >
-                <Text style={styles.suggestionText}>
-                  📍 {item.display_name}
-                </Text>
-              </TouchableOpacity>
-            )}
-          />
-        </View>
-      </View>
-
-      {/* QUICK ACTIONS */}
-      <Text style={styles.sectionTitle}>Quick Actions</Text>
-      <View style={styles.featuresGrid}>
-        {features.map((f) => (
-          <TouchableOpacity
-            key={f.id}
-            style={styles.featureCard}
-            onPress={() => handleFeatureClick(f.id)}
-          >
-            <Text style={{ fontSize: 28 }}>{f.icon}</Text>
-            <Text style={styles.featureText}>{f.title}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* BOOK BUTTON */}
-      <TouchableOpacity
-        style={styles.bookBtn}
-        onPress={() => setShowBookingForm(true)}
-      >
-        <Text style={styles.bookBtnText}>Book a Ride</Text>
-      </TouchableOpacity>
 
       {/* CHENNAI PLACES POPUP */}
       <Modal visible={showPlacesPopup} animationType="slide" transparent>
@@ -613,28 +639,38 @@ const onSubmit = async () => {
                         {item.triptype?.toUpperCase() || "LOCAL"}
                       </Text>
                     </View>
-                    <Text style={modal.historyDate}>{new Date(item.created_at).toLocaleDateString('en-GB', {
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric'
-                    })} at {new Date(item.created_at).toLocaleTimeString('en-US', {
-                      hour: 'numeric',
-                      minute: '2-digit',
-                      hour12: true
-                    })}</Text>
+                    <Text style={modal.historyDate}>
+                      {new Date(item.created_at).toLocaleDateString("en-GB", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}{" "}
+                      at{" "}
+                      {new Date(item.created_at).toLocaleTimeString("en-US", {
+                        hour: "numeric",
+                        minute: "2-digit",
+                        hour12: true,
+                      })}
+                    </Text>
                   </View>
 
                   <View style={modal.historyRoute}>
                     <View style={modal.historyLocation}>
                       <Text style={modal.historyLocationIcon}>📍</Text>
-                      <Text style={modal.historyLocationText} numberOfLines={1}>
+                      <Text
+                        style={modal.historyLocationText}
+                        numberOfLines={1}
+                      >
                         {item.pickup}
                       </Text>
                     </View>
                     <View style={modal.historyDivider} />
                     <View style={modal.historyLocation}>
                       <Text style={modal.historyLocationIcon}>🏁</Text>
-                      <Text style={modal.historyLocationText} numberOfLines={1}>
+                      <Text
+                        style={modal.historyLocationText}
+                        numberOfLines={1}
+                      >
                         {item.drop_location}
                       </Text>
                     </View>
@@ -704,42 +740,72 @@ const onSubmit = async () => {
             <Text style={modal.title}>Trip Details</Text>
 
             <TextInput
-              style={modal.input}
-              placeholder="Full Name"
+              style={[modal.input, errors.name && modal.errorInput]}
+              placeholder="Name"
               value={name}
-              onChangeText={setName}
+              onChangeText={(text) => {
+                setName(text);
+                setErrors({ ...errors, name: "" });
+              }}
             />
+            {errors.name ? (
+              <Text style={modal.errorText}>{errors.name}</Text>
+            ) : null}
 
             <TextInput
-              style={modal.input}
+              style={[modal.input, errors.phone && modal.errorInput]}
               placeholder="Phone Number"
-              keyboardType="numeric"
+              keyboardType="number-pad"
+              maxLength={10}
               value={phone}
-              onChangeText={setPhone}
+              onChangeText={(text) => {
+                const v = text.replace(/\D/g, "");
+                setPhone(v);
+                setErrors({ ...errors, phone: "" });
+              }}
             />
+            {errors.phone ? (
+              <Text style={modal.errorText}>{errors.phone}</Text>
+            ) : null}
 
-            <View style={[styles.inputWrapper, { marginTop: 10 }]}>
+            {phoneError ? (
+              <Text
+                style={{ color: COLORS.danger, marginTop: 6, fontSize: 12 }}
+              >
+                {phoneError}
+              </Text>
+            ) : null}
+
+            <View style={[modal.inputWrapper, { marginTop: 10 }]}>
               <TextInput
-                style={[modal.input, { flex: 1, marginTop: 0 }]}
-                placeholder="Pickup location"
+                style={[
+                  modal.input,
+                  errors.area && modal.errorInput,
+                  { flex: 1 },
+                ]}
+                placeholder="Pickup Area"
                 value={area}
-                onChangeText={(t) => {
-                  setArea(t);
+                onChangeText={(text) => {
+                  setArea(text);
                   searchLocation("area");
+                  setErrors({ ...errors, area: "" });
                 }}
               />
               <TouchableOpacity
-                style={styles.locationButton}
+                style={modal.locationButton}
                 onPress={useCurrentLocation}
                 disabled={loadingLocation}
               >
                 {loadingLocation ? (
                   <ActivityIndicator color={COLORS.primary} />
                 ) : (
-                  <Text style={styles.locationIcon}>📍</Text>
+                  <Text style={modal.locationIcon}>📍</Text>
                 )}
               </TouchableOpacity>
             </View>
+            {errors.area ? (
+              <Text style={modal.errorText}>{errors.area}</Text>
+            ) : null}
 
             <FlatList
               data={suggestions}
@@ -759,14 +825,18 @@ const onSubmit = async () => {
             />
 
             <TextInput
-              style={modal.input}
-              placeholder="Drop location"
+              style={[modal.input, errors.darea && modal.errorInput]}
+              placeholder="Drop Area"
               value={darea}
-              onChangeText={(t) => {
-                setDArea(t);
+              onChangeText={(text) => {
+                setDArea(text);
                 searchLocation("darea");
+                setErrors({ ...errors, darea: "" });
               }}
             />
+            {errors.darea ? (
+              <Text style={modal.errorText}>{errors.darea}</Text>
+            ) : null}
 
             <FlatList
               data={dropsuggestions}
@@ -790,7 +860,10 @@ const onSubmit = async () => {
                 <TouchableOpacity
                   key={t}
                   style={[modal.tripBtn, triptype === t && modal.tripActive]}
-                  onPress={() => setTriptype(t as any)}
+                  onPress={() => {
+                    setTriptype(t as any);
+                    setErrors({ ...errors, triptype: "" });
+                  }}
                 >
                   <Text
                     style={{
@@ -803,6 +876,9 @@ const onSubmit = async () => {
                 </TouchableOpacity>
               ))}
             </View>
+            {errors.triptype ? (
+              <Text style={modal.errorText}>{errors.triptype}</Text>
+            ) : null}
 
             <TouchableOpacity style={modal.submitBtn} onPress={onSubmit}>
               <Text style={modal.submitText}>Confirm Booking</Text>
@@ -811,86 +887,154 @@ const onSubmit = async () => {
         </View>
       </Modal>
 
-       {role == "driver" ? (
-    <>
-      {/* DRIVER MAP */}
-      <View style={styles.heroContainer}>
-        <MapView
-          ref={mapRef}
-          style={styles.heroMap}
-          initialRegion={{
-            latitude: 13.0827,
-            longitude: 80.2707,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          }}
-        />
-      </View>
+      {/* SUCCESS MODAL */}
+      <Modal visible={showSuccessModal} animationType="fade" transparent>
+        <View style={modal.overlay}>
+          <View style={modal.successContainer}>
+            <View style={modal.successIconContainer}>
+              <Text style={modal.successIcon}>✅</Text>
+            </View>
 
-      {/* DRIVER DASHBOARD */}
-      <View style={{ padding: 20 }}>
-        <Text style={styles.sectionTitle}>Driver Dashboard</Text>
+            <Text style={modal.successTitle}>Booking Successful!</Text>
+            <Text style={modal.successMessage}>
+              Your ride has been booked successfully. A driver will be assigned
+              shortly.
+            </Text>
 
-        <TouchableOpacity style={styles.driverCard}>
-          <Text style={styles.driverCardText}>📋 View Assigned Rides</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.driverCard}>
-          <Text style={styles.driverCardText}>💰 Earnings</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.driverCard}>
-          <Text style={styles.driverCardText}>⭐ My Rating</Text>
-        </TouchableOpacity>
-      </View>
-    </>
-  ) : (
-    /* ================= CUSTOMER UI ================= */
-    <>
-      {/* MAP SECTION */}
-      <View style={styles.heroContainer}>
-        <MapView
-          ref={mapRef}
-          style={styles.heroMap}
-          initialRegion={{
-            latitude: 13.0827,
-            longitude: 80.2707,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          }}
-        />
-
-        {/* FLOATING PICKUP CARD */}
-        <View style={styles.floatingCard}>
-          {/* Your existing pickup card code */}
+            <TouchableOpacity
+              style={modal.successButton}
+              onPress={() => setShowSuccessModal(false)}
+            >
+              <Text style={modal.successButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </Modal>
 
-      {/* QUICK ACTIONS */}
-      <Text style={styles.sectionTitle}>Quick Actions</Text>
-      <View style={styles.featuresGrid}>
-        {features.map((f) => (
+      {role == "driver" ? (
+        <>
+          {/* DRIVER MAP */}
+          <View style={styles.heroContainer}>
+            <MapView
+              ref={mapRef}
+              style={styles.heroMap}
+              initialRegion={{
+                latitude: 13.0827,
+                longitude: 80.2707,
+                latitudeDelta: 0.05,
+                longitudeDelta: 0.05,
+              }}
+            />
+          </View>
+          {/* DRIVER QUICK ACTIONS */}
+          <View style={styles.quickActionsSection}>
+            <Text style={styles.sectionTitle}>Quick Actions</Text>
+            <View style={styles.featuresGrid}>
+              {features.map((f) => (
+                <TouchableOpacity
+                  key={f.id}
+                  style={styles.featureCard}
+                  onPress={() => handleFeatureClick(f.id)}
+                >
+                  <Text style={styles.featureIcon}>{f.icon}</Text>
+                  <Text style={styles.featureText}>{f.title}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* DRIVER DASHBOARD */}
+          <View style={styles.driverDashboard}>
+            <Text style={styles.sectionTitle}>Driver Dashboard</Text>
+
+            <TouchableOpacity style={styles.driverCard}>
+              <Text style={styles.driverCardText}>📋 View Assigned Rides</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.driverCard}>
+              <Text style={styles.driverCardText}>💰 Earnings</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.driverCard}>
+              <Text style={styles.driverCardText}>⭐ My Rating</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      ) : (
+        /* ================= CUSTOMER UI ================= */
+        <>
+          {/* MAP SECTION */}
+          <View style={styles.heroContainer}>
+            <MapView
+              ref={mapRef}
+              style={styles.heroMap}
+              initialRegion={{
+                latitude: 13.0827,
+                longitude: 80.2707,
+                latitudeDelta: 0.05,
+                longitudeDelta: 0.05,
+              }}
+            />
+
+            {/* CAROUSEL SLIDER */}
+            <View style={styles.carouselContainer}>
+              <FlatList
+                ref={carouselRef}
+                horizontal
+                data={carouselData}
+                keyExtractor={(item) => item.id}
+                showsHorizontalScrollIndicator={false}
+                pagingEnabled
+                snapToInterval={width * 0.85 + 12}
+                decelerationRate="fast"
+                contentContainerStyle={styles.carouselContent}
+                onScrollToIndexFailed={() => {}}
+                renderItem={({ item }) => (
+                  <View style={styles.carouselCard}>
+                    <View style={styles.carouselIconContainer}>
+                      <Text style={styles.carouselIcon}>{item.icon}</Text>
+                    </View>
+                    <Text style={styles.carouselTitle}>{item.title}</Text>
+                    <Text style={styles.carouselDescription}>
+                      {item.description}
+                    </Text>
+                    {item.rating && (
+                      <View style={styles.ratingContainer}>
+                        <Text style={styles.ratingStars}>⭐⭐⭐⭐⭐</Text>
+                        <Text style={styles.ratingText}>{item.rating}</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+              />
+            </View>
+          </View>
+          {/* QUICK ACTIONS */}
+          <View style={styles.quickActionsSection}>
+            <Text style={styles.sectionTitle}>Quick Actions</Text>
+            <View style={styles.featuresGrid}>
+              {features.map((f) => (
+                <TouchableOpacity
+                  key={f.id}
+                  style={styles.featureCard}
+                  onPress={() => handleFeatureClick(f.id)}
+                >
+                  <Text style={styles.featureIcon}>{f.icon}</Text>
+                  <Text style={styles.featureText}>{f.title}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* BOOK BUTTON */}
           <TouchableOpacity
-            key={f.id}
-            style={styles.featureCard}
-            onPress={() => handleFeatureClick(f.id)}
+            style={styles.bookBtn}
+            onPress={() => setShowBookingForm(true)}
           >
-            <Text style={{ fontSize: 28 }}>{f.icon}</Text>
-            <Text style={styles.featureText}>{f.title}</Text>
+            <Text style={styles.bookBtnText}>Book a Ride</Text>
           </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* BOOK BUTTON */}
-      <TouchableOpacity
-        style={styles.bookBtn}
-        onPress={() => setShowBookingForm(true)}
-      >
-        <Text style={styles.bookBtnText}>Book a Ride</Text>
-      </TouchableOpacity>
-    </>
-  )}
-
+        </>
+      )}
     </View>
   );
 };
@@ -899,100 +1043,22 @@ export default HomeTab;
 
 /* ================= STYLES ================= */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
-driverCard: {
-  backgroundColor: "#FFF8E1",
-  padding: 18,
-  borderRadius: 16,
-  marginBottom: 15,
-  elevation: 4,
-},
-
-driverCardText: {
-  fontSize: 16,
-  fontWeight: "700",
-},
-  heroContainer: { width, height: height * 0.38 },
-  heroMap: { width: "100%", height: "100%" },
-
-  floatingCard: {
-    position: "absolute",
-    bottom: 24,
-    left: 16,
-    right: 16,
-    backgroundColor: COLORS.surface,
-    borderRadius: 22,
-    padding: 16,
-    zIndex: 10,
-    elevation: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-  },
-
-  floatingTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 8,
-    color: COLORS.textMain,
-  },
-
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-
-  inputWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.bg,
-    borderRadius: 14,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-
-  input: {
+  container: {
     flex: 1,
-    backgroundColor: "transparent",
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    fontSize: 14,
-    color: COLORS.textMain,
+    backgroundColor: COLORS.bg,
   },
 
-  locationButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  locationIcon: {
-    fontSize: 20,
-  },
-
-  suggestionList: {
-    maxHeight: 160,
-    marginTop: 8,
-    borderRadius: 14,
+  quickActionsSection: {
+    paddingTop: 16,
+    paddingBottom: 12,
     backgroundColor: COLORS.surface,
-    overflow: "hidden",
   },
-
-  suggestionItem: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderColor: COLORS.border,
-  },
-
-  suggestionText: { fontSize: 14, color: COLORS.textMain },
 
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "700",
     marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 8,
+    marginBottom: 12,
     color: COLORS.textMain,
   },
 
@@ -1001,38 +1067,160 @@ driverCardText: {
     flexWrap: "wrap",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    rowGap: 14,
+    gap: 12,
   },
 
   featureCard: {
-    width: width * 0.44,
-    backgroundColor: COLORS.surface,
-    borderRadius: 18,
+    width: (width - 44) / 2,
+    backgroundColor: COLORS.bg,
+    borderRadius: 16,
     padding: 20,
     alignItems: "center",
-    elevation: 3,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+
+  featureIcon: {
+    fontSize: 36,
+    marginBottom: 10,
   },
 
   featureText: {
     fontSize: 14,
     fontWeight: "600",
-    marginTop: 8,
+    textAlign: "center",
     color: COLORS.textMain,
+  },
+
+  heroContainer: {
+    width,
+    height: height * 0.4,
+    position: "relative",
+  },
+
+  heroMap: {
+    width: "100%",
+    height: "100%",
+  },
+
+  carouselContainer: {
+    position: "absolute",
+    bottom: 16,
+    left: 0,
+    right: 0,
+    height: 160,
+  },
+
+  carouselContent: {
+    paddingHorizontal: (width - width * 0.85) / 2,
+  },
+
+  carouselCard: {
+    width: width * 0.85,
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 20,
+    marginHorizontal: 6,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    alignItems: "center",
+  },
+
+  carouselIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: COLORS.bg,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+
+  carouselIcon: {
+    fontSize: 28,
+  },
+
+  carouselTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.textMain,
+    marginBottom: 6,
+    textAlign: "center",
+  },
+
+  carouselDescription: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+
+  ratingContainer: {
+    marginTop: 10,
+    alignItems: "center",
+  },
+
+  ratingStars: {
+    fontSize: 14,
+    marginBottom: 4,
+  },
+
+  ratingText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.primary,
   },
 
   bookBtn: {
     position: "absolute",
-    bottom: 8,
+    bottom: 12,
     left: 16,
     right: 16,
     backgroundColor: COLORS.primary,
     paddingVertical: 18,
-    borderRadius: 22,
+    borderRadius: 16,
     alignItems: "center",
     elevation: 6,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
   },
 
-  bookBtnText: { fontSize: 18, fontWeight: "800", color: "#FFF" },
+  bookBtnText: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#FFF",
+  },
+
+  driverDashboard: {
+    padding: 16,
+    flex: 1,
+  },
+
+  driverCard: {
+    backgroundColor: "#FFF8E1",
+    padding: 18,
+    borderRadius: 16,
+    marginBottom: 12,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+
+  driverCardText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.textMain,
+  },
 });
 
 /* ================= MODAL ================= */
@@ -1042,7 +1230,17 @@ const modal = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
   },
+  errorInput: {
+    borderColor: COLORS.danger,
+    borderWidth: 1,
+  },
 
+  errorText: {
+    color: COLORS.danger,
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
+  },
   sheet: {
     width: "90%",
     alignSelf: "center",
@@ -1093,6 +1291,26 @@ const modal = StyleSheet.create({
     paddingHorizontal: 14,
     marginTop: 10,
     fontSize: 14,
+  },
+
+  inputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bg,
+    borderRadius: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+
+  locationButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  locationIcon: {
+    fontSize: 20,
   },
 
   suggestionList: {
@@ -1379,6 +1597,60 @@ const modal = StyleSheet.create({
     color: COLORS.textMuted,
     textAlign: "center",
     marginTop: 20,
+  },
+
+  // Success Modal Styles
+  successContainer: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    padding: 32,
+    marginHorizontal: 32,
+    alignItems: "center",
+  },
+
+  successIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#D1FAE5",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+
+  successIcon: {
+    fontSize: 48,
+  },
+
+  successTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: COLORS.textMain,
+    marginBottom: 12,
+    textAlign: "center",
+  },
+
+  successMessage: {
+    fontSize: 15,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+
+  successButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 48,
+    borderRadius: 16,
+    minWidth: 120,
+  },
+
+  successButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#FFF",
+    textAlign: "center",
   },
 });
 

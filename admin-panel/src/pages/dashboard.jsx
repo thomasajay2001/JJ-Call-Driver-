@@ -4,12 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
-<<<<<<< HEAD
-const SOCKET_URL = "http://192.168.0.3:3000";
-
-=======
-const SOCKET_URL = "http://192.168.0.7:3000";
->>>>>>> e52e08f5dcc476f194c6d3beb121c06a52d37dbd
+const SOCKET_URL = "http://192.168.0.5:3000";
 
 export default function Dashboard() {
   const navigate = useNavigate();

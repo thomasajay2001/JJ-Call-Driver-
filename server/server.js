@@ -24,7 +24,7 @@ const mysql = require("mysql2");
 const db = mysql.createConnection({
   host: "localhost",
   user: "root",
-  password: "q2m@123",
+  password: "Gomathi@123",
   database: "jjdrivers",
 });
 
@@ -390,14 +390,11 @@ app.get("/api/bookings/customer", async (req, res) => {
         b.driver_id,
         b.status,
         b.created_at,
-
-        d.ID AS driver_id,
         d.NAME AS driver_name,
         d.MOBILE AS driver_phone
       FROM bookings b
       LEFT JOIN drivers d 
-        ON b.driver_id = d.ID   -- ID wise match
-
+        ON b.driver_id = d.ID
       WHERE b.booking_phnno = ?
       ORDER BY b.created_at DESC
       `,
@@ -413,11 +410,6 @@ app.get("/api/bookings/customer", async (req, res) => {
       message: error.message,
     });
   }
-  db.query(sql, [phone], (err, result) => {
-    if (err) return res.status(500).send(err);
-    res.json(result);
-    console.log(result);
-  });
 });
 
 app.get("/api/bookings/driver", (req, res) => {
