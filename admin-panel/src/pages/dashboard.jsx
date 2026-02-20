@@ -270,7 +270,7 @@ export default function Dashboard() {
                 <div style={styles.customerAvatar}>{n.name?.charAt(0).toUpperCase()}</div>
                 <div style={styles.customerInfo}>
                   <p style={styles.customerName}>{n.name}</p>
-                  <p style={styles.customerPhone}>📞 {n.phone || n.mobile}</p>
+                  <p style={styles.customerPhone}> {n.phone || n.mobile}</p>
                 </div>
               </div>
               <div style={styles.routeBox}>
