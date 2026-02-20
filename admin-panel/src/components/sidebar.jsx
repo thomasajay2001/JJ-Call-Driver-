@@ -8,7 +8,7 @@ export default function Sidebar({ onLogout }) {
     { label: "Dashboard", path: "/dashboard" },
     { label: "Bookings", path: "/booking" },
     { label: "Drivers", path: "/driver-dashboard" },
-    { label: "Users", path: "/users" },
+    // { label: "Users", path: "/users" },
   ];
 
   return (
