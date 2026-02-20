@@ -24,7 +24,7 @@ const mysql = require("mysql2");
 const db = mysql.createConnection({
   host: "localhost",
   user: "root",
-  password: "Gomathi@123",
+  password: "q2m@123",
   database: "jjdrivers",
 });
 
@@ -179,20 +179,20 @@ app.post("/api/verify-otp", (req, res) => {
 
 app.post("/api/trip-booking", async (req, res) => {
   try {
-    const { 
-      name, 
-      phone, 
-      pickup, 
-      pickupLat, 
-      pickupLng, 
-      drop, 
+    const {
+      name,
+      phone,
+      pickup,
+      pickupLat,
+      pickupLng,
+      drop,
       bookingphnno,
-      triptype 
+      triptype,
     } = req.body;
     if (!name || !phone || !pickup || !drop || !bookingphnno) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'All fields are required' 
+      return res.status(400).json({
+        success: false,
+        error: "All fields are required",
       });
     }
 
@@ -201,29 +201,29 @@ app.post("/api/trip-booking", async (req, res) => {
         (customer_name, customer_mobile, booking_phnno, pickup, pickup_lat, pickup_lng, drop_location, triptype, status) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        name, 
-        phone, 
-        bookingphnno, 
-        pickup, 
-        pickupLat || null, 
-        pickupLng || null, 
+        name,
+        phone,
+        bookingphnno,
+        pickup,
+        pickupLat || null,
+        pickupLng || null,
         drop,
-        triptype || 'local',
-        'pending'
-      ]
+        triptype || "local",
+        "pending",
+      ],
     );
 
-    res.json({ 
-      success: true, 
-      message: 'Booking created successfully',
-      bookingId: result.insertId
+    res.json({
+      success: true,
+      message: "Booking created successfully",
+      bookingId: result.insertId,
     });
   } catch (error) {
-    console.error('Trip booking error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Failed to create booking',
-      message: error.message 
+    console.error("Trip booking error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to create booking",
+      message: error.message,
     });
   }
 });
@@ -398,7 +398,7 @@ app.get("/api/bookings/customer", async (req, res) => {
       WHERE b.booking_phnno = ?
       ORDER BY b.created_at DESC
       `,
-      [phone]
+      [phone],
     );
 
     res.json(bookings);
@@ -430,7 +430,6 @@ app.get("/api/bookings/driver", (req, res) => {
   });
 });
 
-
 app.post("/api/submit-rating", async (req, res) => {
   try {
     const { bookingId, rating, comment } = req.body;
@@ -439,7 +438,7 @@ app.post("/api/submit-rating", async (req, res) => {
       `UPDATE bookings 
        SET rating = ?, feedback = ? 
        WHERE id = ?`,
-      [rating, comment, bookingId]
+      [rating, comment, bookingId],
     );
 
     res.json({ success: true });
@@ -462,7 +461,7 @@ app.get("/api/driver-rating/:driverId", async (req, res) => {
       WHERE driver_id = ?
       AND rating IS NOT NULL
       `,
-      [driverId]
+      [driverId],
     );
 
     res.json(result[0]);
