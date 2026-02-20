@@ -4,7 +4,7 @@ import { useNavigation } from "@react-navigation/native";
 import axios from "axios";
 import Constants from "expo-constants";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   StyleSheet,
@@ -31,7 +31,34 @@ export default function Login() {
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
+  // ── RESEND OTP TIMER ──
+  const RESEND_SECONDS = 30;
+  const [timer, setTimer] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const navigation = useNavigation();
+
+  // Start countdown whenever OTP is sent
+  const startTimer = () => {
+    setTimer(RESEND_SECONDS);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setTimer((prev) => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current!);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   const clearMessages = () => {
     setMessage("");
@@ -53,12 +80,34 @@ export default function Login() {
       if (res.data.success) {
         setOtpSent(true);
         setMessage("OTP sent successfully!");
+        startTimer();
         console.log("OTP:", res.data.otp);
       } else {
         setErrorMessage(res.data.message);
       }
     } catch (err) {
       setErrorMessage("Failed to send OTP");
+    }
+  };
+
+  // --------------------------
+  // RESEND OTP
+  // --------------------------
+  const resendOtp = async () => {
+    if (timer > 0) return; // blocked while timer is running
+    clearMessages();
+    try {
+      const res = await axios.post(`${BASE_URL}/api/send-otp`, { phone });
+      if (res.data.success) {
+        setOtp("");
+        setMessage("OTP resent successfully!");
+        startTimer();
+        console.log("Resent OTP:", res.data.otp);
+      } else {
+        setErrorMessage(res.data.message || "Failed to resend OTP");
+      }
+    } catch (err) {
+      setErrorMessage("Failed to resend OTP");
     }
   };
 
@@ -79,12 +128,9 @@ export default function Login() {
       });
       if (res.data.success) {
         setMessage("OTP Verified! Login Success");
-
+        if (timerRef.current) clearInterval(timerRef.current);
         await AsyncStorage.setItem("role", "customer");
-        const role = await AsyncStorage.getItem("role");
-        console.log(role, "logined");
         await AsyncStorage.setItem("customerPhone", phone);
-
         router.push("/screens/settings");
       } else {
         setErrorMessage("Invalid OTP");
@@ -112,7 +158,6 @@ export default function Login() {
 
     try {
       const res = await axios.get(`${BASE_URL}/api/drivers`);
-
       const list = res.data || [];
 
       const driver = list.find(
@@ -129,17 +174,10 @@ export default function Login() {
         return;
       }
 
-      // SUCCESS
       setMessage("Driver Login Success!");
-
       await AsyncStorage.setItem("role", "driver");
-      const role = await AsyncStorage.getItem("role");
-      console.log("ROLE FROM ASYNC STORAGE:", role);
       await AsyncStorage.setItem("driverId", driverId);
-      await axios.post(`${BASE_URL}/api/driver/updateStatus`, {
-        driverId,
-        status: "online",
-      });
+      await AsyncStorage.setItem("driverName", driver.name || driver.NAME || "");
       router.push("/screens/settings");
     } catch (err) {
       console.log("Login error:", err);
@@ -153,22 +191,20 @@ export default function Login() {
   const handleChangePhone = () => {
     setOtpSent(false);
     setOtp("");
+    setTimer(0);
+    if (timerRef.current) clearInterval(timerRef.current);
     clearMessages();
   };
 
-  // --------------------------
-  // HANDLE SWITCH TO USER LOGIN
-  // --------------------------
   const handleSwitchToUser = () => {
     setLoginType("user");
     setOtpSent(false);
     setOtp("");
+    setTimer(0);
+    if (timerRef.current) clearInterval(timerRef.current);
     clearMessages();
   };
 
-  // --------------------------
-  // HANDLE SWITCH TO DRIVER LOGIN
-  // --------------------------
   const handleSwitchToDriver = () => {
     setLoginType("driver");
     setDriverId("");
@@ -189,17 +225,18 @@ export default function Login() {
             style={[styles.switchBtn, loginType === "user" && styles.activeBtn]}
             onPress={handleSwitchToUser}
           >
-            <Text style={styles.switchText}>User Login</Text>
+            <Text style={[styles.switchText, loginType === "user" && styles.activeSwitchText]}>
+              User Login
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[
-              styles.switchBtn,
-              loginType === "driver" && styles.activeBtn,
-            ]}
+            style={[styles.switchBtn, loginType === "driver" && styles.activeBtn]}
             onPress={handleSwitchToDriver}
           >
-            <Text style={styles.switchText}>Driver Login</Text>
+            <Text style={[styles.switchText, loginType === "driver" && styles.activeSwitchText]}>
+              Driver Login
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -227,16 +264,21 @@ export default function Login() {
               </>
             ) : (
               <>
-                <Text style={styles.label}>OTP</Text>
+                {/* Phone display row */}
+                <View style={styles.phoneRow}>
+                  <Ionicons name="call-outline" size={16} color="#555" />
+                  <Text style={styles.phoneDisplay}>+91 {phone}</Text>
+                  <TouchableOpacity onPress={handleChangePhone}>
+                    <Text style={styles.changeLink}>Change</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.label}>Enter OTP</Text>
                 <View style={styles.inputWrapper}>
-                  <Ionicons
-                    name="lock-closed-outline"
-                    size={20}
-                    style={styles.icon}
-                  />
+                  <Ionicons name="lock-closed-outline" size={20} style={styles.icon} />
                   <TextInput
                     style={styles.input}
-                    placeholder="Enter OTP"
+                    placeholder="6-digit OTP"
                     keyboardType="numeric"
                     maxLength={6}
                     value={otp}
@@ -248,9 +290,24 @@ export default function Login() {
                   <Text style={styles.btnText}>Verify & Login</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity onPress={handleChangePhone}>
-                  <Text style={styles.link}>Change Phone Number</Text>
-                </TouchableOpacity>
+                {/* ── RESEND ROW ── */}
+                <View style={styles.resendRow}>
+                  {timer > 0 ? (
+                    <>
+                      <Text style={styles.resendLabel}>Resend OTP in </Text>
+                      <View style={styles.timerBadge}>
+                        <Text style={styles.timerText}>00:{String(timer).padStart(2, "0")}</Text>
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.resendLabel}>Didn't receive the OTP? </Text>
+                      <TouchableOpacity onPress={resendOtp}>
+                        <Text style={styles.resendLink}>Resend OTP</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
               </>
             )}
           </>
@@ -315,6 +372,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   logoCircle: { alignSelf: "center", marginBottom: 20 },
+
   switchRow: {
     flexDirection: "row",
     justifyContent: "space-around",
@@ -326,9 +384,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#ddd",
     borderRadius: 8,
   },
-  activeBtn: { backgroundColor: "#007bff" },
-  switchText: { textAlign: "center", color: "#000", fontWeight: "600" },
-  subtitle: { textAlign: "center", marginBottom: 20, color: "#555" },
+  activeBtn:       { backgroundColor: "#007bff" },
+  switchText:      { textAlign: "center", color: "#000", fontWeight: "600" },
+  activeSwitchText:{ color: "#fff" },
+
   label: { fontWeight: "600", marginBottom: 5, marginTop: 10 },
   inputWrapper: {
     flexDirection: "row",
@@ -339,8 +398,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     marginBottom: 5,
   },
-  icon: { marginRight: 6 },
+  icon:  { marginRight: 6 },
   input: { flex: 1, height: 45 },
+
   btnPrimary: {
     backgroundColor: "#007bff",
     padding: 12,
@@ -354,8 +414,46 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   btnText: { color: "#fff", textAlign: "center", fontWeight: "600" },
-  link: { textAlign: "center", marginTop: 10, color: "#007bff" },
+
+  /* Phone display row */
+  phoneRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0F4FF",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 4,
+    gap: 6,
+  },
+  phoneDisplay: { flex: 1, fontSize: 14, color: "#333", fontWeight: "600" },
+  changeLink:   { fontSize: 13, color: "#007bff", fontWeight: "700" },
+
+  /* Resend row */
+  resendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 14,
+    flexWrap: "wrap",
+    gap: 4,
+  },
+  resendLabel: { fontSize: 13, color: "#555" },
+  resendLink:  { fontSize: 13, color: "#007bff", fontWeight: "700" },
+
+  /* Timer badge */
+  timerBadge: {
+    backgroundColor: "#FFF3CD",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#F59E0B",
+  },
+  timerText: { fontSize: 13, fontWeight: "800", color: "#92400E" },
+
   success: { color: "green", marginTop: 10, textAlign: "center" },
-  error: { color: "red", marginTop: 10, textAlign: "center" },
-  footer: { textAlign: "center", marginTop: 15, color: "#666", fontSize: 12 },
+  error:   { color: "red",   marginTop: 10, textAlign: "center" },
+  link:    { textAlign: "center", marginTop: 10, color: "#007bff" },
+  footer:  { textAlign: "center", marginTop: 15, color: "#666", fontSize: 12 },
 });

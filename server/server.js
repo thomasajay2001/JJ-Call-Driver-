@@ -82,27 +82,74 @@ io.on("connection", (socket) => {
 });
 
 app.post("/api/login", upload.none(), (req, res) => {
-  const username = req.body.username;
-  const password = req.body.password;
-  const query = "SELECT * FROM supportTeam WHERE username = ? AND password = ?";
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ success: false, message: "Username and password are required" });
+  }
+
+  const query = "SELECT * FROM SUPPORTTEAM WHERE USERNAME = ? AND PASSWORD = ?";
   db.query(query, [username, password], (err, results) => {
     if (err) {
-      console.error("Error during login:", err);
-      return res
-        .status(500)
-        .json({ success: false, message: "Database error" });
+      console.error("Login DB error:", err);
+      return res.status(500).json({ success: false, message: "Database error" });
     }
+
     if (results.length > 0) {
-      res.json({
+      return res.json({
         success: true,
         message: "Login successful",
-        user: results[0],
+        user: results[0],   // includes ID, USERNAME, PASSWORD
       });
-    } else {
-      res.json({ success: false, message: "Invalid username or password" });
     }
+
+    return res.json({ success: false, message: "Invalid username or password" });
   });
 });
+
+
+// ── 2.  UPDATE CREDENTIALS ────────────────────────────────────────────────────
+//  POST /api/support/update-credentials
+//  Body: { username, currentPassword, newPassword }
+// ─────────────────────────────────────────────────────────────────────────────
+app.post("/api/support/update-credentials", upload.none(), (req, res) => {
+  const { username, currentPassword, newPassword } = req.body;
+
+  if (!username || !currentPassword || !newPassword) {
+    return res.status(400).json({ success: false, message: "All fields are required" });
+  }
+
+  if (newPassword.trim().length < 4) {
+    return res.status(400).json({ success: false, message: "New password must be at least 4 characters" });
+  }
+
+  // Step 1 — verify current credentials
+  const verifyQuery = "SELECT * FROM SUPPORTTEAM WHERE USERNAME = ? AND PASSWORD = ?";
+  db.query(verifyQuery, [username.trim(), currentPassword.trim()], (err, results) => {
+    if (err) {
+      console.error("Verify DB error:", err);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+
+    if (results.length === 0) {
+      return res.json({ success: false, message: "Incorrect current username or password" });
+    }
+
+    const userId = results[0].ID;
+
+    // Step 2 — update password
+    const updateQuery = "UPDATE SUPPORTTEAM SET PASSWORD = ? WHERE ID = ?";
+    db.query(updateQuery, [newPassword.trim(), userId], (updateErr) => {
+      if (updateErr) {
+        console.error("Update DB error:", updateErr);
+        return res.status(500).json({ success: false, message: "Failed to update password" });
+      }
+
+      return res.json({ success: true, message: "Credentials updated successfully" });
+    });
+  });
+});
+
 
 app.post("/api/send-otp", (req, res) => {
   const phone = req.body.phone;
@@ -257,48 +304,7 @@ app.put("/api/bookings/:id", async (req, res) => {
 });
 
 // Support Team Login API
-app.post("/api/support/login", async (req, res) => {
-  try {
-    const { username, password } = req.body;
 
-    if (!username || !password) {
-      return res.status(400).json({
-        success: false,
-        error: "Username and password are required",
-      });
-    }
-
-    const [result] = await db
-      .promise()
-      .query("SELECT * FROM SUPPORTTEAM WHERE USERNAME = ? AND PASSWORD = ?", [
-        username,
-        password,
-      ]);
-
-    if (result.length > 0) {
-      res.json({
-        success: true,
-        message: "Login successful",
-        user: {
-          id: result[0].ID,
-          username: result[0].USERNAME,
-        },
-      });
-    } else {
-      res.status(401).json({
-        success: false,
-        error: "Invalid username or password",
-      });
-    }
-  } catch (error) {
-    console.error("Support login error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Login failed",
-      message: error.message,
-    });
-  }
-});
 
 /* ================= ACCEPT BOOKING ================= */
 app.post("/api/accept-booking", async (req, res) => {
@@ -430,7 +436,56 @@ app.get("/api/bookings/driver", (req, res) => {
   });
 });
 
+app.get("/api/bookings/driver/all", async (req, res) => {
+  const { driverId, filter } = req.query;
 
+  if (!driverId) {
+    return res.status(400).json({ success: false, error: "driverId is required" });
+  }
+
+  // Build date filter clause
+  let dateClause = "";
+  switch (filter) {
+    case "today":
+      dateClause = "AND DATE(b.created_at) = CURDATE()";
+      break;
+    case "yesterday":
+      dateClause = "AND DATE(b.created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)";
+      break;
+    case "thisweek":
+      dateClause = "AND YEARWEEK(b.created_at, 1) = YEARWEEK(CURDATE(), 1)";
+      break;
+    case "thismonth":
+      dateClause = "AND MONTH(b.created_at) = MONTH(CURDATE()) AND YEAR(b.created_at) = YEAR(CURDATE())";
+      break;
+    default:
+      dateClause = ""; // no filter = all time
+  }
+
+  const sql = `
+    SELECT
+      b.id,
+      b.customer_name,
+      b.customer_mobile,
+      b.pickup,
+      b.drop_location,
+      b.triptype,
+      b.status,
+      b.created_at
+    FROM bookings b
+    WHERE b.driver_id = ?
+    ${dateClause}
+    ORDER BY b.created_at DESC
+  `;
+
+  try {
+    const [results] = await db.promise().query(sql, [driverId]);
+    res.json({ success: true, data: results });
+  } catch (err) {
+    console.error("Driver all bookings error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch bookings" });
+  }
+});
 app.post("/api/submit-rating", async (req, res) => {
   try {
     const { bookingId, rating, comment } = req.body;
@@ -471,19 +526,37 @@ app.get("/api/driver-rating/:driverId", async (req, res) => {
   }
 });
 app.post("/api/bookings/start", (req, res) => {
-  const { bookingId } = req.body;
+  const { bookingId, driverId } = req.body;
 
-  db.query("UPDATE bookings SET status='inride' WHERE id=?", [bookingId], () =>
-    res.send({ success: true }),
+  db.query(
+    "UPDATE bookings SET status='inride' WHERE id=?",
+    [bookingId],
+    (err) => {
+      if (err) return res.status(500).send({ success: false });
+
+      db.query(
+        "UPDATE drivers SET status='inride' WHERE id=?",
+        [driverId],
+        (err2) => {
+          if (err2) return res.status(500).send({ success: false });
+          res.send({ success: true });
+        }
+      );
+    }
   );
 });
 
 app.post("/api/complete-ride", async (req, res) => {
-  const { bookingId } = req.body;
+  const { bookingId,driverId } = req.body;
+
+  
 
   try {
-    await db.query("UPDATE bookings SET status='completed' WHERE id=?", [
+    await db.promise().query("UPDATE bookings SET status='completed' WHERE id=?", [
       bookingId,
+    ]);
+    await db.promise().query("UPDATE drivers SET status='online' WHERE id=?", [
+      driverId,
     ]);
     res.json({ success: true });
   } catch (err) {
@@ -579,6 +652,7 @@ app.get("/api/customer", async (req, res) => {
 
 app.post("/api/adddrivers", upload.none(), (req, res) => {
   const name = req.body.name;
+  const status=req.body.status;
   const paymentmode = req.body.paymentmode;
   const mobile = parseInt(req.body.mobile);
   const location = req.body.location;
@@ -592,9 +666,10 @@ app.post("/api/adddrivers", upload.none(), (req, res) => {
   const car_type = req.body.car_type;
   const lat = req.body.lat;
   const lng = req.body.lng;
+  const payactive=req.body.payactive;
 
   const sql =
-    "INSERT INTO DRIVERS (NAME, MOBILE, LOCATION, EXPERIENCE, FEES_DETAILS, DOB, BLOODGRP, AGE, GENDER, CAR_TYPE, LICENCENO, LAT, LNG, PAYMENT_METHOD) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    "INSERT INTO DRIVERS (NAME, MOBILE, LOCATION, EXPERIENCE, FEES_DETAILS, DOB, BLOODGRP, AGE, GENDER, CAR_TYPE, LICENCENO, LAT, LNG, PAYMENT_METHOD,STATUS,PAYACTIVE) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
   db.query(
     sql,
     [
@@ -612,6 +687,8 @@ app.post("/api/adddrivers", upload.none(), (req, res) => {
       lat,
       lng,
       paymentmode,
+      status,
+      payactive
     ],
     (err, results) => {
       if (err) {
@@ -626,7 +703,7 @@ app.post("/api/adddrivers", upload.none(), (req, res) => {
 
 app.get("/api/drivers", (req, res) => {
   db.query(
-    "SELECT ID, NAME, MOBILE, LOCATION, STATUS, CAR_TYPE, EXPERIENCE, FEES_DETAILS, DOB, BLOODGRP, AGE, GENDER, LICENCENO, LAT, LNG, PAYMENT_METHOD  FROM drivers ORDER BY ID DESC",
+    "SELECT ID, NAME, MOBILE, LOCATION, STATUS, CAR_TYPE, EXPERIENCE, FEES_DETAILS, DOB, BLOODGRP, AGE, GENDER, LICENCENO, LAT, LNG, PAYMENT_METHOD,PAYACTIVE  FROM drivers ORDER BY ID DESC",
     function (error, results) {
       if (error) {
         console.log(`Error fetching drivers: ${error.message}`);
@@ -650,6 +727,7 @@ app.get("/api/drivers", (req, res) => {
         status: r.STATUS,
         lat: parseFloat(r.LAT),
         lng: parseFloat(r.LNG),
+        payactive: r.PAYACTIVE
       }));
       res.send(JSON.stringify(result));
     },
@@ -674,9 +752,11 @@ app.put("/api/updatedriver/:id", upload.none(), (req, res) => {
   const car_type = req.body.car_type;
   const lat = req.body.lat;
   const lng = req.body.lng;
+  const status = req.body.status;
+  const payactive=req.body.payactive;
 
   const sql =
-    "UPDATE DRIVERS SET NAME=?, MOBILE=?, LOCATION=?, EXPERIENCE=?, FEES_DETAILS=?, DOB=?, BLOODGRP=?, AGE=?, GENDER=?, CAR_TYPE=?, LICENCENO=?, PAYMENT_METHOD=?, LAT=?, LNG=? WHERE ID=?";
+    "UPDATE DRIVERS SET NAME=?, MOBILE=?, LOCATION=?, EXPERIENCE=?, FEES_DETAILS=?, DOB=?, BLOODGRP=?, AGE=?, GENDER=?, CAR_TYPE=?, LICENCENO=?, PAYMENT_METHOD=?, LAT=?, LNG=?,STATUS=?,PAYACTIVE=? WHERE ID=?";
   db.query(
     sql,
     [
@@ -693,7 +773,9 @@ app.put("/api/updatedriver/:id", upload.none(), (req, res) => {
       licenceNo,
       paymentmode,
       lat,
-      lng,
+      lng,     
+      status,
+      payactive,
       driverId,
     ],
     (err, result) => {
@@ -806,6 +888,7 @@ app.put("/api/customers/update-name", async (req, res) => {
     res.status(500).json({ error: "Failed to update name" });
   }
 });
+
 const PORT = 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server + Socket running on http://0.0.0.0:${PORT}`);

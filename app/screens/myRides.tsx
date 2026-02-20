@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 
-const BASE_URL = "http://192.168.0.5:3000";
+const BASE_URL = "http://192.168.0.7:3000";
 
 const RideTab = () => {
   const [booking, setBooking] = useState<any>(null);
@@ -121,6 +121,7 @@ setBooking(null);
   const startRide = async () => {
     await axios.post(`${BASE_URL}/api/bookings/start`, {
       bookingId: booking.id,
+      driverId: booking.driver_id,
     });
     fetchBooking();
   };
@@ -128,6 +129,7 @@ setBooking(null);
   const completeRide = async () => {
     await axios.post(`${BASE_URL}/api/complete-ride`, {
       bookingId: booking.id,
+      driverId: booking.driver_id,
     });
     fetchBooking();
   };
@@ -231,7 +233,7 @@ setBooking(null);
           {booking.driver_name && (
             <View style={styles.driverBox}>
               <Text>Driver: {booking.driver_name}</Text>
-              <Text>Mobile: {booking.driver_mobile}</Text>
+              <Text>Mobile: {booking.driver_phone}</Text>
             </View>
           )}
         </View>
