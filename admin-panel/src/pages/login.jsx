@@ -1,25 +1,25 @@
-import axios from 'axios';
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import axios from "axios";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-const BASE_URL = "http://16.171.16.170:3000";
+const BASE_URL = "http://13.60.174.204:3000";
 
 const SupportLoginScreen = () => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const navigate = useNavigate();
 
   /* ── LOGIN ── */
   const handleLogin = async (e) => {
     e.preventDefault();
-    setError('');
+    setError("");
 
     if (!username.trim() || !password.trim()) {
-      setError('Please enter username and password');
+      setError("Please enter username and password");
       return;
     }
 
@@ -31,19 +31,23 @@ const SupportLoginScreen = () => {
       });
 
       if (response.data.success) {
-        localStorage.setItem('supportId', response.data.user.ID.toString());
-        localStorage.setItem('supportUsername', response.data.user.USERNAME);
-        localStorage.setItem('role', 'support');
-        navigate('/driver-dashboard');
+        localStorage.setItem("supportId", response.data.user.ID.toString());
+        localStorage.setItem("supportUsername", response.data.user.USERNAME);
+        localStorage.setItem("role", "support");
+        navigate("/driver-dashboard");
       } else {
-        setError(response.data.message || 'Invalid username or password');
+        setError(response.data.message || "Invalid username or password");
       }
     } catch (err) {
-      console.error('Login error:', err);
+      console.error("Login error:", err);
       if (err.response) {
-        setError(err.response.data.message || err.response.data.error || 'Login failed');
+        setError(
+          err.response.data.message ||
+            err.response.data.error ||
+            "Login failed",
+        );
       } else {
-        setError('Network error. Please try again.');
+        setError("Network error. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -83,7 +87,10 @@ const SupportLoginScreen = () => {
                 style={styles.input}
                 placeholder="Enter username"
                 value={username}
-                onChange={(e) => { setUsername(e.target.value); setError(''); }}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  setError("");
+                }}
                 disabled={loading}
               />
             </div>
@@ -95,11 +102,14 @@ const SupportLoginScreen = () => {
             <div className="input-focus" style={styles.inputContainer}>
               <span style={styles.inputIcon}>🔒</span>
               <input
-                type={showPassword ? 'text' : 'password'}
+                type={showPassword ? "text" : "password"}
                 style={styles.input}
                 placeholder="Enter password"
                 value={password}
-                onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError("");
+                }}
                 disabled={loading}
               />
               <button
@@ -108,7 +118,9 @@ const SupportLoginScreen = () => {
                 style={styles.eyeIcon}
                 onClick={() => setShowPassword(!showPassword)}
               >
-                <span style={styles.eyeIconText}>{showPassword ? '👁️' : '👁️‍🗨️'}</span>
+                <span style={styles.eyeIconText}>
+                  {showPassword ? "👁️" : "👁️‍🗨️"}
+                </span>
               </button>
             </div>
           </div>
@@ -116,18 +128,25 @@ const SupportLoginScreen = () => {
           {/* Login Button */}
           <button
             type="submit"
-            className={`login-btn ${loading ? 'disabled' : ''}`}
-            style={{ ...styles.loginButton, ...(loading && styles.loginButtonDisabled) }}
+            className={`login-btn ${loading ? "disabled" : ""}`}
+            style={{
+              ...styles.loginButton,
+              ...(loading && styles.loginButtonDisabled),
+            }}
             disabled={loading}
           >
-            {loading ? <span className="spinner" style={styles.spinner} /> : 'Login'}
+            {loading ? (
+              <span className="spinner" style={styles.spinner} />
+            ) : (
+              "Login"
+            )}
           </button>
 
           <button
             type="button"
             className="back-hover"
             style={styles.backButton}
-            onClick={() => navigate('/')}
+            onClick={() => navigate("/")}
             disabled={loading}
           >
             ← Back to main
@@ -176,92 +195,156 @@ const keyframes = `
 
 const styles = {
   container: {
-    minHeight: '100vh',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    padding: '15px',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    overflow: 'hidden',
+    minHeight: "100vh",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    padding: "15px",
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    overflow: "hidden",
   },
   card: {
-    width: '100%',
-    maxWidth: '380px',
-    background: '#fff',
-    borderRadius: '20px',
-    boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-    overflow: 'hidden',
+    width: "100%",
+    maxWidth: "380px",
+    background: "#fff",
+    borderRadius: "20px",
+    boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+    overflow: "hidden",
   },
   header: {
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    padding: '40px 20px 35px',
-    textAlign: 'center',
-    color: '#fff',
-    boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
+    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    padding: "40px 20px 35px",
+    textAlign: "center",
+    color: "#fff",
+    boxShadow: "0 4px 15px rgba(0,0,0,0.2)",
   },
   iconContainer: {
-    width: '70px', height: '70px',
-    margin: '0 auto 15px',
-    background: 'rgba(255,255,255,0.25)',
-    borderRadius: '50%',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    border: '3px solid rgba(255,255,255,0.3)',
+    width: "70px",
+    height: "70px",
+    margin: "0 auto 15px",
+    background: "rgba(255,255,255,0.25)",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "3px solid rgba(255,255,255,0.3)",
   },
-  icon: { fontSize: '35px' },
-  headerTitle: { fontSize: '26px', fontWeight: '800', margin: '0 0 8px 0', letterSpacing: '0.5px' },
-  headerSubtitle: { fontSize: '14px', margin: '0', opacity: '0.95', fontWeight: '500' },
+  icon: { fontSize: "35px" },
+  headerTitle: {
+    fontSize: "26px",
+    fontWeight: "800",
+    margin: "0 0 8px 0",
+    letterSpacing: "0.5px",
+  },
+  headerSubtitle: {
+    fontSize: "14px",
+    margin: "0",
+    opacity: "0.95",
+    fontWeight: "500",
+  },
 
-  form: { padding: '25px 20px' },
+  form: { padding: "25px 20px" },
 
   errorMessage: {
-    display: 'flex', alignItems: 'center', gap: '10px',
-    padding: '12px 14px',
-    background: '#fee', border: '1px solid #fcc',
-    borderRadius: '10px', marginBottom: '18px',
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    padding: "12px 14px",
+    background: "#fee",
+    border: "1px solid #fcc",
+    borderRadius: "10px",
+    marginBottom: "18px",
   },
-  errorIcon: { fontSize: '18px' },
-  errorText: { margin: '0', color: '#c33', fontSize: '13px', fontWeight: '500' },
+  errorIcon: { fontSize: "18px" },
+  errorText: {
+    margin: "0",
+    color: "#c33",
+    fontSize: "13px",
+    fontWeight: "500",
+  },
 
-  inputWrapper: { marginBottom: '18px' },
-  label: { display: 'block', fontSize: '13px', fontWeight: '700', color: '#333', marginBottom: '8px', marginLeft: '4px', letterSpacing: '0.3px' },
+  inputWrapper: { marginBottom: "18px" },
+  label: {
+    display: "block",
+    fontSize: "13px",
+    fontWeight: "700",
+    color: "#333",
+    marginBottom: "8px",
+    marginLeft: "4px",
+    letterSpacing: "0.3px",
+  },
   inputContainer: {
-    display: 'flex', alignItems: 'center',
-    background: '#fff',
-    border: '2px solid #e8e8e8',
-    borderRadius: '14px', padding: '0 14px',
-    transition: 'all 0.3s ease',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+    display: "flex",
+    alignItems: "center",
+    background: "#fff",
+    border: "2px solid #e8e8e8",
+    borderRadius: "14px",
+    padding: "0 14px",
+    transition: "all 0.3s ease",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
   },
-  inputIcon: { fontSize: '20px', marginRight: '12px' },
+  inputIcon: { fontSize: "20px", marginRight: "12px" },
   input: {
-    flex: '1', border: 'none', outline: 'none',
-    padding: '14px 0', fontSize: '15px',
-    color: '#333', background: 'transparent', fontWeight: '500',
+    flex: "1",
+    border: "none",
+    outline: "none",
+    padding: "14px 0",
+    fontSize: "15px",
+    color: "#333",
+    background: "transparent",
+    fontWeight: "500",
   },
-  eyeIcon: { background: 'none', border: 'none', cursor: 'pointer', padding: '8px', transition: 'transform 0.2s ease' },
-  eyeIconText: { fontSize: '20px' },
+  eyeIcon: {
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: "8px",
+    transition: "transform 0.2s ease",
+  },
+  eyeIconText: { fontSize: "20px" },
 
   loginButton: {
-    width: '100%', padding: '16px', marginTop: '18px',
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    border: 'none', borderRadius: '14px',
-    color: '#fff', fontSize: '16px', fontWeight: '800',
-    cursor: 'pointer', transition: 'all 0.3s ease',
-    boxShadow: '0 6px 20px rgba(102,126,234,0.4)', letterSpacing: '0.5px',
+    width: "100%",
+    padding: "16px",
+    marginTop: "18px",
+    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    border: "none",
+    borderRadius: "14px",
+    color: "#fff",
+    fontSize: "16px",
+    fontWeight: "800",
+    cursor: "pointer",
+    transition: "all 0.3s ease",
+    boxShadow: "0 6px 20px rgba(102,126,234,0.4)",
+    letterSpacing: "0.5px",
   },
-  loginButtonDisabled: { opacity: '0.7', cursor: 'not-allowed', boxShadow: 'none' },
+  loginButtonDisabled: {
+    opacity: "0.7",
+    cursor: "not-allowed",
+    boxShadow: "none",
+  },
   spinner: {
-    display: 'inline-block', width: '18px', height: '18px',
-    border: '3px solid rgba(255,255,255,0.3)',
-    borderTopColor: '#fff', borderRadius: '50%',
+    display: "inline-block",
+    width: "18px",
+    height: "18px",
+    border: "3px solid rgba(255,255,255,0.3)",
+    borderTopColor: "#fff",
+    borderRadius: "50%",
   },
 
   backButton: {
-    width: '100%', padding: '12px', marginTop: '20px',
-    background: 'transparent', border: 'none',
-    color: '#667eea', fontSize: '14px', fontWeight: '700',
-    cursor: 'pointer', transition: 'all 0.3s ease',
+    width: "100%",
+    padding: "12px",
+    marginTop: "20px",
+    background: "transparent",
+    border: "none",
+    color: "#667eea",
+    fontSize: "14px",
+    fontWeight: "700",
+    cursor: "pointer",
+    transition: "all 0.3s ease",
   },
 };
 

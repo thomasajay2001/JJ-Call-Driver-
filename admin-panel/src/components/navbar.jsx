@@ -1,73 +1,76 @@
-import axios from 'axios';
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import axios from "axios";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-const BASE_URL = "http://16.171.16.170:3000";
+const BASE_URL = "http://13.60.174.204:3000";
 
 export default function Navbar({ onLogout }) {
   const navigate = useNavigate();
   const [showDropdown, setShowDropdown] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-  
+
   // Password change form
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showCurrentPwd, setShowCurrentPwd] = useState(false);
   const [showNewPwd, setShowNewPwd] = useState(false);
   const [showConfirmPwd, setShowConfirmPwd] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const adminUsername = localStorage.getItem('supportUsername') || 'Admin';
+  const adminUsername = localStorage.getItem("supportUsername") || "Admin";
 
   /* ── Handle Change Password ── */
   const handleChangePassword = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
+    setError("");
+    setSuccess("");
 
     // Validation
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setError('All fields are required');
+      setError("All fields are required");
       return;
     }
     if (newPassword.length < 4) {
-      setError('New password must be at least 4 characters');
+      setError("New password must be at least 4 characters");
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError('New passwords do not match');
+      setError("New passwords do not match");
       return;
     }
 
     setLoading(true);
     try {
-      const response = await axios.post(`${BASE_URL}/api/support/update-credentials`, {
-        username: adminUsername,
-        currentPassword: currentPassword.trim(),
-        newPassword: newPassword.trim(),
-      });
+      const response = await axios.post(
+        `${BASE_URL}/api/support/update-credentials`,
+        {
+          username: adminUsername,
+          currentPassword: currentPassword.trim(),
+          newPassword: newPassword.trim(),
+        },
+      );
 
       if (response.data.success) {
-        setSuccess('✅ Password changed successfully!');
-        setCurrentPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
+        setSuccess("✅ Password changed successfully!");
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
         setTimeout(() => {
           setShowPasswordModal(false);
-          setSuccess('');
+          setSuccess("");
         }, 2000);
       } else {
-        setError(response.data.message || 'Failed to change password');
+        setError(response.data.message || "Failed to change password");
       }
     } catch (err) {
       if (err.response) {
-        setError(err.response.data.message || 'Failed to change password');
+        setError(err.response.data.message || "Failed to change password");
       } else {
-        setError('Network error. Please try again.');
+        setError("Network error. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -79,73 +82,76 @@ export default function Navbar({ onLogout }) {
     setShowLogoutModal(true);
     setShowDropdown(false);
   };
-const confirmLogout = () => {
-  // 1️⃣ Navigate first
-  navigate('/', { replace: true });
+  const confirmLogout = () => {
+    // 1️⃣ Navigate first
+    navigate("/", { replace: true });
 
-  // 2️⃣ Then clear storage
-  localStorage.removeItem('supportId');
-  localStorage.removeItem('supportUsername');
-  localStorage.removeItem('role');
+    // 2️⃣ Then clear storage
+    localStorage.removeItem("supportId");
+    localStorage.removeItem("supportUsername");
+    localStorage.removeItem("role");
 
-  // 3️⃣ Then notify parent
-  if (onLogout) {
-    onLogout();
-  }
-};
+    // 3️⃣ Then notify parent
+    if (onLogout) {
+      onLogout();
+    }
+  };
   return (
     <>
-   <div style={styles.navbar}>
-  <div style={styles.right}>
-    <div style={styles.profileContainer}>
-      <button
-        style={styles.profileBtn}
-        onClick={() => setShowDropdown(!showDropdown)}
-        onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
-      >
-        <span style={styles.profileIcon}>👤</span>
-        <span style={styles.profileName}>{adminUsername}</span>
-        <span style={styles.dropdownArrow}>
-          {showDropdown ? '▲' : '▼'}
-        </span>
-      </button>
+      <div style={styles.navbar}>
+        <div style={styles.right}>
+          <div style={styles.profileContainer}>
+            <button
+              style={styles.profileBtn}
+              onClick={() => setShowDropdown(!showDropdown)}
+              onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+            >
+              <span style={styles.profileIcon}>👤</span>
+              <span style={styles.profileName}>{adminUsername}</span>
+              <span style={styles.dropdownArrow}>
+                {showDropdown ? "▲" : "▼"}
+              </span>
+            </button>
 
-      {showDropdown && (
-        <div style={styles.dropdown}>
-          <button
-            style={styles.dropdownItem}
-            onClick={() => {
-              setShowPasswordModal(true);
-              setShowDropdown(false);
-              setError('');
-              setSuccess('');
-            }}
-          >
-            🔑 Change Password
-          </button>
+            {showDropdown && (
+              <div style={styles.dropdown}>
+                <button
+                  style={styles.dropdownItem}
+                  onClick={() => {
+                    setShowPasswordModal(true);
+                    setShowDropdown(false);
+                    setError("");
+                    setSuccess("");
+                  }}
+                >
+                  🔑 Change Password
+                </button>
 
-          <div style={styles.dropdownDivider} />
+                <div style={styles.dropdownDivider} />
 
-          <button
-            style={{ ...styles.dropdownItem, ...styles.dropdownLogout }}
-            onClick={handleLogout}
-          >
-            🚪 Logout
-          </button>
+                <button
+                  style={{ ...styles.dropdownItem, ...styles.dropdownLogout }}
+                  onClick={handleLogout}
+                >
+                  🚪 Logout
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      )}
-    </div>
-  </div>
-</div>
+      </div>
 
       {/* ── Change Password Modal ── */}
       {showPasswordModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowPasswordModal(false)}>
+        <div
+          style={styles.modalOverlay}
+          onClick={() => setShowPasswordModal(false)}
+        >
           <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div style={styles.modalHeader}>
               <div style={styles.modalIconBox}>
-                <span style={{ fontSize: '28px' }}>🔑</span>
+                <span style={{ fontSize: "28px" }}>🔑</span>
               </div>
               <h2 style={styles.modalTitle}>Change Password</h2>
               <p style={styles.modalSubtitle}>Update your account password</p>
@@ -178,11 +184,14 @@ const confirmLogout = () => {
                 <div style={styles.inputContainer}>
                   <span style={styles.inputIcon}>🔒</span>
                   <input
-                    type={showCurrentPwd ? 'text' : 'password'}
+                    type={showCurrentPwd ? "text" : "password"}
                     style={styles.input}
                     placeholder="Enter current password"
                     value={currentPassword}
-                    onChange={(e) => { setCurrentPassword(e.target.value); setError(''); }}
+                    onChange={(e) => {
+                      setCurrentPassword(e.target.value);
+                      setError("");
+                    }}
                     disabled={loading}
                   />
                   <button
@@ -190,7 +199,9 @@ const confirmLogout = () => {
                     style={styles.eyeBtn}
                     onClick={() => setShowCurrentPwd(!showCurrentPwd)}
                   >
-                    <span style={styles.eyeIcon}>{showCurrentPwd ? '👁️' : '👁️‍🗨️'}</span>
+                    <span style={styles.eyeIcon}>
+                      {showCurrentPwd ? "👁️" : "👁️‍🗨️"}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -201,11 +212,14 @@ const confirmLogout = () => {
                 <div style={styles.inputContainer}>
                   <span style={styles.inputIcon}>✏️</span>
                   <input
-                    type={showNewPwd ? 'text' : 'password'}
+                    type={showNewPwd ? "text" : "password"}
                     style={styles.input}
                     placeholder="Enter new password"
                     value={newPassword}
-                    onChange={(e) => { setNewPassword(e.target.value); setError(''); }}
+                    onChange={(e) => {
+                      setNewPassword(e.target.value);
+                      setError("");
+                    }}
                     disabled={loading}
                   />
                   <button
@@ -213,7 +227,9 @@ const confirmLogout = () => {
                     style={styles.eyeBtn}
                     onClick={() => setShowNewPwd(!showNewPwd)}
                   >
-                    <span style={styles.eyeIcon}>{showNewPwd ? '👁️' : '👁️‍🗨️'}</span>
+                    <span style={styles.eyeIcon}>
+                      {showNewPwd ? "👁️" : "👁️‍🗨️"}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -224,11 +240,14 @@ const confirmLogout = () => {
                 <div style={styles.inputContainer}>
                   <span style={styles.inputIcon}>✔️</span>
                   <input
-                    type={showConfirmPwd ? 'text' : 'password'}
+                    type={showConfirmPwd ? "text" : "password"}
                     style={styles.input}
                     placeholder="Re-enter new password"
                     value={confirmPassword}
-                    onChange={(e) => { setConfirmPassword(e.target.value); setError(''); }}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value);
+                      setError("");
+                    }}
                     disabled={loading}
                   />
                   <button
@@ -236,7 +255,9 @@ const confirmLogout = () => {
                     style={styles.eyeBtn}
                     onClick={() => setShowConfirmPwd(!showConfirmPwd)}
                   >
-                    <span style={styles.eyeIcon}>{showConfirmPwd ? '👁️' : '👁️‍🗨️'}</span>
+                    <span style={styles.eyeIcon}>
+                      {showConfirmPwd ? "👁️" : "👁️‍🗨️"}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -248,11 +269,11 @@ const confirmLogout = () => {
                   style={styles.modalCancelBtn}
                   onClick={() => {
                     setShowPasswordModal(false);
-                    setCurrentPassword('');
-                    setNewPassword('');
-                    setConfirmPassword('');
-                    setError('');
-                    setSuccess('');
+                    setCurrentPassword("");
+                    setNewPassword("");
+                    setConfirmPassword("");
+                    setError("");
+                    setSuccess("");
                   }}
                 >
                   Cancel
@@ -261,11 +282,11 @@ const confirmLogout = () => {
                   type="submit"
                   style={{
                     ...styles.modalSaveBtn,
-                    ...(loading && styles.modalSaveBtnDisabled)
+                    ...(loading && styles.modalSaveBtnDisabled),
                   }}
                   disabled={loading}
                 >
-                  {loading ? 'Updating...' : 'Change Password'}
+                  {loading ? "Updating..." : "Change Password"}
                 </button>
               </div>
             </form>
@@ -275,7 +296,10 @@ const confirmLogout = () => {
 
       {/* ── Logout Confirmation Modal ── */}
       {showLogoutModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowLogoutModal(false)}>
+        <div
+          style={styles.modalOverlay}
+          onClick={() => setShowLogoutModal(false)}
+        >
           <div style={styles.logoutModal} onClick={(e) => e.stopPropagation()}>
             {/* Icon */}
             <div style={styles.logoutIconWrapper}>
@@ -284,9 +308,7 @@ const confirmLogout = () => {
 
             {/* Content */}
             <h2 style={styles.logoutTitle}>Logout</h2>
-            <p style={styles.logoutMessage}>
-              Are you sure you want to logout?
-            </p>
+            <p style={styles.logoutMessage}>Are you sure you want to logout?</p>
 
             {/* Buttons */}
             <div style={styles.logoutBtnRow}>
@@ -296,10 +318,7 @@ const confirmLogout = () => {
               >
                 Cancel
               </button>
-              <button
-                style={styles.logoutConfirmBtn}
-                onClick={confirmLogout}
-              >
+              <button style={styles.logoutConfirmBtn} onClick={confirmLogout}>
                 Yes, Logout
               </button>
             </div>
@@ -311,19 +330,19 @@ const confirmLogout = () => {
 }
 
 const styles = {
-navbar: {
-  height: "60px",
-  background: "#111827",
-  color: "#fff",
-  display: "flex",
-  alignItems: "center",
-  padding: "0 25px",
-  position: "fixed",
-  top: 0,
-  left: "280px",   // sidebar width
-  right: 0,
-  zIndex: 1000,
-},
+  navbar: {
+    height: "60px",
+    background: "#111827",
+    color: "#fff",
+    display: "flex",
+    alignItems: "center",
+    padding: "0 25px",
+    position: "fixed",
+    top: 0,
+    left: "280px", // sidebar width
+    right: 0,
+    zIndex: 1000,
+  },
 
   logo: {
     margin: 0,
@@ -333,12 +352,12 @@ navbar: {
     letterSpacing: "1px",
   },
 
-right: {
-  display: "flex",
-  alignItems: "center",
-  gap: "16px",
-  marginLeft: "auto", // ✅ pushes admin button to right end
-},
+  right: {
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+    marginLeft: "auto", // ✅ pushes admin button to right end
+  },
 
   /* ── Profile Dropdown ── */
   profileContainer: {

@@ -7,9 +7,9 @@ export default {
     version: "1.0.0",
 
     extra: {
-      BASE_URL: process.env.BASE_URL || "http://16.171.16.170:3000",
+      BASE_URL: process.env.BASE_URL || "http://13.60.174.204:3000",
       eas: {
-        projectId: "417b4c1d-8b29-4183-b431-46d1f756f85e",  // ← new ID
+        projectId: "417b4c1d-8b29-4183-b431-46d1f756f85e", // ← new ID
       },
     },
 
