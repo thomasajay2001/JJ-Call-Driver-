@@ -2,7 +2,7 @@ import axios from 'axios';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const BASE_URL = "http://192.168.0.7:3000";
+const BASE_URL = "http://16.171.16.170:3000";
 
 const SupportLoginScreen = () => {
   const [username, setUsername] = useState('');

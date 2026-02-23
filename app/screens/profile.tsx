@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 
-const BASE_URL = "http://192.168.0.7:3000";
+const BASE_URL = "http://16.171.16.170:3000";
 
 const ProfileTab = () => {
   const [profile, setProfile] = useState<any>([]);
