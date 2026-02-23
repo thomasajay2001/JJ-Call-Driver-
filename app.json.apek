@@ -10,6 +10,7 @@
     "newArchEnabled": true,
        "extra": {
       "BASE_URL": "http://13.60.174.204:3000",
+
       "eas": {
         "projectId": "42ba8b28-bba5-43d3-9be4-0c5bec49785a"
       }

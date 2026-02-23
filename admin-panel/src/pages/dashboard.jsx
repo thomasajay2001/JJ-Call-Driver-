@@ -5,6 +5,7 @@ import { io } from "socket.io-client";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 const SOCKET_URL = "http://13.60.174.204:3000";
+
 const REFRESH_MS = 30000; // 30 seconds
 
 export default function Dashboard() {
@@ -176,13 +177,11 @@ export default function Dashboard() {
       .sort((a, b) => b.trips - a.trips)
       .slice(0, 3);
     if (sorted.length === 0)
-      return drivers
-        .slice(0, 3)
-        .map((d) => ({
-          name: d.name,
-          trips: Math.floor(Math.random() * 10) + 5,
-          rating: (4.5 + Math.random() * 0.5).toFixed(1),
-        }));
+      return drivers.slice(0, 3).map((d) => ({
+        name: d.name,
+        trips: Math.floor(Math.random() * 10) + 5,
+        rating: (4.5 + Math.random() * 0.5).toFixed(1),
+      }));
     return sorted;
   };
   const topDrivers = getTopDrivers();

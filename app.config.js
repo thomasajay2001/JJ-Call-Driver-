@@ -8,6 +8,7 @@ export default {
 
     extra: {
       BASE_URL: process.env.BASE_URL || "http://13.60.174.204:3000",
+
       eas: {
         projectId: "417b4c1d-8b29-4183-b431-46d1f756f85e", // ← new ID
       },
