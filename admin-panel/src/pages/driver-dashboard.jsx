@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import io from "socket.io-client";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
-const SOCKET_URL = "http://16.171.16.170:3000";
+const SOCKET_URL = "http://13.53.193.48:3000";
 
 export default function DriverDashboard() {
   const [drivers, setDrivers] = useState([]);
