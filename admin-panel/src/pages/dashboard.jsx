@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
-const SOCKET_URL = "http://13.60.174.204:3000";
+const SOCKET_URL = "http://localhost:3000";
 
 const REFRESH_MS = 30000; // 30 seconds
 
