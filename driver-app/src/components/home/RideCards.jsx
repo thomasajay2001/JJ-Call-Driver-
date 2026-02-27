@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { BASE_URL } from "../../utils/constants";
 
 /* ─────────────────────────────────────────
    IncomingRideCard
@@ -97,7 +98,8 @@ export const IncomingRideCard = ({ ride, onAccept, onDecline }) => {
 };
 
 /* ─────────────────────────────────────────
-   ActiveTripCard
+   ActiveTripCard — ride accepted / in progress
+   Shows live driver location map (Rapido style)
    ───────────────────────────────────────── */
 export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
   const mapDivRef  = useRef(null);
@@ -105,8 +107,8 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
   const driverMark = useRef(null);
   const [driverPos, setDriverPos] = useState(null);
   const watchId    = useRef(null);
-  const BASE_URL   = "http://localhost:3000";
 
+  /* ── Init Leaflet map ── */
   useEffect(() => {
     if (!document.getElementById("leaflet-css")) {
       const link = document.createElement("link");
@@ -117,29 +119,35 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
 
     const initMap = () => {
       if (!mapDivRef.current || leafletMap.current) return;
-      const L   = window.L;
-      const lat = parseFloat(ride.pickup_lat) || 13.0827;
-      const lng = parseFloat(ride.pickup_lng) || 80.2707;
+      const L = window.L;
+
+      const defLat = parseFloat(ride.pickup_lat) || 13.0827;
+      const defLng = parseFloat(ride.pickup_lng) || 80.2707;
 
       const map = L.map(mapDivRef.current, {
-        center: [lat, lng], zoom: 14,
-        zoomControl: false, attributionControl: false,
+        center: [defLat, defLng],
+        zoom: 14,
+        zoomControl: false,
+        attributionControl: false,
       });
+
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
 
+      // Pickup marker (green)
       const pickupIcon = L.divIcon({
         className: "",
         html: `<div style="background:#10B981;width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(16,185,129,0.5)"></div>`,
         iconSize: [14, 14], iconAnchor: [7, 7],
       });
-      L.marker([lat, lng], { icon: pickupIcon }).addTo(map).bindPopup("📍 Pickup");
+      L.marker([defLat, defLng], { icon: pickupIcon }).addTo(map).bindPopup("📍 Pickup");
 
+      // Driver car icon
       const carIcon = L.divIcon({
         className: "",
         html: `<div style="font-size:28px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))">🚕</div>`,
         iconSize: [32, 32], iconAnchor: [16, 16],
       });
-      driverMark.current = L.marker([lat, lng], { icon: carIcon }).addTo(map);
+      driverMark.current = L.marker([defLat, defLng], { icon: carIcon }).addTo(map);
       leafletMap.current = map;
       setTimeout(() => map.invalidateSize(), 200);
     };
@@ -157,7 +165,7 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
     };
   }, []);
 
-  /* Driver GPS stream */
+  /* ── Driver: stream real GPS to server + update map ── */
   useEffect(() => {
     if (role !== "driver") return;
     const driverId = localStorage.getItem("driverId");
@@ -185,7 +193,7 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
     return () => { if (watchId.current) navigator.geolocation.clearWatch(watchId.current); };
   }, [role]);
 
-  /* Customer polls driver GPS */
+  /* ── Customer: poll driver GPS every 4s ── */
   useEffect(() => {
     if (role !== "customer") return;
     const driverId = ride.driver_id;
@@ -215,12 +223,14 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
 
   return (
     <div style={s.activeTripCard}>
+      {/* Status badge */}
       <div style={{ ...s.statusBadge, backgroundColor: statusBg }}>
         <div style={{ ...s.statusDot, backgroundColor: statusColor }} />
         <span style={{ ...s.statusBadgeText, color: statusColor }}>{statusLabel}</span>
         {ride.status === "accepted" && <span style={s.etaText}>ETA ~2 min</span>}
       </div>
 
+      {/* Live Map */}
       <div style={s.mapWrap}>
         <div ref={mapDivRef} style={s.mapBox} />
         <div style={s.liveBadge}>
@@ -232,6 +242,7 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
         )}
       </div>
 
+      {/* Person info */}
       <div style={s.personRow}>
         <div style={s.avatar}>
           <span style={{ fontSize: 24 }}>{role === "driver" ? "👤" : "👨‍✈️"}</span>
@@ -250,6 +261,7 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
         >📞</a>
       </div>
 
+      {/* Route */}
       <div style={s.routeBox}>
         <div style={s.routeRow}>
           <div style={{ ...s.dot, backgroundColor: "#10B981" }} />
@@ -268,6 +280,7 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
         </div>
       </div>
 
+      {/* Driver actions */}
       {role === "driver" && (
         <>
           {ride.status === "accepted" && (
@@ -282,6 +295,7 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
   );
 };
 
+/* ── Styles ── */
 const s = {
   requestCard:      { margin: "0 16px 14px", backgroundColor: "#fff", borderRadius: 22, overflow: "hidden", border: "2px solid #2563EB", boxShadow: "0 4px 20px rgba(37,99,235,0.18)" },
   timerBarBg:       { width: "100%", height: 5, backgroundColor: "#EFF6FF" },
