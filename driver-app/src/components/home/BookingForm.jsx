@@ -20,6 +20,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
   const [dropSuggestions, setDropSuggestions] = useState([]);
   const [errors,          setErrors]          = useState({});
   const [locLoading,      setLocLoading]      = useState(false);
+  const [submitting,      setSubmitting]      = useState(false);
   const [pickupCoords,    setPickupCoords]    = useState(null);
 
   // Mini map inside booking form only
@@ -32,12 +33,27 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
     if (initialTriptype) setTriptype(initialTriptype);
   }, [initialDrop, initialTriptype]);
 
+  /* ── Pre-fill phone from localStorage (customer session) ── */
+  useEffect(() => {
+    if (visible) {
+      const savedPhone = localStorage.getItem("customerPhone") || "";
+      if (savedPhone) setPhone(savedPhone);
+    }
+  }, [visible]);
+
   /* ── Reset on close ── */
   useEffect(() => {
     if (!visible) {
-      setName(""); setPhone(""); setArea(""); setDArea(initialDrop || "");
-      setTriptype(initialTriptype || ""); setSuggestions([]); setDropSuggestions([]);
-      setErrors({}); setPickupCoords(null);
+      setName("");
+      setPhone("");
+      setArea("");
+      setDArea(initialDrop || "");
+      setTriptype(initialTriptype || "");
+      setSuggestions([]);
+      setDropSuggestions([]);
+      setErrors({});
+      setPickupCoords(null);
+      setSubmitting(false);
       if (miniMap.current) { miniMap.current.remove(); miniMap.current = null; }
     }
   }, [visible]);
@@ -58,14 +74,14 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
       }
 
       const map = L.map(miniMapDiv.current, {
-        center:           [pickupCoords.lat, pickupCoords.lng],
-        zoom:             15,
-        zoomControl:      false,
+        center:             [pickupCoords.lat, pickupCoords.lng],
+        zoom:               15,
+        zoomControl:        false,
         attributionControl: false,
-        dragging:         false,
-        scrollWheelZoom:  false,
-        doubleClickZoom:  false,
-        touchZoom:        false,
+        dragging:           false,
+        scrollWheelZoom:    false,
+        doubleClickZoom:    false,
+        touchZoom:          false,
       });
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
@@ -86,7 +102,6 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
       setTimeout(() => map.invalidateSize(), 150);
     };
 
-    // Leaflet already loaded by CustomerHero — reuse it
     if (window.L) {
       build();
     } else {
@@ -96,9 +111,9 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
         link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
         document.head.appendChild(link);
       }
-      const script    = document.createElement("script");
-      script.src      = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-      script.onload   = build;
+      const script  = document.createElement("script");
+      script.src    = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.onload = build;
       document.head.appendChild(script);
     }
   }, [pickupCoords]);
@@ -110,7 +125,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
       return;
     }
     try {
-      const r    = await fetch(
+      const r = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`,
         { headers: { "User-Agent": "JJCallDriverApp/1.0" } }
       );
@@ -145,15 +160,12 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
       async ({ coords }) => {
         const { latitude, longitude } = coords;
         try {
-          // Reverse geocode to get address string
-          const r    = await fetch(
+          const r = await fetch(
             `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
             { headers: { "User-Agent": "JJCallDriverApp/1.0" } }
           );
           const data = await r.json();
           const addr = data.display_name || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
-
-          // ✅ Only fill the input — home map is untouched
           setArea(addr);
           setPickupCoords({ lat: latitude, lng: longitude });
           setErrors((e) => ({ ...e, area: "" }));
@@ -193,38 +205,61 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
   };
 
   /* ── Submit ── */
- const handleSubmit = async () => {
-  if (!validate()) return;
-  try {
-    const bookingPhone = localStorage.getItem("customerPhone") 
-                      || localStorage.getItem("userPhone") 
-                      || phone; // ← fallback to the phone entered in form
+  const handleSubmit = async () => {
+    if (!validate()) return;
+    if (submitting)   return; // prevent double submit
 
-    if (!bookingPhone) {
-      alert("Session expired. Please login again.");
-      return;
-    }
+    setSubmitting(true);
 
-    const res = await axios.post(`${BASE_URL}/api/trip-booking`, {
-      name,
-      phone,
-      pickup:      area,
-      pickupLat:   pickupCoords?.lat || null,
-      pickupLng:   pickupCoords?.lng || null,
-      drop:        darea,
-      triptype,
-      bookingphnno: bookingPhone,
-    });
-    if (res.data.success) {
-      if (miniMap.current) { miniMap.current.remove(); miniMap.current = null; }
-      onClose();
-      onSuccess();
+    try {
+      /*
+        bookingphnno = the logged-in customer's phone (stored during OTP login).
+        LoginTab saves it as "customerPhone" → localStorage.setItem("customerPhone", phone)
+        We fall back to the form phone field in case localStorage was cleared.
+      */
+      const bookingphnno =
+        localStorage.getItem("customerPhone") ||
+        localStorage.getItem("userPhone")     ||
+        phone; // ← form field phone as last resort
+
+      const payload = {
+        name,
+        phone,
+        pickup:      area,
+        pickupLat:   pickupCoords?.lat ?? null,
+        pickupLng:   pickupCoords?.lng ?? null,
+        drop:        darea,
+        triptype,
+        bookingphnno,
+      };
+
+      console.log("📦 Booking payload:", payload); // helpful for debugging
+
+      const res = await axios.post(`${BASE_URL}/api/trip-booking`, payload);
+
+      if (res.data.success) {
+        // Clean up mini map
+        if (miniMap.current) { miniMap.current.remove(); miniMap.current = null; }
+        onClose();
+        onSuccess();
+      } else {
+        // Server returned 200 but success: false — show server message
+        alert(res.data.message || "Booking failed. Please try again.");
+      }
+    } catch (err) {
+      const serverMsg = err?.response?.data?.message || err?.response?.data?.error;
+      const status    = err?.response?.status;
+      console.error("❌ Booking error:", err.response?.data || err.message);
+      alert(
+        serverMsg
+          ? `Server error (${status}): ${serverMsg}`
+          : "Failed to submit booking. Please check your connection and try again."
+      );
+    } finally {
+      setSubmitting(false);
     }
-  } catch (err) {
-    console.error("Booking error:", err.response?.data);
-    alert("Failed to submit booking. Please try again.");
-  }
-};
+  };
+
   if (!visible) return null;
 
   return (
@@ -282,7 +317,6 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
               {locLoading ? (
                 <div style={st.spinner} />
               ) : (
-                /* Location crosshair icon */
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
                   stroke="#2563EB" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="3" fill="#2563EB" fillOpacity="0.2"/>
@@ -310,7 +344,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
         </div>
         {errors.area && <p style={st.err}>{errors.area}</p>}
 
-        {/* ── Mini map preview (only inside form, home map unchanged) ── */}
+        {/* ── Mini map preview ── */}
         {pickupCoords && (
           <div style={st.miniMapWrap}>
             <div ref={miniMapDiv} style={st.miniMap} />
@@ -321,7 +355,11 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
               </span>
               <button
                 style={st.clearLocBtn}
-                onClick={() => { setArea(""); setPickupCoords(null); if (miniMap.current) { miniMap.current.remove(); miniMap.current = null; } }}
+                onClick={() => {
+                  setArea("");
+                  setPickupCoords(null);
+                  if (miniMap.current) { miniMap.current.remove(); miniMap.current = null; }
+                }}
               >
                 ✕ Clear
               </button>
@@ -366,8 +404,12 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
         </div>
         {errors.triptype && <p style={st.err}>{errors.triptype}</p>}
 
-        <button style={st.submitBtn} onClick={handleSubmit}>
-          🚖 Book Ride
+        <button
+          style={{ ...st.submitBtn, opacity: submitting ? 0.7 : 1 }}
+          onClick={handleSubmit}
+          disabled={submitting}
+        >
+          {submitting ? "⏳ Booking..." : "🚖 Book Ride"}
         </button>
       </div>
     </div>
@@ -411,5 +453,5 @@ const st = {
 
   tripBtn:    { flex: 1, padding: "12px 0", borderRadius: 14, border: "1.5px solid #E2E8F0", backgroundColor: "#F8FAFC", fontSize: 14, fontWeight: 600, color: "#64748B", cursor: "pointer" },
   tripActive: { backgroundColor: "#2563EB", borderColor: "#2563EB", color: "#fff" },
-  submitBtn:  { width: "100%", padding: "16px 0", backgroundColor: "#2563EB", border: "none", borderRadius: 18, fontSize: 16, fontWeight: 800, color: "#fff", cursor: "pointer", marginTop: 12, boxShadow: "0 4px 14px rgba(37,99,235,0.3)" },
+  submitBtn:  { width: "100%", padding: "16px 0", backgroundColor: "#2563EB", border: "none", borderRadius: 18, fontSize: 16, fontWeight: 800, color: "#fff", cursor: "pointer", marginTop: 12, boxShadow: "0 4px 14px rgba(37,99,235,0.3)", transition: "opacity 0.2s" },
 };

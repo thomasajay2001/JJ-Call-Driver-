@@ -1,62 +1,86 @@
+-- ========================================
+-- DISABLE FOREIGN KEY CHECKS (SAFE RESET)
+-- ========================================
+SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS accept_booking;
+DROP TABLE IF EXISTS bookings;
+DROP TABLE IF EXISTS DRIVERS;
+DROP TABLE IF EXISTS SUPPORTTEAM;
+DROP TABLE IF EXISTS CUSTOMERS;
 DROP TABLE IF EXISTS otp_verification;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- ========================================
+-- OTP VERIFICATION
+-- ========================================
 CREATE TABLE otp_verification (
   id INT AUTO_INCREMENT PRIMARY KEY,
   phone VARCHAR(15) NOT NULL,
   otp VARCHAR(6) NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-DROP TABLE IF EXISTS CUSTOMERS;
-CREATE TABLE `CUSTOMERS`(
-  `ID` int NOT NULL AUTO_INCREMENT,
-  `NAME` varchar(128)  NULL,
-  `PHONE` varchar(64) NOT NULL,
-    PRIMARY KEY (`ID`),
-     UNIQUE KEY unique_phone (`PHONE`)
-  );
 
-  DROP TABLE IF EXISTS SUPPORTTEAM;
-  CREATE TABLE `SUPPORTTEAM`(
-  `ID` int NOT NULL AUTO_INCREMENT,
-  `USERNAME` VARCHAR(255),
-  `PASSWORD` VARCHAR(255),
-   PRIMARY KEY (`ID`)
-  );
-  INSERT INTO SUPPORTTEAM (USERNAME , PASSWORD) VALUES("SAM" , "SAM@123");
-DROP TABLE IF EXISTS DRIVERS;
-CREATE TABLE `DRIVERS`(
-`ID` int NOT NULL AUTO_INCREMENT,
-`NAME` VARCHAR(255),
-`LOCATION` VARCHAR(255),
-`MOBILE` VARCHAR(50),
-`LICENCENO` VARCHAR(50),
-`BLOODGRP` VARCHAR(10),
-`AGE` VARCHAR(10),
-`GENDER` VARCHAR(10),
-`DOB` DATE NULL,
-`FEES_DETAILS` VARCHAR(50),
-`PAYMENT_METHOD` VARCHAR(50),
-`EXPERIENCE` VARCHAR(50),
-`CAR_TYPE` VARCHAR(50),
-`STATUS` VARCHAR(10),
-`LAT` VARCHAR(50),
-`LNG` VARCHAR(50),
-PRIMARY KEY (`ID`)
+-- ========================================
+-- CUSTOMERS
+-- ========================================
+CREATE TABLE CUSTOMERS (
+  ID INT NOT NULL AUTO_INCREMENT,
+  NAME VARCHAR(128) NULL,
+  PHONE VARCHAR(64) NOT NULL,
+  PRIMARY KEY (ID),
+  UNIQUE KEY unique_phone (PHONE)
 );
-ALTER TABLE drivers ADD COLUMN avg_rating DECIMAL(2,1) DEFAULT 0,ADD COLUMN total_ratings INT DEFAULT 0;
-ALTER TABLE DRIVERS ADD COLUMN PAYACTIVE VARCHAR(20) DEFAULT NULL;
 
--- 2. Set default value of STATUS to 'offline' for new inserts
-ALTER TABLE DRIVERS MODIFY COLUMN STATUS VARCHAR(20) DEFAULT 'offline';
+-- ========================================
+-- SUPPORT TEAM
+-- ========================================
+CREATE TABLE SUPPORTTEAM (
+  ID INT NOT NULL AUTO_INCREMENT,
+  USERNAME VARCHAR(255),
+  PASSWORD VARCHAR(255),
+  PRIMARY KEY (ID)
+);
 
--- 3. (Optional) Backfill existing rows that have NULL status
-UPDATE DRIVERS SET STATUS = 'offline' WHERE STATUS IS NULL OR STATUS = '';
-DROP TABLE IF EXISTS bookings;
+INSERT INTO SUPPORTTEAM (USERNAME, PASSWORD)
+VALUES ('SAM', 'SAM@123');
+
+-- ========================================
+-- DRIVERS
+-- ========================================
+CREATE TABLE DRIVERS (
+  ID INT NOT NULL AUTO_INCREMENT,
+  NAME VARCHAR(255),
+  LOCATION VARCHAR(255),
+  MOBILE VARCHAR(50),
+  LICENCENO VARCHAR(50),
+  BLOODGRP VARCHAR(10),
+  AGE VARCHAR(10),
+  GENDER VARCHAR(10),
+  DOB DATE NULL,
+  FEES_DETAILS VARCHAR(50),
+  PAYMENT_METHOD VARCHAR(50),
+  EXPERIENCE VARCHAR(50),
+  CAR_TYPE VARCHAR(50),
+  STATUS VARCHAR(20) DEFAULT 'offline',
+  LAT VARCHAR(50),
+  LNG VARCHAR(50),
+  avg_rating DECIMAL(2,1) DEFAULT 0,
+  total_ratings INT DEFAULT 0,
+  PAYACTIVE VARCHAR(20) DEFAULT NULL,
+  PRIMARY KEY (ID)
+);
+
+-- ========================================
+-- BOOKINGS
+-- ========================================
 CREATE TABLE bookings (
   id INT AUTO_INCREMENT PRIMARY KEY,
   customer_name VARCHAR(100) NOT NULL,
   customer_mobile VARCHAR(15) NOT NULL,
   booking_phnno VARCHAR(15) NOT NULL,
+
   pickup VARCHAR(255) NOT NULL,
   pickup_lat DECIMAL(10,7),
   pickup_lng DECIMAL(10,7),
@@ -65,30 +89,49 @@ CREATE TABLE bookings (
 
   driver_id INT NULL,
 
-  status ENUM('pending','accepted','assigned','inride','completed') DEFAULT 'pending',
+  triptype ENUM('local','outstation') DEFAULT 'local',
+
+  status ENUM(
+    'pending',
+    'accepted',
+    'assigned',
+    'inride',
+    'completed'
+  ) DEFAULT 'pending',
+
+  rating INT,
+  feedback TEXT,
 
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
   CONSTRAINT fk_booking_driver
     FOREIGN KEY (driver_id)
-    REFERENCES drivers(id)
+    REFERENCES DRIVERS(ID)
     ON DELETE SET NULL
+    ON UPDATE CASCADE
 );
-ALTER TABLE bookings ADD COLUMN triptype ENUM('local', 'outstation') DEFAULT 'local';
-ALTER TABLE bookings ADD COLUMN rating INT,ADD COLUMN feedback TEXT;
-DROP TABLE IF EXISTS accept_booking;
 
+-- ========================================
+-- ACCEPT BOOKING (Driver Accept History)
+-- ========================================
 CREATE TABLE accept_booking (
   id INT AUTO_INCREMENT PRIMARY KEY,
 
   booking_id INT NOT NULL,
-
   driver_id INT NOT NULL,
+
   driver_name VARCHAR(100) NOT NULL,
   driver_mobile VARCHAR(15) NOT NULL,
 
   accepting_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-  FOREIGN KEY (booking_id) REFERENCES bookings(id),
-  FOREIGN KEY (driver_id) REFERENCES drivers(id)
+  FOREIGN KEY (booking_id)
+    REFERENCES bookings(id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE,
+
+  FOREIGN KEY (driver_id)
+    REFERENCES DRIVERS(ID)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
 );

@@ -21,6 +21,13 @@ import {
 
 /* ═══════════════════════════════════════════
    HomeTab — root component
+
+   BOOKING FLOW:
+   1. Customer books a trip  → goes to DB as status="pending", driver=null
+   2. Admin sees it in Booking Management page
+   3. Admin assigns a driver → booking gets driver=<driverId>, status="assigned"
+   4. ONLY that specific driver sees the ride request (polls by their own driverId)
+   5. Driver accepts → status="accepted"  |  Driver completes → status="completed"
    ═══════════════════════════════════════════ */
 const HomeTab = () => {
   const [role, setRole] = useState("");
@@ -42,8 +49,8 @@ const HomeTab = () => {
 
   /* ── Driver state ── */
   const [isOnline,          setIsOnline]         = useState(false);
-  const [pendingRide,       setPendingRide]       = useState(null);  // incoming request
-  const [acceptedRide,      setAcceptedRide]      = useState(null);  // after accept
+  const [pendingRide,       setPendingRide]       = useState(null);  // ride assigned to THIS driver
+  const [acceptedRide,      setAcceptedRide]      = useState(null);  // after driver accepts
   const [todayEarnings,     setTodayEarnings]     = useState(0);
   const [weekEarnings]                            = useState(4200);
   const [driverName,        setDriverName]        = useState("Driver");
@@ -69,7 +76,8 @@ const HomeTab = () => {
       if (id) {
         fetchDriverProfile(id);
         fetchDriverBookings(id);
-        refreshRef.current = setInterval(() => fetchDriverBookings(id), 4000);
+        // Refresh recent bookings list every 10s
+        refreshRef.current = setInterval(() => fetchDriverBookings(id), 10000);
       }
     }
     return () => {
@@ -78,7 +86,11 @@ const HomeTab = () => {
     };
   }, []);
 
-  /* ── Poll for pending bookings when driver is ONLINE ── */
+  /* ── Poll for rides ASSIGNED TO THIS DRIVER when ONLINE ──
+     The admin assigns a specific driverId to a booking.
+     We only fetch bookings where driver=<myDriverId> AND status="assigned".
+     This means the driver will NEVER see another driver's rides.
+  ── */
   useEffect(() => {
     const driverId = localStorage.getItem("driverId");
     if (!driverId || !isOnline) {
@@ -87,19 +99,38 @@ const HomeTab = () => {
     }
 
     const poll = async () => {
-      // If already in an accepted ride, skip polling
+      // If already in an active ride, skip polling for new ones
       if (acceptedRide) return;
+
       try {
-        const res  = await axios.get(`${BASE_URL}/api/bookings`);
+        // ✅ Fetch only bookings assigned to THIS specific driver
+        const res  = await axios.get(`${BASE_URL}/api/bookings/driver/assigned?driverId=${driverId}`);
         const list = Array.isArray(res.data) ? res.data : [];
-        // Find a pending booking not yet assigned
-        const found = list.find((b) => b.status === "pending" && !b.driver);
+
+        // Find a booking assigned to this driver that hasn't been accepted yet
+        const found = list.find(
+          (b) =>
+            String(b.driver) === String(driverId) &&
+            b.status === "assigned"
+        );
         setPendingRide(found || null);
-      } catch {}
+      } catch (err) {
+        // Fallback: use the general bookings endpoint and filter client-side
+        try {
+          const res2 = await axios.get(`${BASE_URL}/api/bookings`);
+          const list = Array.isArray(res2.data) ? res2.data : [];
+          const found = list.find(
+            (b) =>
+              String(b.driver) === String(driverId) &&
+              b.status === "assigned"
+          );
+          setPendingRide(found || null);
+        } catch {}
+      }
     };
 
     poll();
-    pollRef.current = setInterval(poll, 4000);
+    pollRef.current = setInterval(poll, 5000);
     return () => clearInterval(pollRef.current);
   }, [isOnline, acceptedRide]);
 
@@ -110,7 +141,7 @@ const HomeTab = () => {
       const res = await axios.get(`${BASE_URL}/api/drivers/profile?driverId=${driverId}`);
       if (Array.isArray(res.data) && res.data.length > 0) {
         const p = res.data[0];
-        setDriverName(p.NAME);
+        setDriverName(p.NAME || p.name || "Driver");
         setTotalTrips(p.total_rides || 0);
       }
     } catch (e) { console.warn("Profile error:", e); }
@@ -181,7 +212,7 @@ const HomeTab = () => {
     } catch { alert("Failed to update status."); }
   };
 
-  /* ── Accept ride → call accept-booking API ── */
+  /* ── Accept ride ── */
   const handleAcceptRide = async () => {
     if (!pendingRide) return;
     const driverId = localStorage.getItem("driverId");
@@ -191,7 +222,6 @@ const HomeTab = () => {
         driverId,
       });
       if (res.data.success || res.status === 200) {
-        // Build accepted ride object for the live map card
         setAcceptedRide({
           ...pendingRide,
           status:          "accepted",
@@ -251,10 +281,10 @@ const HomeTab = () => {
           loading={profileLoading}
         />
 
-        {/* ── Incoming ride request ── */}
+        {/* ── Ride assigned to this driver by admin ── */}
         {isOnline && pendingRide && !acceptedRide && (
           <section style={styles.section}>
-            <h2 style={styles.sectionHeading}>🔔 Incoming Ride Request</h2>
+            <h2 style={styles.sectionHeading}>🔔 New Ride Assigned</h2>
             <IncomingRideCard
               ride={pendingRide}
               onAccept={handleAcceptRide}
@@ -284,11 +314,11 @@ const HomeTab = () => {
           </div>
         )}
 
-        {/* ── Waiting banner ── */}
+        {/* ── Waiting banner (online but no ride assigned yet) ── */}
         {isOnline && !pendingRide && !acceptedRide && (
           <div style={styles.waitingBox}>
             <div style={styles.spinner} />
-            <span style={styles.waitingText}>Looking for nearby rides...</span>
+            <span style={styles.waitingText}>Waiting for admin to assign a ride...</span>
           </div>
         )}
 
@@ -312,7 +342,14 @@ const HomeTab = () => {
       <QuickActions onFeatureClick={handleFeatureClick} />
 
       <div style={styles.bookBtnWrap}>
-        <button style={styles.bookBtn} onClick={() => { setInitialDrop(""); setInitialTriptype(""); setShowBookingForm(true); }}>
+        <button
+          style={styles.bookBtn}
+          onClick={() => {
+            setInitialDrop("");
+            setInitialTriptype("");
+            setShowBookingForm(true);
+          }}
+        >
           🚖 Book a Ride
         </button>
       </div>
@@ -348,15 +385,15 @@ const HomeTab = () => {
 export default HomeTab;
 
 const styles = {
-  page:          { flex: 1, backgroundColor: "#F8FAFC", overflowY: "auto", paddingBottom: 80 },
-  section:       { padding: "0 0 8px" },
-  sectionHeading:{ margin: "16px 16px 10px", fontSize: 17, fontWeight: 700, color: "#1E293B" },
-  offlineBox:    { margin: "0 16px 14px", backgroundColor: "#fff", borderRadius: 22, padding: 28, display: "flex", flexDirection: "column", alignItems: "center", border: "1.5px dashed #CBD5E1" },
-  offlineTitle:  { margin: "0 0 6px", fontSize: 18, fontWeight: 700, color: "#1E293B" },
-  offlineSub:    { margin: 0, fontSize: 14, color: "#64748B", textAlign: "center", lineHeight: 1.5 },
-  waitingBox:    { margin: "0 16px 14px", backgroundColor: "#EFF6FF", borderRadius: 18, padding: 18, display: "flex", alignItems: "center", gap: 12 },
-  spinner:       { width: 20, height: 20, border: "2.5px solid #bfdbfe", borderTopColor: "#2563EB", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 },
-  waitingText:   { fontSize: 14, color: "#2563EB", fontWeight: 600 },
-  bookBtnWrap:   { padding: "0 16px 16px" },
-  bookBtn:       { width: "100%", padding: "18px 0", backgroundColor: "#2563EB", border: "none", borderRadius: 16, fontSize: 18, fontWeight: 800, color: "#fff", cursor: "pointer", boxShadow: "0 4px 16px rgba(37,99,235,0.3)" },
+  page:           { flex: 1, backgroundColor: "#F8FAFC", overflowY: "auto", paddingBottom: 80 },
+  section:        { padding: "0 0 8px" },
+  sectionHeading: { margin: "16px 16px 10px", fontSize: 17, fontWeight: 700, color: "#1E293B" },
+  offlineBox:     { margin: "0 16px 14px", backgroundColor: "#fff", borderRadius: 22, padding: 28, display: "flex", flexDirection: "column", alignItems: "center", border: "1.5px dashed #CBD5E1" },
+  offlineTitle:   { margin: "0 0 6px", fontSize: 18, fontWeight: 700, color: "#1E293B" },
+  offlineSub:     { margin: 0, fontSize: 14, color: "#64748B", textAlign: "center", lineHeight: 1.5 },
+  waitingBox:     { margin: "0 16px 14px", backgroundColor: "#EFF6FF", borderRadius: 18, padding: 18, display: "flex", alignItems: "center", gap: 12 },
+  spinner:        { width: 20, height: 20, border: "2.5px solid #bfdbfe", borderTopColor: "#2563EB", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 },
+  waitingText:    { fontSize: 14, color: "#2563EB", fontWeight: 600 },
+  bookBtnWrap:    { padding: "0 16px 16px" },
+  bookBtn:        { width: "100%", padding: "18px 0", backgroundColor: "#2563EB", border: "none", borderRadius: 16, fontSize: 18, fontWeight: 800, color: "#fff", cursor: "pointer", boxShadow: "0 4px 16px rgba(37,99,235,0.3)" },
 };
