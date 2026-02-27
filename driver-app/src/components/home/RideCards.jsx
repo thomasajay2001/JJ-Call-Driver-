@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
+import { BASE_URL } from "../../utils/constants";
+
 
 /* ─────────────────────────────────────────
    IncomingRideCard — new ride request
@@ -82,7 +84,6 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
   const driverMark = useRef(null);
   const [driverPos, setDriverPos] = useState(null);
   const watchId    = useRef(null);
-  const BASE_URL   = "http://localhost:3000";
 
   /* ── Init Leaflet map ── */
   useEffect(() => {
