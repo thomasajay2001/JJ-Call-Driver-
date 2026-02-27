@@ -27,7 +27,7 @@ const mysql = require("mysql2");
 const db = mysql.createConnection({
   host: "localhost",
   user: "root",
-  password: "q2m@123",
+  password: "Gomathi@123",
   database: "jjdrivers",
 });
 
@@ -123,12 +123,10 @@ app.post("/api/support/update-credentials", upload.none(), (req, res) => {
       .json({ success: false, message: "All fields are required" });
   }
   if (newPassword.trim().length < 4) {
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message: "New password must be at least 4 characters",
-      });
+    return res.status(400).json({
+      success: false,
+      message: "New password must be at least 4 characters",
+    });
   }
   const verifyQuery =
     "SELECT * FROM SUPPORTTEAM WHERE USERNAME = ? AND PASSWORD = ?";
@@ -162,7 +160,7 @@ app.post("/api/support/update-credentials", upload.none(), (req, res) => {
           message: "Credentials updated successfully",
         });
       });
-    },
+    }
   );
 });
 
@@ -214,13 +212,10 @@ app.post("/api/send-otp", (req, res) => {
               authorization: apiKey,
               "Content-Type": "application/json",
             },
-          },
+          }
         );
 
-        console.log("Fast2SMS response:", JSON.stringify(smsRes.data));
-
         if (!smsRes.data.return) {
-          console.log(`SMS failed, OTP for ${phone}: ${otp}`);
           return res.json({
             success: true,
             message: `SMS unavailable. OTP: ${otp}`,
@@ -228,7 +223,6 @@ app.post("/api/send-otp", (req, res) => {
           });
         }
 
-        console.log(`✅ OTP sent via SMS to ${phone}`);
         return res.json({
           success: true,
           message: "OTP sent to your mobile number",
@@ -241,7 +235,7 @@ app.post("/api/send-otp", (req, res) => {
           otp: otp,
         });
       }
-    },
+    }
   );
 });
 
@@ -283,70 +277,38 @@ app.post("/api/verify-otp", (req, res) => {
 // ─── TRIP BOOKING ────────────────────────────
 app.post("/api/trip-booking", async (req, res) => {
   try {
-    const {
-      name,
-      phone,
-      pickup,
-      pickupLat,
-      pickupLng,
-      drop,
-      bookingphnno,
-      triptype,
-    } = req.body;
+    const { name, phone, pickup, pickupLat, pickupLng, drop, bookingphnno, triptype } = req.body;
     if (!name || !phone || !pickup || !drop || !bookingphnno) {
       return res
         .status(400)
         .json({ success: false, error: "All fields are required" });
     }
-    const [result] = await db
-      .promise()
-      .query(
-        `INSERT INTO bookings (customer_name, customer_mobile, booking_phnno, pickup, pickup_lat, pickup_lng, drop_location, triptype, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          name,
-          phone,
-          bookingphnno,
-          pickup,
-          pickupLat || null,
-          pickupLng || null,
-          drop,
-          triptype || "local",
-          "pending",
-        ],
-      );
-    res.json({
-      success: true,
-      message: "Booking created successfully",
-      bookingId: result.insertId,
-    });
+    const [result] = await db.promise().query(
+      `INSERT INTO bookings (customer_name, customer_mobile, booking_phnno, pickup, pickup_lat, pickup_lng, drop_location, triptype, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, phone, bookingphnno, pickup, pickupLat || null, pickupLng || null, drop, triptype || "local", "pending"]
+    );
+    res.json({ success: true, message: "Booking created successfully", bookingId: result.insertId });
   } catch (error) {
     console.error("Trip booking error:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        error: "Failed to create booking",
-        message: error.message,
-      });
+    res.status(500).json({ success: false, error: "Failed to create booking", message: error.message });
   }
 });
 
-// ─── UPDATE BOOKING ──────────────────────────
+// ─── UPDATE BOOKING (admin assigns driver) ───
 app.put("/api/bookings/:id", async (req, res) => {
   const { id } = req.params;
   const { driver, status } = req.body;
   try {
-    await db
-      .promise()
-      .query("UPDATE bookings SET driver_id=?, status=? WHERE id=?", [
-        driver,
-        status,
-        id,
-      ]);
+    await db.promise().query(
+      "UPDATE bookings SET driver_id=?, status=? WHERE id=?",
+      [driver, status, id]
+    );
     if (driver) {
-      await db
-        .promise()
-        .query("UPDATE DRIVERS SET STATUS=? WHERE ID=?", [status, driver]);
+      await db.promise().query(
+        "UPDATE DRIVERS SET STATUS=? WHERE ID=?",
+        [status, driver]
+      );
     }
     res.json({ success: true });
   } catch (error) {
@@ -356,46 +318,120 @@ app.put("/api/bookings/:id", async (req, res) => {
 });
 
 // ─── ACCEPT BOOKING ──────────────────────────
+// Admin assigns → status='assigned'. Driver accepts → status='accepted'
 app.post("/api/accept-booking", async (req, res) => {
   const { bookingId, driverId } = req.body;
   try {
-    const [bookings] = await db
-      .promise()
-      .query("SELECT * FROM bookings WHERE id=? AND status='pending'", [
-        bookingId,
-      ]);
+    // Check for 'assigned' status (admin-assigned flow)
+    const [bookings] = await db.promise().query(
+      "SELECT * FROM bookings WHERE id=? AND status='assigned'",
+      [bookingId]
+    );
+
     if (!bookings.length) {
-      return res.json({ success: false, message: "Already accepted" });
+      return res.json({ success: false, message: "Booking not available or already accepted" });
     }
-    const [drivers] = await db
-      .promise()
-      .query("SELECT NAME, MOBILE FROM DRIVERS WHERE ID=?", [driverId]);
+
+    const [drivers] = await db.promise().query(
+      "SELECT NAME, MOBILE FROM DRIVERS WHERE ID=?",
+      [driverId]
+    );
     const driver = drivers[0];
-    await db
-      .promise()
-      .query("UPDATE bookings SET status='accepted', driver_id=? WHERE id=?", [
-        driverId,
-        bookingId,
-      ]);
-    await db
-      .promise()
-      .query(
-        `INSERT INTO accept_booking (booking_id, driver_id, driver_name, driver_mobile) VALUES (?,?,?,?)`,
-        [bookingId, driverId, driver.NAME, driver.MOBILE],
+    if (!driver) {
+      return res.json({ success: false, message: "Driver not found" });
+    }
+
+    await db.promise().query(
+      "UPDATE bookings SET status='accepted', driver_id=? WHERE id=?",
+      [driverId, bookingId]
+    );
+
+    try {
+      await db.promise().query(
+        `INSERT IGNORE INTO accept_booking (booking_id, driver_id, driver_name, driver_mobile) VALUES (?,?,?,?)`,
+        [bookingId, driverId, driver.NAME, driver.MOBILE]
       );
-    await db
-      .promise()
-      .query("UPDATE DRIVERS SET STATUS='inride' WHERE ID=?", [driverId]);
+    } catch {}
+
+    await db.promise().query(
+      "UPDATE DRIVERS SET STATUS='inride' WHERE ID=?",
+      [driverId]
+    );
+
     io.to(`booking_${bookingId}`).emit("driverAssigned", {
       bookingId,
       driverName: driver.NAME,
       driverMobile: driver.MOBILE,
     });
     io.to(`driver_${driverId}`).emit("bookingConfirmed", { bookingId });
+
     res.json({ success: true });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
+    console.error("Accept booking error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── DECLINE BOOKING ─────────────────────────
+// Driver declines → reset driver_id=NULL, status='pending'
+// Booking reappears in admin panel for reassignment
+app.post("/api/decline-booking", async (req, res) => {
+  const { bookingId, driverId } = req.body;
+
+  if (!bookingId) {
+    return res.status(400).json({ success: false, message: "bookingId required" });
+  }
+
+  try {
+    // Confirm this booking is actually assigned to this driver
+    const [rows] = await db.promise().query(
+      "SELECT id, driver_id, status FROM bookings WHERE id=?",
+      [bookingId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    const booking = rows[0];
+
+    // Only allow decline if booking is in 'assigned' state
+    if (booking.status !== "assigned") {
+      return res.json({ success: false, message: `Cannot decline booking with status: ${booking.status}` });
+    }
+
+    // Verify it's actually assigned to this driver (security check)
+    if (driverId && String(booking.driver_id) !== String(driverId)) {
+      return res.status(403).json({ success: false, message: "This booking is not assigned to you" });
+    }
+
+    // ✅ Reset: driver_id = NULL, status = 'pending'
+    // This returns it to admin's unassigned list
+    await db.promise().query(
+      "UPDATE bookings SET driver_id = NULL, status = 'pending' WHERE id = ?",
+      [bookingId]
+    );
+
+    // Also reset driver status back to 'online' if they were set to something else
+    if (driverId) {
+      await db.promise().query(
+        "UPDATE DRIVERS SET STATUS = 'online' WHERE ID = ? AND STATUS != 'offline'",
+        [driverId]
+      );
+    }
+
+    console.log(`✅ Booking ${bookingId} declined by driver ${driverId} — reset to pending`);
+
+    // Notify admin via socket that booking needs reassignment
+    io.to("admins").emit("bookingDeclined", {
+      bookingId,
+      message: "Driver declined — needs reassignment",
+    });
+
+    res.json({ success: true, message: "Booking returned to pending for reassignment" });
+  } catch (err) {
+    console.error("Decline booking error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -404,65 +440,82 @@ app.get("/api/bookings/customer", async (req, res) => {
   try {
     const { phone } = req.query;
     if (!phone) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Phone number is required" });
+      return res.status(400).json({ success: false, error: "Phone number is required" });
     }
     const [bookings] = await db.promise().query(
-      `SELECT b.id, b.customer_name, b.customer_mobile, b.booking_phnno, b.pickup, b.pickup_lat, b.pickup_lng, b.drop_location, b.driver_id, b.status, b.created_at, d.NAME AS driver_name, d.MOBILE AS driver_phone
-       FROM bookings b LEFT JOIN DRIVERS d ON b.driver_id = d.ID WHERE b.booking_phnno = ? ORDER BY b.created_at DESC`,
-      [phone],
+      `SELECT b.id, b.customer_name, b.customer_mobile, b.booking_phnno,
+              b.pickup, b.pickup_lat, b.pickup_lng, b.drop_location,
+              b.driver_id, b.status, b.created_at,
+              d.NAME AS driver_name, d.MOBILE AS driver_phone
+       FROM bookings b
+       LEFT JOIN DRIVERS d ON b.driver_id = d.ID
+       WHERE b.booking_phnno = ?
+       ORDER BY b.created_at DESC`,
+      [phone]
     );
     res.json(bookings);
   } catch (error) {
     console.error("Fetch bookings error:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        error: "Failed to fetch bookings",
-        message: error.message,
-      });
+    res.status(500).json({ success: false, error: "Failed to fetch bookings", message: error.message });
   }
 });
 
-// ─── DRIVER BOOKINGS ─────────────────────────
+// ─── DRIVER BOOKINGS (active) ────────────────
 app.get("/api/bookings/driver", (req, res) => {
   const { driverId } = req.query;
-  const sql = `SELECT * FROM bookings WHERE driver_id = ? AND status IN ('assigned','inride') ORDER BY id DESC`;
+  const sql = `SELECT * FROM bookings WHERE driver_id = ? AND status IN ('assigned','accepted','inride') ORDER BY id DESC`;
   db.query(sql, [driverId], (err, result) => {
     if (err) return res.status(500).send(err);
     res.json(result);
   });
 });
 
+// ─── DRIVER BOOKINGS (assigned only - for poll) ─
+app.get("/api/bookings/driver/assigned", async (req, res) => {
+  const { driverId } = req.query;
+  if (!driverId) return res.status(400).json([]);
+  try {
+    const [rows] = await db.promise().query(
+      `SELECT b.id,
+              b.customer_name AS name,
+              b.customer_mobile AS mobile,
+              b.pickup,
+              b.drop_location AS drop,
+              b.triptype,
+              b.status,
+              b.driver_id AS driver,
+              b.pickup_lat,
+              b.pickup_lng
+       FROM bookings b
+       WHERE b.driver_id = ? AND b.status = 'assigned'
+       ORDER BY b.created_at DESC`,
+      [driverId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("Assigned bookings error:", err);
+    res.status(500).json([]);
+  }
+});
+
+// ─── DRIVER BOOKINGS (all history) ──────────
 app.get("/api/bookings/driver/all", async (req, res) => {
   const { driverId, filter } = req.query;
   if (!driverId) {
-    return res
-      .status(400)
-      .json({ success: false, error: "driverId is required" });
+    return res.status(400).json({ success: false, error: "driverId is required" });
   }
   let dateClause = "";
   switch (filter) {
-    case "today":
-      dateClause = "AND DATE(b.created_at) = CURDATE()";
-      break;
-    case "yesterday":
-      dateClause =
-        "AND DATE(b.created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)";
-      break;
-    case "thisweek":
-      dateClause = "AND YEARWEEK(b.created_at, 1) = YEARWEEK(CURDATE(), 1)";
-      break;
-    case "thismonth":
-      dateClause =
-        "AND MONTH(b.created_at) = MONTH(CURDATE()) AND YEAR(b.created_at) = YEAR(CURDATE())";
-      break;
-    default:
-      dateClause = "";
+    case "today":     dateClause = "AND DATE(b.created_at) = CURDATE()"; break;
+    case "yesterday": dateClause = "AND DATE(b.created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)"; break;
+    case "thisweek":  dateClause = "AND YEARWEEK(b.created_at, 1) = YEARWEEK(CURDATE(), 1)"; break;
+    case "thismonth": dateClause = "AND MONTH(b.created_at) = MONTH(CURDATE()) AND YEAR(b.created_at) = YEAR(CURDATE())"; break;
+    default:          dateClause = "";
   }
-  const sql = `SELECT b.id, b.customer_name, b.customer_mobile, b.pickup, b.drop_location, b.triptype, b.status, b.created_at FROM bookings b WHERE b.driver_id = ? ${dateClause} ORDER BY b.created_at DESC`;
+  const sql = `SELECT b.id, b.customer_name, b.customer_mobile, b.pickup, b.drop_location, b.triptype, b.status, b.created_at
+               FROM bookings b
+               WHERE b.driver_id = ? ${dateClause}
+               ORDER BY b.created_at DESC`;
   try {
     const [results] = await db.promise().query(sql, [driverId]);
     res.json({ success: true, data: results });
@@ -476,13 +529,10 @@ app.get("/api/bookings/driver/all", async (req, res) => {
 app.post("/api/submit-rating", async (req, res) => {
   try {
     const { bookingId, rating, comment } = req.body;
-    await db
-      .promise()
-      .query(`UPDATE bookings SET rating = ?, feedback = ? WHERE id = ?`, [
-        rating,
-        comment,
-        bookingId,
-      ]);
+    await db.promise().query(
+      `UPDATE bookings SET rating = ?, feedback = ? WHERE id = ?`,
+      [rating, comment, bookingId]
+    );
     res.json({ success: true });
   } catch (error) {
     console.error("Rating error:", error);
@@ -494,12 +544,11 @@ app.post("/api/submit-rating", async (req, res) => {
 app.get("/api/driver-rating/:driverId", async (req, res) => {
   try {
     const { driverId } = req.params;
-    const [result] = await db
-      .promise()
-      .query(
-        `SELECT ROUND(AVG(rating),1) AS avg_rating, COUNT(rating) AS total_ratings FROM bookings WHERE driver_id = ? AND rating IS NOT NULL`,
-        [driverId],
-      );
+    const [result] = await db.promise().query(
+      `SELECT ROUND(AVG(rating),1) AS avg_rating, COUNT(rating) AS total_ratings
+       FROM bookings WHERE driver_id = ? AND rating IS NOT NULL`,
+      [driverId]
+    );
     res.json(result[0]);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch rating" });
@@ -509,33 +558,27 @@ app.get("/api/driver-rating/:driverId", async (req, res) => {
 // ─── START RIDE ──────────────────────────────
 app.post("/api/bookings/start", (req, res) => {
   const { bookingId, driverId } = req.body;
-  db.query(
-    "UPDATE bookings SET status='inride' WHERE id=?",
-    [bookingId],
-    (err) => {
-      if (err) return res.status(500).send({ success: false });
-      db.query(
-        "UPDATE DRIVERS SET STATUS='inride' WHERE ID=?",
-        [driverId],
-        (err2) => {
-          if (err2) return res.status(500).send({ success: false });
-          res.send({ success: true });
-        },
-      );
-    },
-  );
+  db.query("UPDATE bookings SET status='inride' WHERE id=?", [bookingId], (err) => {
+    if (err) return res.status(500).send({ success: false });
+    db.query("UPDATE DRIVERS SET STATUS='inride' WHERE ID=?", [driverId], (err2) => {
+      if (err2) return res.status(500).send({ success: false });
+      res.send({ success: true });
+    });
+  });
 });
 
 // ─── COMPLETE RIDE ───────────────────────────
 app.post("/api/complete-ride", async (req, res) => {
   const { bookingId, driverId } = req.body;
   try {
-    await db
-      .promise()
-      .query("UPDATE bookings SET status='completed' WHERE id=?", [bookingId]);
-    await db
-      .promise()
-      .query("UPDATE DRIVERS SET STATUS='online' WHERE ID=?", [driverId]);
+    await db.promise().query(
+      "UPDATE bookings SET status='completed' WHERE id=?",
+      [bookingId]
+    );
+    await db.promise().query(
+      "UPDATE DRIVERS SET STATUS='online' WHERE ID=?",
+      [driverId]
+    );
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false });
@@ -545,8 +588,10 @@ app.post("/api/complete-ride", async (req, res) => {
 // ─── DRIVER PROFILE ──────────────────────────
 app.get("/api/drivers/profile", (req, res) => {
   const { driverId } = req.query;
-  const sql = `SELECT d.ID, d.NAME, d.MOBILE, d.BLOODGRP, d.LICENCENO, COUNT(b.id) AS total_rides 
-               FROM DRIVERS d LEFT JOIN bookings b ON d.ID = b.driver_id AND b.status = 'completed' 
+  const sql = `SELECT d.ID, d.NAME, d.MOBILE, d.BLOODGRP, d.LICENCENO,
+                      COUNT(b.id) AS total_rides
+               FROM DRIVERS d
+               LEFT JOIN bookings b ON d.ID = b.driver_id AND b.status = 'completed'
                WHERE d.ID = ? GROUP BY d.ID`;
   db.query(sql, [driverId], (err, result) => {
     if (err) return res.status(500).send(err);
@@ -556,74 +601,29 @@ app.get("/api/drivers/profile", (req, res) => {
 
 // ─── GET CUSTOMERS ───────────────────────────
 app.get("/api/customer", async (req, res) => {
-  db.query(
-    "SELECT ID, NAME, PHONE FROM CUSTOMERS ORDER BY ID DESC",
-    function (error, results) {
-      if (error) {
-        console.error(`Error fetching customers: ${error.message}`);
-        res.send(JSON.stringify({ status: false }));
-        return;
-      }
-      const result = results.map((r) => ({
-        id: r.ID,
-        Name: r.NAME,
-        phone: r.PHONE,
-      }));
-      res.send(JSON.stringify(result));
-    },
-  );
+  db.query("SELECT ID, NAME, PHONE FROM CUSTOMERS ORDER BY ID DESC", function (error, results) {
+    if (error) {
+      console.error(`Error fetching customers: ${error.message}`);
+      res.send(JSON.stringify({ status: false }));
+      return;
+    }
+    const result = results.map((r) => ({ id: r.ID, Name: r.NAME, phone: r.PHONE }));
+    res.send(JSON.stringify(result));
+  });
 });
 
 // ─── ADD DRIVER ──────────────────────────────
 app.post("/api/adddrivers", upload.none(), (req, res) => {
-  const {
-    name,
-    status,
-    paymentmode,
-    location,
-    experience,
-    feeDetails,
-    dob,
-    bloodgrp,
-    age,
-    licenceNo,
-    gender,
-    car_type,
-    lat,
-    lng,
-    payactive,
-  } = req.body;
+  const { name, status, paymentmode, location, experience, feeDetails, dob, bloodgrp, age, licenceNo, gender, car_type, lat, lng, payactive } = req.body;
   const mobile = parseInt(req.body.mobile);
-  const sql =
-    "INSERT INTO DRIVERS (NAME, MOBILE, LOCATION, EXPERIENCE, FEES_DETAILS, DOB, BLOODGRP, AGE, GENDER, CAR_TYPE, LICENCENO, LAT, LNG, PAYMENT_METHOD, STATUS, PAYACTIVE) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
-  db.query(
-    sql,
-    [
-      name,
-      mobile,
-      location,
-      experience,
-      feeDetails,
-      dob,
-      bloodgrp,
-      age,
-      gender,
-      car_type,
-      licenceNo,
-      lat,
-      lng,
-      paymentmode,
-      status,
-      payactive,
-    ],
-    (err) => {
-      if (err) {
-        console.error("error inserting data:", err);
-        return res.status(500).send({ message: "Database Error" });
-      }
-      return res.status(200).send({ message: "Driver added successfully" });
-    },
-  );
+  const sql = "INSERT INTO DRIVERS (NAME, MOBILE, LOCATION, EXPERIENCE, FEES_DETAILS, DOB, BLOODGRP, AGE, GENDER, CAR_TYPE, LICENCENO, LAT, LNG, PAYMENT_METHOD, STATUS, PAYACTIVE) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+  db.query(sql, [name, mobile, location, experience, feeDetails, dob, bloodgrp, age, gender, car_type, licenceNo, lat, lng, paymentmode, status, payactive], (err) => {
+    if (err) {
+      console.error("error inserting data:", err);
+      return res.status(500).send({ message: "Database Error" });
+    }
+    return res.status(200).send({ message: "Driver added successfully" });
+  });
 });
 
 // ─── GET DRIVERS ─────────────────────────────
@@ -636,84 +636,32 @@ app.get("/api/drivers", (req, res) => {
         return res.send(JSON.stringify({ status: false }));
       }
       const result = results.map((r) => ({
-        id: r.ID,
-        name: r.NAME,
-        mobile: r.MOBILE,
-        location: r.LOCATION,
-        car_type: r.CAR_TYPE,
-        experience: r.EXPERIENCE,
-        feeDetails: r.FEES_DETAILS,
-        dob: r.DOB,
-        bloodgrp: r.BLOODGRP,
-        age: r.AGE,
-        gender: r.GENDER,
-        licenceNo: r.LICENCENO,
-        paymentmode: r.PAYMENT_METHOD,
-        status: r.STATUS,
-        lat: parseFloat(r.LAT),
-        lng: parseFloat(r.LNG),
-        payactive: r.PAYACTIVE,
+        id: r.ID, name: r.NAME, mobile: r.MOBILE, location: r.LOCATION,
+        car_type: r.CAR_TYPE, experience: r.EXPERIENCE, feeDetails: r.FEES_DETAILS,
+        dob: r.DOB, bloodgrp: r.BLOODGRP, age: r.AGE, gender: r.GENDER,
+        licenceNo: r.LICENCENO, paymentmode: r.PAYMENT_METHOD, status: r.STATUS,
+        lat: parseFloat(r.LAT), lng: parseFloat(r.LNG), payactive: r.PAYACTIVE,
       }));
       res.send(JSON.stringify(result));
-    },
+    }
   );
 });
 
 // ─── UPDATE DRIVER ───────────────────────────
 app.put("/api/updatedriver/:id", upload.none(), (req, res) => {
   const driverId = req.params.id;
-  const {
-    name,
-    mobile,
-    location,
-    paymentmode,
-    experience,
-    feeDetails,
-    dob,
-    bloodgrp,
-    age,
-    licenceNo,
-    gender,
-    car_type,
-    lat,
-    lng,
-    status,
-    payactive,
-  } = req.body;
-  const sql =
-    "UPDATE DRIVERS SET NAME=?, MOBILE=?, LOCATION=?, EXPERIENCE=?, FEES_DETAILS=?, DOB=?, BLOODGRP=?, AGE=?, GENDER=?, CAR_TYPE=?, LICENCENO=?, PAYMENT_METHOD=?, LAT=?, LNG=?, STATUS=?, PAYACTIVE=? WHERE ID=?";
-  db.query(
-    sql,
-    [
-      name,
-      mobile,
-      location,
-      experience,
-      feeDetails,
-      dob,
-      bloodgrp,
-      age,
-      gender,
-      car_type,
-      licenceNo,
-      paymentmode,
-      lat,
-      lng,
-      status,
-      payactive,
-      driverId,
-    ],
-    (err, result) => {
-      if (err) {
-        console.error("error updating driver:", err);
-        return res.status(500).send({ message: "Database error" });
-      }
-      if (result.affectedRows === 0) {
-        return res.status(404).send({ message: "Driver not found" });
-      }
-      return res.status(200).send({ message: "Driver updated successfully" });
-    },
-  );
+  const { name, mobile, location, paymentmode, experience, feeDetails, dob, bloodgrp, age, licenceNo, gender, car_type, lat, lng, status, payactive } = req.body;
+  const sql = "UPDATE DRIVERS SET NAME=?, MOBILE=?, LOCATION=?, EXPERIENCE=?, FEES_DETAILS=?, DOB=?, BLOODGRP=?, AGE=?, GENDER=?, CAR_TYPE=?, LICENCENO=?, PAYMENT_METHOD=?, LAT=?, LNG=?, STATUS=?, PAYACTIVE=? WHERE ID=?";
+  db.query(sql, [name, mobile, location, experience, feeDetails, dob, bloodgrp, age, gender, car_type, licenceNo, paymentmode, lat, lng, status, payactive, driverId], (err, result) => {
+    if (err) {
+      console.error("error updating driver:", err);
+      return res.status(500).send({ message: "Database error" });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).send({ message: "Driver not found" });
+    }
+    return res.status(200).send({ message: "Driver updated successfully" });
+  });
 });
 
 // ─── DELETE DRIVER ───────────────────────────
@@ -734,85 +682,75 @@ app.delete("/api/deletedriver/:id", (req, res) => {
 // ─── UPDATE DRIVER LOCATION ──────────────────
 app.post("/api/driver/updateLocation", (req, res) => {
   const { driverId, lat, lng } = req.body;
-  db.query(
-    "UPDATE DRIVERS SET LAT = ?, LNG = ? WHERE ID = ?",
-    [lat, lng, driverId],
-    (err) => {
-      if (err) {
-        console.error("Error updating location:", err);
-        return res.status(500).send({ success: false, message: "DB error" });
-      }
-      res.send({ success: true, message: "Location updated" });
-    },
-  );
+  db.query("UPDATE DRIVERS SET LAT = ?, LNG = ? WHERE ID = ?", [lat, lng, driverId], (err) => {
+    if (err) {
+      console.error("Error updating location:", err);
+      return res.status(500).send({ success: false, message: "DB error" });
+    }
+    res.send({ success: true, message: "Location updated" });
+  });
 });
 
 // ─── UPDATE DRIVER STATUS ────────────────────
 app.post("/api/driver/updateStatus", (req, res) => {
   const { driverId, status } = req.body;
-  db.query(
-    "UPDATE DRIVERS SET STATUS = ? WHERE ID = ?",
-    [status, driverId],
-    (err) => {
-      if (err) {
-        console.error("Error updating status:", err);
-        return res.status(500).send({ success: false });
-      }
-      res.send({ success: true, message: "Status updated" });
-    },
-  );
+  db.query("UPDATE DRIVERS SET STATUS = ? WHERE ID = ?", [status, driverId], (err) => {
+    if (err) {
+      console.error("Error updating status:", err);
+      return res.status(500).send({ success: false });
+    }
+    res.send({ success: true, message: "Status updated" });
+  });
 });
 
 // ─── GET ALL BOOKINGS ────────────────────────
 app.get("/api/bookings", (req, res) => {
   db.query(
-    "SELECT id, customer_name, customer_mobile, pickup, drop_location, status, driver_id FROM bookings ORDER BY id DESC",
+    `SELECT id, customer_name, customer_mobile, pickup, drop_location,
+            status, driver_id, pickup_lat, pickup_lng, triptype
+     FROM bookings ORDER BY id DESC`,
     function (error, results) {
       if (error) {
         console.error("error fetching bookings:", error);
         return res.status(500).send({ message: "Database error" });
       }
       const result = results.map((r) => ({
-        id: r.id,
-        name: r.customer_name,
-        mobile: r.customer_mobile,
-        pickup: r.pickup,
-        drop: r.drop_location,
-        status: r.status,
-        driver: r.driver_id,
+        id:              r.id,
+        name:            r.customer_name,
+        mobile:          r.customer_mobile,
+        pickup:          r.pickup,
+        drop:            r.drop_location,
+        status:          r.status,
+        driver:          r.driver_id,
+        pickup_lat:      r.pickup_lat,
+        pickup_lng:      r.pickup_lng,
+        triptype:        r.triptype,
       }));
       res.send(JSON.stringify(result));
-    },
+    }
   );
 });
 
 // ─── CUSTOMER PROFILE ────────────────────────
 app.get("/api/customers/profile", async (req, res) => {
   const { phone } = req.query;
-  db.query(
-    "SELECT * FROM CUSTOMERS WHERE PHONE = ?",
-    [phone],
-    (err, results) => {
-      if (err) {
-        console.error("Error fetching customer profile:", err);
-        return res.status(500).send({ message: "Database error" });
-      }
-      if (results.length === 0) {
-        return res.status(404).send({ message: "Customer not found" });
-      }
-      res.send(results);
-    },
-  );
+  db.query("SELECT * FROM CUSTOMERS WHERE PHONE = ?", [phone], (err, results) => {
+    if (err) {
+      console.error("Error fetching customer profile:", err);
+      return res.status(500).send({ message: "Database error" });
+    }
+    if (results.length === 0) {
+      return res.status(404).send({ message: "Customer not found" });
+    }
+    res.send(results);
+  });
 });
 
 // ─── UPDATE CUSTOMER NAME ────────────────────
 app.put("/api/customers/update-name", async (req, res) => {
   try {
     const { phone, name } = req.body;
-    await db.execute("UPDATE CUSTOMERS SET NAME = ? WHERE PHONE = ?", [
-      name,
-      phone,
-    ]);
+    await db.execute("UPDATE CUSTOMERS SET NAME = ? WHERE PHONE = ?", [name, phone]);
     res.json({ success: true, message: "Name updated successfully" });
   } catch (error) {
     console.error("Update name error:", error);
