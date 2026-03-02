@@ -6,7 +6,7 @@ import ProfileTab from "./components/tabs/ProfileTab";
 
 /* ═══════════════════════════════════════════
    App — Root with bottom tab navigation
-   Default: always opens LoginTab
+   Always opens LoginTab on fresh load
    ═══════════════════════════════════════════ */
 const TABS = [
   { id: "home",    label: "Home",    icon: "🏠" },
@@ -15,11 +15,14 @@ const TABS = [
 ];
 
 const App = () => {
-  // ✅ Always start on login — no localStorage auto-login
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [role,       setRole]       = useState("");
   const [activeTab,  setActiveTab]  = useState("home");
 
+  /* Called by LoginTab after successful login */
   const handleLogin = () => {
+    const storedRole = localStorage.getItem("role") || "";
+    setRole(storedRole);
     setIsLoggedIn(true);
     setActiveTab("home");
   };
@@ -27,10 +30,11 @@ const App = () => {
   const handleLogout = () => {
     localStorage.clear();
     setIsLoggedIn(false);
+    setRole("");
     setActiveTab("home");
   };
 
-  // ✅ Always show LoginTab until user logs in
+  /* Always show login until logged in */
   if (!isLoggedIn) return <LoginTab onLogin={handleLogin} />;
 
   return (
@@ -39,8 +43,17 @@ const App = () => {
       <style>{`
         * { box-sizing: border-box; }
         body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes fadeSlide { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.6; transform: scale(1.15); }
+        }
+        @keyframes fadeSlide {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 2px; }
       `}</style>
@@ -68,11 +81,18 @@ const App = () => {
           return (
             <button
               key={tab.id}
-              style={{ ...styles.tabBtn, ...(active ? styles.tabBtnActive : {}) }}
+              /* ✅ Fix: use backgroundColor everywhere, no "background" shorthand */
+              style={{
+                ...styles.tabBtn,
+                backgroundColor: active ? "#F0F7FF" : "transparent",
+              }}
               onClick={() => setActiveTab(tab.id)}
             >
               <span style={styles.tabIcon}>{tab.icon}</span>
-              <span style={{ ...styles.tabLabel, ...(active ? styles.tabLabelActive : {}) }}>
+              <span style={{
+                ...styles.tabLabel,
+                color: active ? "#2563EB" : "#94A3B8",
+              }}>
                 {tab.label}
               </span>
               {active && <div style={styles.activeDot} />}
@@ -98,8 +118,8 @@ const styles = {
     boxShadow:       "0 0 40px rgba(0,0,0,0.12)",
   },
   main: {
-    flex:       1,
-    overflowY:  "auto",
+    flex:          1,
+    overflowY:     "auto",
     paddingBottom: 72,
   },
   bottomNav: {
@@ -116,28 +136,25 @@ const styles = {
     zIndex:          100,
   },
   tabBtn: {
-    flex:           1,
-    display:        "flex",
-    flexDirection:  "column",
-    alignItems:     "center",
-    justifyContent: "center",
-    padding:        "10px 0 8px",
-    background:     "none",
-    border:         "none",
-    cursor:         "pointer",
-    position:       "relative",
-    gap:            3,
-    transition:     "background 0.15s",
+    flex:            1,
+    display:         "flex",
+    flexDirection:   "column",
+    alignItems:      "center",
+    justifyContent:  "center",
+    padding:         "10px 0 8px",
+    border:          "none",
+    backgroundColor: "transparent",
+    cursor:          "pointer",
+    position:        "relative",
+    gap:             3,
+    transition:      "background-color 0.15s",
   },
-  tabBtnActive:  { backgroundColor: "#F0F7FF" },
-  tabIcon:       { fontSize: 22 },
+  tabIcon:  { fontSize: 22 },
   tabLabel: {
     fontSize:   11,
     fontWeight: 600,
-    color:      "#94A3B8",
     transition: "color 0.2s",
   },
-  tabLabelActive: { color: "#2563EB" },
   activeDot: {
     position:        "absolute",
     top:             0,

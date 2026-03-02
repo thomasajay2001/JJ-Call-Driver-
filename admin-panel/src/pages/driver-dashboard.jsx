@@ -1,53 +1,100 @@
 import axios from "axios";
-import { useEffect, useState } from "react";
-import io from "socket.io-client";
+import { useEffect, useRef, useState } from "react";
+import { io } from "socket.io-client";
+import { PaginationBar, usePagination } from "../hooks/Usepagination";
 
-const BASE_URL = import.meta.env.VITE_BASE_URL;
+const BASE_URL   = import.meta.env.VITE_BASE_URL;
 const SOCKET_URL = "http://localhost:3000";
 
+const CSV_COLUMNS = [
+  "name","mobile","location","experience","feeDetails",
+  "dob","bloodgrp","age","gender","car_type",
+  "licenceNo","paymentmode","payactive",
+];
+const SAMPLE_CSV = [
+  "name,mobile,location,experience,feeDetails,dob,bloodgrp,age,gender,car_type,licenceNo,paymentmode,payactive",
+  "Ravi Kumar,9876543210,Chennai,5,Paid,1990-05-15,O+,34,Male,Automatic,TN01-20190001234,Online,Active",
+  "Priya Devi,9123456789,Tambaram,3,Pending,1995-08-22,B+,29,Female,Manual,TN01-20210005678,Offline,Active",
+];
+
+/* ── status helpers ── */
+const STATUS_BADGE = {
+  active:    "badge badge-green",
+  inactive:  "badge badge-amber",
+  "on duty": "badge badge-blue",
+  suspend:   "badge badge-red",
+  offline:   "badge badge-gray",
+  online:    "badge badge-teal",
+};
+const STATUS_LABEL = {
+  active:"🟢 Active", inactive:"🟡 Inactive", "on duty":"🔵 On Duty",
+  suspend:"⛔ Suspended", offline:"⚫ Offline", online:"🟢 Online",
+};
+const statusBadgeClass = (s) => STATUS_BADGE[s?.toLowerCase()] || "badge badge-gray";
+const statusLabel      = (s) => STATUS_LABEL[s?.toLowerCase()] || s || "N/A";
+
+/* ── payactive ── */
+const payBadge = (v) =>
+  v?.toLowerCase() === "active"   ? "badge badge-green" :
+  v?.toLowerCase() === "deactive" ? "badge badge-red"   : "badge badge-gray";
+const payLabel = (v) =>
+  v?.toLowerCase() === "active"   ? "✅ Active" :
+  v?.toLowerCase() === "deactive" ? "🚫 Deactive" : "— N/A";
+
+/* ── fee ── */
+const feeBadge = (v) =>
+  v === "Paid"    ? "badge badge-green" :
+  v === "Pending" ? "badge badge-amber" : "badge badge-red";
+const feeLabel = (v) =>
+  v === "Paid" ? "✅ Paid" : v === "Pending" ? "⏳ Pending" : "❌ Not Paid";
+
+/* ── car type ── */
+const carBadge = (v) =>
+  v?.toLowerCase() === "automatic" ? "badge badge-blue" :
+  v?.toLowerCase() === "manual"    ? "badge badge-purple" : "badge badge-teal";
+
+/* ── payment mode ── */
+const pmBadge = (v) =>
+  v?.toLowerCase() === "online"  ? "badge badge-green" :
+  v?.toLowerCase() === "offline" ? "badge badge-red"   : "badge badge-teal";
+
+/* ════════════════════════════════════════════ */
 export default function DriverDashboard() {
-  const [drivers, setDrivers] = useState([]);
-  const [search, setSearch] = useState("");
-  const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState(null);
+  const [drivers,          setDrivers]          = useState([]);
+  const [search,           setSearch]           = useState("");
+  const [showForm,         setShowForm]         = useState(false);
+  const [editId,           setEditId]           = useState(null);
+  const [showDeleteModal,  setShowDeleteModal]  = useState(false);
+  const [deleteId,         setDeleteId]         = useState(null);
+  const [deleteName,       setDeleteName]       = useState("");
+  const [showCsvModal,     setShowCsvModal]     = useState(false);
+  const [csvRows,          setCsvRows]          = useState([]);
+  const [csvError,         setCsvError]         = useState("");
+  const [csvUploading,     setCsvUploading]     = useState(false);
+  const [csvResult,        setCsvResult]        = useState(null);
+  const csvRef = useRef(null);
 
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteTargetId, setDeleteTargetId] = useState(null);
-  const [deleteTargetName, setDeleteTargetName] = useState("");
-
-  const [name, setName] = useState("");
-  const [mobile, setMobile] = useState("");
-  const [location, setLocation] = useState("");
-  const [bloodgrp, setBloodgrp] = useState("");
-  const [dob, setDob] = useState("");
-  const [age, setAge] = useState("");
-  const [gender, setGender] = useState("");
-  const [licenceNo, setLicenceNo] = useState("");
-  const [feeDetails, setFeeDetails] = useState("");
-  const [experience, setExperience] = useState("");
-  const [car_type, setCarType] = useState("");
+  /* form fields */
+  const [name,        setName]        = useState("");
+  const [mobile,      setMobile]      = useState("");
+  const [location,    setLocation]    = useState("");
+  const [bloodgrp,    setBloodgrp]    = useState("");
+  const [dob,         setDob]         = useState("");
+  const [age,         setAge]         = useState("");
+  const [gender,      setGender]      = useState("");
+  const [licenceNo,   setLicenceNo]   = useState("");
+  const [feeDetails,  setFeeDetails]  = useState("");
+  const [experience,  setExperience]  = useState("");
+  const [car_type,    setCarType]     = useState("");
   const [paymentmode, setPaymentmode] = useState("");
-  const [status, setStatus] = useState("offline"); // ← default offline
-  const [payactive, setPayActive] = useState(""); // ← new field
-
-  const [formErrors, setFormErrors] = useState({
-    name: "",
-    mobile: "",
-    gender: "",
-    status: "",
-    dob: "",
-    age: "",
-    licenceNo: "",
-    car_type: "",
-    paymentmode: "",
-    feeDetails: "",
-    payactive: "",
-  });
+  const [payactive,   setPayActive]   = useState("");
+  const [status,      setStatus]      = useState("offline");
+  const [formErrors,  setFormErrors]  = useState({});
 
   useEffect(() => {
     fetchDrivers();
     const socket = io(SOCKET_URL);
-    socket.on("newbooking", (data) => alert(`New Booking: ${data.name}`));
+    socket.on("newbooking", (d) => alert(`New Booking: ${d.name}`));
     return () => socket.disconnect();
   }, []);
 
@@ -57,793 +104,539 @@ export default function DriverDashboard() {
   };
 
   const resetForm = () => {
-    setEditId(null);
-    setName("");
-    setMobile("");
-    setLocation("");
-    setAge("");
-    setDob("");
-    setGender("");
-    setBloodgrp("");
-    setLicenceNo("");
-    setFeeDetails("");
-    setExperience("");
-    setCarType("");
-    setPaymentmode("");
-    setStatus("offline"); // ← always reset to offline
-    setPayActive(""); // ← reset payactive
-    setFormErrors({
-      name: "",
-      mobile: "",
-      gender: "",
-      status: "",
-      dob: "",
-      age: "",
-      licenceNo: "",
-      car_type: "",
-      paymentmode: "",
-      feeDetails: "",
-      payactive: "",
-    });
+    setEditId(null); setName(""); setMobile(""); setLocation(""); setAge("");
+    setDob(""); setGender(""); setBloodgrp(""); setLicenceNo(""); setFeeDetails("");
+    setExperience(""); setCarType(""); setPaymentmode(""); setPayActive("");
+    setStatus("offline"); setFormErrors({});
   };
 
-  const openCreate = () => {
-    resetForm();
-    setShowForm(true);
-  };
-
+  const openCreate = () => { resetForm(); setShowForm(true); };
   const openEdit = (d) => {
-    setEditId(d.id);
-    setName(d.name);
-    setMobile(d.mobile);
-    setLocation(d.location);
-    setBloodgrp(d.bloodgrp);
-    setDob(d.dob ? d.dob.split("T")[0] : "");
-    setAge(d.age);
-    setGender(d.gender);
-    setCarType(d.car_type);
-    setLicenceNo(d.licenceNo);
-    setFeeDetails(d.feeDetails);
-    setExperience(d.experience);
-    setPaymentmode(d.paymentmode);
-    setStatus(d.status || "offline"); // ← fallback to offline
-    setPayActive(d.payactive || ""); // ← load existing payactive
-    setFormErrors({
-      name: "",
-      mobile: "",
-      gender: "",
-      status: "",
-      dob: "",
-      age: "",
-      licenceNo: "",
-      car_type: "",
-      paymentmode: "",
-      feeDetails: "",
-      payactive: "",
-    });
-    setShowForm(true);
+    setEditId(d.id); setName(d.name); setMobile(d.mobile); setLocation(d.location);
+    setBloodgrp(d.bloodgrp); setDob(d.dob ? d.dob.split("T")[0] : ""); setAge(d.age);
+    setGender(d.gender); setCarType(d.car_type); setLicenceNo(d.licenceNo);
+    setFeeDetails(d.feeDetails); setExperience(d.experience);
+    setPaymentmode(d.paymentmode); setStatus(d.status || "offline");
+    setPayActive(d.payactive || ""); setFormErrors({}); setShowForm(true);
   };
 
-  const validateForm = () => {
-    const errors = {
-      name: "",
-      mobile: "",
-      gender: "",
-      status: "",
-      dob: "",
-      age: "",
-      licenceNo: "",
-      car_type: "",
-      paymentmode: "",
-      feeDetails: "",
-      payactive: "",
-    };
-    let isValid = true;
-
-    if (!name.trim()) {
-      errors.name = "Full name is required";
-      isValid = false;
-    } else if (name.trim().length < 2) {
-      errors.name = "Name must be at least 2 characters";
-      isValid = false;
-    }
-
-    if (!mobile.trim()) {
-      errors.mobile = "Mobile number is required";
-      isValid = false;
-    } else if (!/^[6-9]\d{9}$/.test(mobile)) {
-      errors.mobile = "Enter a valid 10-digit mobile number";
-      isValid = false;
-    }
-
-    if (!gender) {
-      errors.gender = "Please select a gender";
-      isValid = false;
-    }
-    if (!status) {
-      errors.status = "Please select a status";
-      isValid = false;
-    }
-    if (!payactive) {
-      errors.payactive = "Please select payment activity";
-      isValid = false;
-    }
-
-    if (dob) {
-      if (new Date(dob) >= new Date()) {
-        errors.dob = "Date of birth must be in the past";
-        isValid = false;
-      }
-    }
-    if (age) {
-      const n = parseInt(age);
-      if (isNaN(n) || n < 18 || n > 80) {
-        errors.age = "Age must be between 18 and 80";
-        isValid = false;
-      }
-    }
-    if (licenceNo && licenceNo.trim().length < 5) {
-      errors.licenceNo = "Enter a valid licence number";
-      isValid = false;
-    }
-    if (!car_type) {
-      errors.car_type = "Please select a car type";
-      isValid = false;
-    }
-    if (!paymentmode) {
-      errors.paymentmode = "Please select a payment mode";
-      isValid = false;
-    }
-    if (!feeDetails) {
-      errors.feeDetails = "Please select fee status";
-      isValid = false;
-    }
-
-    setFormErrors(errors);
-    return isValid;
+  const validate = () => {
+    const e = {};
+    if (!name.trim() || name.trim().length < 2) e.name      = "Full name required (min 2 chars)";
+    if (!/^[6-9]\d{9}$/.test(mobile))           e.mobile    = "Valid 10-digit mobile required";
+    if (!gender)                                 e.gender    = "Please select gender";
+    if (!payactive)                              e.payactive = "Please select pay activity";
+    if (!car_type)                               e.car_type  = "Please select car type";
+    if (!paymentmode)                            e.paymentmode="Please select payment mode";
+    if (!feeDetails)                             e.feeDetails = "Please select fee status";
+    if (dob && new Date(dob) >= new Date())      e.dob       = "DOB must be in the past";
+    if (age && (isNaN(+age) || +age < 18 || +age > 80)) e.age = "Age must be 18–80";
+    setFormErrors(e);
+    return Object.keys(e).length === 0;
   };
 
   const submitForm = async () => {
-    if (!validateForm()) return;
-    const body = {
-      name,
-      mobile,
-      location,
-      experience,
-      feeDetails,
-      dob,
-      bloodgrp,
-      age,
-      gender,
-      car_type,
-      licenceNo,
-      paymentmode,
-      status,
-      payactive, // ← include payactive
-    };
+    if (!validate()) return;
+    const body = { name, mobile, location, experience, feeDetails, dob, bloodgrp,
+                   age, gender, car_type, licenceNo, paymentmode, payactive,
+                   status: editId ? status : "offline" };
     if (editId) await axios.put(`${BASE_URL}/api/updatedriver/${editId}`, body);
-    else await axios.post(`${BASE_URL}/api/adddrivers`, body);
-    setShowForm(false);
-    resetForm();
-    fetchDrivers();
+    else        await axios.post(`${BASE_URL}/api/adddrivers`, body);
+    setShowForm(false); resetForm(); fetchDrivers();
   };
 
-  const confirmDelete = (id, driverName) => {
-    setDeleteTargetId(id);
-    setDeleteTargetName(driverName);
-    setShowDeleteModal(true);
-  };
-
+  const confirmDelete = (id, n) => { setDeleteId(id); setDeleteName(n); setShowDeleteModal(true); };
   const deleteDriver = async () => {
-    await axios.delete(`${BASE_URL}/api/deletedriver/${deleteTargetId}`);
-    setShowDeleteModal(false);
-    setDeleteTargetId(null);
-    setDeleteTargetName("");
+    await axios.delete(`${BASE_URL}/api/deletedriver/${deleteId}`);
+    setShowDeleteModal(false); setDeleteId(null); setDeleteName(""); fetchDrivers();
+  };
+
+  /* ── CSV ── */
+  const downloadSample = () => {
+    const blob = new Blob([SAMPLE_CSV.join("\n")], { type:"text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "drivers_sample.csv"; a.click();
+  };
+
+  const parseCSVLine = (line) => {
+    const result = []; let cur = ""; let inQ = false;
+    for (const c of line) {
+      if (c === '"') inQ = !inQ;
+      else if (c === "," && !inQ) { result.push(cur.trim()); cur = ""; }
+      else cur += c;
+    }
+    result.push(cur.trim());
+    return result;
+  };
+
+  const handleCsvFile = (e) => {
+    setCsvError(""); setCsvRows([]); setCsvResult(null);
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.name.endsWith(".csv")) { setCsvError("Please upload a .csv file"); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const lines = ev.target.result.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) { setCsvError("CSV is empty"); return; }
+      const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase().replace(/\s+/g,""));
+      const missing = ["name","mobile"].filter((c) => !headers.includes(c));
+      if (missing.length) { setCsvError(`Missing columns: ${missing.join(", ")}`); return; }
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const vals = parseCSVLine(lines[i]);
+        const obj  = {};
+        headers.forEach((h, idx) => { obj[h] = vals[idx] || ""; });
+        obj.status = "offline";
+        rows.push(obj);
+      }
+      setCsvRows(rows);
+    };
+    reader.readAsText(file);
+  };
+
+  const uploadCsv = async () => {
+    if (!csvRows.length) return;
+    setCsvUploading(true);
+    let added = 0, failed = 0;
+    for (const row of csvRows) {
+      try {
+        await axios.post(`${BASE_URL}/api/adddrivers`, {
+          name: row.name, mobile: row.mobile,
+          location: row.location || "", experience: row.experience || "",
+          feeDetails: row.feedetails || row.feeDetails || "",
+          dob: row.dob || "", bloodgrp: row.bloodgrp || "",
+          age: row.age || "", gender: row.gender || "",
+          car_type: row.car_type || "", licenceNo: row.licenceno || row.licenceNo || "",
+          paymentmode: row.paymentmode || "", payactive: row.payactive || "",
+          status: "offline",
+        });
+        added++;
+      } catch { failed++; }
+    }
+    setCsvUploading(false);
+    setCsvResult({ added, failed });
     fetchDrivers();
   };
 
-  const filtered = drivers.filter(
-    (d) =>
-      d.name.toLowerCase().includes(search.toLowerCase()) ||
-      d.mobile.includes(search),
+  const closeCsv = () => {
+    setShowCsvModal(false); setCsvRows([]); setCsvError(""); setCsvResult(null);
+    if (csvRef.current) csvRef.current.value = "";
+  };
+
+  /* ── Filter + paginate ── */
+  const filtered = drivers.filter((d) =>
+    d.name.toLowerCase().includes(search.toLowerCase()) ||
+    String(d.mobile).includes(search)
   );
+  const pg = usePagination(filtered, 10);
 
-  const totalDrivers = drivers.length;
-  const activeDrivers = drivers.filter(
-    (d) => d.status?.toLowerCase() === "active",
-  ).length;
-  const paidFees = drivers.filter((d) => d.feeDetails === "Paid").length;
-  const automaticDrivers = drivers.filter((d) =>
-    d.car_type?.toLowerCase().includes("automatic"),
-  ).length;
+  /* ── Stats ── */
+  const totalD    = drivers.length;
+  const activeD   = drivers.filter((d) => d.status?.toLowerCase() === "active").length;
+  const paidFees  = drivers.filter((d) => d.feeDetails === "Paid").length;
+  const autoD     = drivers.filter((d) => d.car_type?.toLowerCase().includes("automatic")).length;
 
-  const ErrorText = ({ error }) =>
-    error ? <span style={styles.errorText}>⚠ {error}</span> : null;
+  const ErrMsg = ({ k }) => formErrors[k]
+    ? <span className="form-error">⚠ {formErrors[k]}</span> : null;
 
   return (
-    <div style={styles.container}>
+    <div>
       {/* ── Page Header ── */}
-      <div style={styles.pageHeader}>
-        <div>
-          <h1 style={styles.mainTitle}>Driver Management</h1>
-          <p style={styles.subtitle}>
-            Manage and monitor all your drivers in one place
-          </p>
+      <div className="page-header">
+        <div className="page-header-left">
+          <h1 className="page-title">Driver Management</h1>
+          <p className="page-subtitle">Manage and monitor all your drivers in one place</p>
         </div>
-        <button onClick={openCreate} style={styles.addBtnLarge}>
-          <span style={styles.btnIcon}>+</span>Add New Driver
-        </button>
+        <div className="page-header-right">
+          <button className="btn btn-ghost btn-sm" onClick={downloadSample}>⬇ Sample CSV</button>
+          <button className="btn btn-success btn-sm" onClick={() => setShowCsvModal(true)}>📂 Import CSV</button>
+          <button className="btn btn-primary" onClick={openCreate}>+ Add New Driver</button>
+        </div>
       </div>
 
       {/* ── Stats ── */}
-      <div style={styles.statsGrid}>
+      <div className="stats-grid">
         {[
-          {
-            icon: "👥",
-            label: "Total Drivers",
-            value: totalDrivers,
-            grad: "linear-gradient(135deg,#2563eb,#1d4ed8)",
-          },
-          {
-            icon: "✓",
-            label: "Active Drivers",
-            value: activeDrivers,
-            grad: "linear-gradient(135deg,#10b981,#059669)",
-          },
-          {
-            icon: "💳",
-            label: "Fees Paid",
-            value: paidFees,
-            grad: "linear-gradient(135deg,#8b5cf6,#7c3aed)",
-          },
-          {
-            icon: "🚗",
-            label: "Automatic",
-            value: automaticDrivers,
-            grad: "linear-gradient(135deg,#f59e0b,#d97706)",
-          },
+          { icon:"👥", label:"Total Drivers",  value:totalD,   cls:"stat-icon-box-blue"   },
+          { icon:"✓",  label:"Active Drivers", value:activeD,  cls:"stat-icon-box-green"  },
+          { icon:"💳", label:"Fees Paid",       value:paidFees, cls:"stat-icon-box-purple" },
+          { icon:"🚗", label:"Automatic Cars", value:autoD,    cls:"stat-icon-box-amber"  },
         ].map((s) => (
-          <div key={s.label} style={styles.statCard}>
-            <div style={{ ...styles.statIconWrapper, background: s.grad }}>
-              <span style={styles.statIcon}>{s.icon}</span>
-            </div>
-            <div style={styles.statContent}>
-              <p style={styles.statLabel}>{s.label}</p>
-              <h3 style={styles.statValue}>{s.value}</h3>
+          <div key={s.label} className="stat-card">
+            <div className={`stat-icon-box ${s.cls}`}><span>{s.icon}</span></div>
+            <div>
+              <p className="stat-label">{s.label}</p>
+              <h3 className="stat-value">{s.value}</h3>
             </div>
           </div>
         ))}
       </div>
 
       {/* ── Search ── */}
-      <div style={styles.searchSection}>
-        <div style={styles.searchWrapper}>
-          <span style={styles.searchIcon}>🔍</span>
+      <div className="search-bar">
+        <div className="search-wrap">
+          <span className="search-icon-pos">🔍</span>
           <input
-            placeholder="Search by name or mobile number..."
+            className="search-input"
+            placeholder="Search by name or mobile..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={styles.searchInput}
+            onChange={(e) => { setSearch(e.target.value); pg.setPage(1); }}
           />
         </div>
-        <div style={styles.resultCount}>
-          Showing <strong>{filtered.length}</strong> of{" "}
-          <strong>{totalDrivers}</strong> drivers
-        </div>
+        <span className="search-result-count">
+          Showing <strong>{pg.startDisplay}–{pg.endDisplay}</strong> of <strong>{pg.total}</strong>
+        </span>
       </div>
 
       {/* ── Table ── */}
-      <div style={styles.tableCard}>
-        <div style={styles.tableHeader}>
-          <h3 style={styles.tableTitle}>All Drivers</h3>
-          <div style={styles.tableBadge}>{filtered.length} Records</div>
+      <div className="table-card">
+        <div className="table-card-header">
+          <h3 className="table-card-title">All Drivers</h3>
+          <span className="table-record-badge">{filtered.length} Records</span>
         </div>
-        <div style={styles.tableWrapper}>
-          <table style={styles.table}>
+
+        <div className="table-wrap">
+          <table>
             <thead>
               <tr>
-                {[
-                  "ID",
-                  "Name",
-                  "Mobile",
-                  "Gender",
-                  "Status",
-                  "Pay Active",
-                  "DOB - Age",
-                  "Car Type",
-                  "Licence",
-                  "Payment",
-                  "Fee Status",
-                  "Location",
-                  "Actions",
-                ].map((h) => (
-                  <th key={h} style={styles.th}>
-                    {h}
-                  </th>
-                ))}
+                {["ID","Name","Mobile","Gender","Status","Pay Active","DOB · Age","Car Type","Licence","Payment","Fee Status","Location","Actions"]
+                  .map((h) => <th key={h}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {pg.slice.length === 0 ? (
                 <tr>
-                  <td colSpan="13" style={styles.noData}>
-                    <div style={styles.noDataContent}>
-                      <span style={styles.noDataIcon}>📭</span>
-                      <p>No drivers found</p>
+                  <td colSpan="13">
+                    <div className="empty-state">
+                      <span className="empty-state-icon">📭</span>
+                      <p className="empty-state-title">No drivers found</p>
+                      <p className="empty-state-sub">Try a different search term</p>
                     </div>
                   </td>
                 </tr>
-              ) : (
-                filtered.map((d, i) => (
-                  <tr
-                    key={d.id}
-                    style={i % 2 === 0 ? styles.evenRow : styles.oddRow}
-                  >
-                    <td style={styles.td}>
-                      <span style={styles.idBadge}>{d.id}</span>
-                    </td>
-                    <td style={styles.td}>
-                      <div style={styles.nameCell}>
-                        <div style={styles.avatar}>
-                          {d.name?.charAt(0).toUpperCase()}
-                        </div>
-                        <span style={styles.nameText}>{d.name}</span>
-                      </div>
-                    </td>
-                    <td style={styles.td}>{d.mobile}</td>
-                    <td style={styles.td}>{d.gender || "-"}</td>
-                    <td style={styles.td}>
-                      <span
-                        style={
-                          d.status?.toLowerCase() === "active"
-                            ? styles.statusActive
-                            : d.status?.toLowerCase() === "inactive"
-                              ? styles.statusInactive
-                              : d.status?.toLowerCase() === "on duty"
-                                ? styles.statusOnDuty
-                                : d.status?.toLowerCase() === "suspend"
-                                  ? styles.statusSuspended
-                                  : d.status?.toLowerCase() === "offline"
-                                    ? styles.statusOffline
-                                    : styles.statusInactive
-                        }
-                      >
-                        {d.status?.toLowerCase() === "active"
-                          ? "🟢 "
-                          : d.status?.toLowerCase() === "inactive"
-                            ? "🟡 "
-                            : d.status?.toLowerCase() === "on duty"
-                              ? "🔵 "
-                              : d.status?.toLowerCase() === "suspend"
-                                ? "⛔ "
-                                : d.status?.toLowerCase() === "offline"
-                                  ? "⚫ "
-                                  : "🔴 "}
-                        {d.status || "N/A"}
-                      </span>
-                    </td>
-
-                    {/* ── Pay Active column ── */}
-                    <td style={styles.td}>
-                      <span
-                        style={
-                          d.payactive?.toLowerCase() === "active"
-                            ? styles.payActiveOn
-                            : d.payactive?.toLowerCase() === "deactive"
-                              ? styles.payActiveOff
-                              : styles.payActiveNone
-                        }
-                      >
-                        {d.payactive?.toLowerCase() === "active"
-                          ? "✅ Active"
-                          : d.payactive?.toLowerCase() === "deactive"
-                            ? "🚫 Deactive"
-                            : "— N/A"}
-                      </span>
-                    </td>
-
-                    <td style={styles.td}>
-                      {d.dob
-                        ? new Date(d.dob).toLocaleDateString("en-GB")
-                        : "dd-MM-yyyy"}{" "}
-                      - {d.age || "-"}
-                    </td>
-                    <td style={styles.td}>
-                      <span
-                        style={
-                          d.car_type?.toLowerCase() === "automatic"
-                            ? styles.badgeAutomatic
-                            : d.car_type?.toLowerCase() === "manual"
-                              ? styles.badgeManual
-                              : styles.badgeBoth
-                        }
-                      >
-                        {d.car_type || "N/A"}
-                      </span>
-                    </td>
-                    <td style={styles.td}>{d.licenceNo || "-"}</td>
-                    <td style={styles.td}>
-                      <span
-                        style={
-                          d.paymentmode?.toLowerCase() === "online"
-                            ? styles.badgeOnline
-                            : d.paymentmode?.toLowerCase() === "offline"
-                              ? styles.badgeOffline
-                              : styles.badgeBoth
-                        }
-                      >
-                        {d.paymentmode?.toLowerCase() === "online"
-                          ? "🌐 "
-                          : d.paymentmode?.toLowerCase() === "offline"
-                            ? "💵 "
-                            : "🔄 "}
-                        {d.paymentmode || "N/A"}
-                      </span>
-                    </td>
-                    <td style={styles.td}>
-                      <span
-                        style={
-                          d.feeDetails === "Paid"
-                            ? styles.badgeGreen
-                            : d.feeDetails === "Pending"
-                              ? styles.badgePending
-                              : styles.badgeRed
-                        }
-                      >
-                        {d.feeDetails === "Paid"
-                          ? "✅ "
-                          : d.feeDetails === "Pending"
-                            ? "⏳ "
-                            : "❌ "}
-                        {d.feeDetails || "N/A"}
-                      </span>
-                    </td>
-                    <td style={styles.td}>{d.location || "-"}</td>
-                    <td style={styles.td}>
-                      <div style={styles.actionButtons}>
-                        <button
-                          style={styles.editBtn}
-                          onClick={() => openEdit(d)}
-                        >
-                          ✏️ Edit
-                        </button>
-                        <button
-                          style={styles.deleteBtn}
-                          onClick={() => confirmDelete(d.id, d.name)}
-                        >
-                          🗑️ Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
+              ) : pg.slice.map((d) => (
+                <tr key={d.id}>
+                  <td><span className="cell-id">{d.id}</span></td>
+                  <td>
+                    <div className="cell-name">
+                      <div className="avatar">{d.name?.charAt(0).toUpperCase()}</div>
+                      <span className="cell-name-text">{d.name}</span>
+                    </div>
+                  </td>
+                  <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{d.mobile}</td>
+                  <td>{d.gender || "—"}</td>
+                  <td><span className={statusBadgeClass(d.status)}>{statusLabel(d.status)}</span></td>
+                  <td><span className={payBadge(d.payactive)}>{payLabel(d.payactive)}</span></td>
+                  <td style={{ whiteSpace:"nowrap" }}>
+                    {d.dob ? new Date(d.dob).toLocaleDateString("en-GB") : "—"}{" · "}{d.age || "—"}
+                  </td>
+                  <td><span className={carBadge(d.car_type)}>{d.car_type || "N/A"}</span></td>
+                  <td style={{ fontFamily:"var(--font-mono)", fontSize:12 }}>{d.licenceNo || "—"}</td>
+                  <td><span className={pmBadge(d.paymentmode)}>{d.paymentmode || "N/A"}</span></td>
+                  <td><span className={feeBadge(d.feeDetails)}>{feeLabel(d.feeDetails)}</span></td>
+                  <td>
+                    <div className="cell-loc">
+                      <span>📍</span>
+                      <span className="cell-loc-text">{d.location || "—"}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{ display:"flex", gap:6 }}>
+                      <button className="action-edit" onClick={() => openEdit(d)}>✏️ Edit</button>
+                      <button className="action-delete" onClick={() => confirmDelete(d.id, d.name)}>🗑️</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
+
+        {/* ── Pagination ── */}
+        {filtered.length > 0 && (
+          <PaginationBar
+            pg={pg}
+            onPageChange={pg.setPage}
+            onSizeChange={(size) => { pg.setPageSize(size); pg.setPage(1); }}
+          />
+        )}
       </div>
 
-      {/* ── Add / Edit Form Modal ── */}
+      {/* ══════════════════════════════
+          CSV IMPORT MODAL
+      ══════════════════════════════ */}
+      {showCsvModal && (
+        <div className="modal-overlay">
+          <div className="modal modal-lg">
+            <div className="modal-header modal-header-success">
+              <div className="modal-header-inner">
+                <span style={{ fontSize:26 }}>📂</span>
+                <span className="modal-title">Import Drivers via CSV</span>
+              </div>
+              <button className="modal-close" onClick={closeCsv}>✕</button>
+            </div>
+
+            <div className="modal-body" style={{ display:"flex", flexDirection:"column", gap:22 }}>
+              {/* Step 1 */}
+              <div className="csv-step">
+                <div className="csv-step-num">1</div>
+                <div style={{ flex:1 }}>
+                  <p className="csv-step-title">Download Sample CSV</p>
+                  <p className="csv-step-desc">Use this template to fill in driver details.</p>
+                  <button className="btn btn-outline btn-sm" onClick={downloadSample}>⬇ Download Sample</button>
+                  <div className="col-chips">
+                    {CSV_COLUMNS.map((c) => <span key={c} className="col-chip">{c}</span>)}
+                  </div>
+                  <p className="col-note">⚠ Status is always set to <strong>offline</strong> automatically.</p>
+                </div>
+              </div>
+
+              {/* Step 2 */}
+              <div className="csv-step">
+                <div className="csv-step-num">2</div>
+                <div style={{ flex:1 }}>
+                  <p className="csv-step-title">Upload CSV File</p>
+                  <label>
+                    <input ref={csvRef} type="file" accept=".csv" onChange={handleCsvFile} style={{ display:"none" }} />
+                    <span className="file-drop-zone">📁 Choose CSV File</span>
+                  </label>
+                  {csvError && <p style={{ color:"var(--danger)", fontSize:13, marginTop:8 }}>⚠ {csvError}</p>}
+                </div>
+              </div>
+
+              {/* Step 3: Preview */}
+              {csvRows.length > 0 && !csvResult && (
+                <div className="csv-step">
+                  <div className="csv-step-num">3</div>
+                  <div style={{ flex:1 }}>
+                    <p className="csv-step-title">Preview ({csvRows.length} driver{csvRows.length !== 1 ? "s" : ""})</p>
+                    <div className="csv-preview-wrap">
+                      <table>
+                        <thead>
+                          <tr style={{ background:"var(--surface-2)" }}>
+                            {["Name","Mobile","Gender","Car Type","Fee","Pay Active"].map((h) => (
+                              <th key={h} className="csv-preview-th">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {csvRows.slice(0, 10).map((r, i) => (
+                            <tr key={i}>
+                              <td className="csv-preview-td">{r.name || "—"}</td>
+                              <td className="csv-preview-td">{r.mobile || "—"}</td>
+                              <td className="csv-preview-td">{r.gender || "—"}</td>
+                              <td className="csv-preview-td">{r.car_type || "—"}</td>
+                              <td className="csv-preview-td">{r.feedetails || r.feeDetails || "—"}</td>
+                              <td className="csv-preview-td">{r.payactive || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {csvRows.length > 10 && (
+                        <p style={{ textAlign:"center", color:"var(--text-muted)", fontSize:12, padding:"6px 0" }}>
+                          + {csvRows.length - 10} more rows
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      className="btn btn-success"
+                      style={{ width:"100%", opacity: csvUploading ? .65 : 1 }}
+                      onClick={uploadCsv}
+                      disabled={csvUploading}
+                    >
+                      {csvUploading ? "Importing..." : `✅ Import ${csvRows.length} Driver${csvRows.length !== 1 ? "s" : ""}`}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Result */}
+              {csvResult && (
+                <div className="csv-result-box">
+                  <span className="csv-result-emoji">{csvResult.failed === 0 ? "🎉" : "⚠️"}</span>
+                  <p className="csv-result-title">Import Complete</p>
+                  <div className="csv-result-counts">
+                    <span className="csv-added">✅ {csvResult.added} Added</span>
+                    {csvResult.failed > 0 && <span className="csv-failed">❌ {csvResult.failed} Failed</span>}
+                  </div>
+                  <button className="btn btn-primary" style={{ marginTop:8 }} onClick={closeCsv}>Done</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════
+          ADD / EDIT DRIVER MODAL
+      ══════════════════════════════ */}
       {showForm && (
-        <div style={styles.overlay}>
-          <div style={styles.modalForm}>
-            <div style={styles.modalHeaderForm}>
-              <div style={styles.headerContent}>
-                <span style={styles.headerIcon}>{editId ? "✏️" : "➕"}</span>
-                <span style={styles.headerText}>
-                  {editId ? "Edit Driver Details" : "Add New Driver"}
-                </span>
+        <div className="modal-overlay">
+          <div className="modal modal-lg">
+            <div className="modal-header">
+              <div className="modal-header-inner">
+                <span style={{ fontSize:26 }}>{editId ? "✏️" : "➕"}</span>
+                <span className="modal-title">{editId ? "Edit Driver Details" : "Add New Driver"}</span>
               </div>
-              <span
-                style={styles.closeIconForm}
-                onClick={() => {
-                  setShowForm(false);
-                  resetForm();
-                }}
-              >
-                ✖
-              </span>
+              <button className="modal-close" onClick={() => { setShowForm(false); resetForm(); }}>✕</button>
             </div>
 
-            <div style={styles.formGrid}>
-              {/* ── Personal Info ── */}
-              <div style={styles.sectionHeader}>👤 Personal Information</div>
-              <div style={styles.sectionDivider} />
+            <div className="modal-body">
+              <div className="form-grid">
+                {/* ── Personal ── */}
+                <div className="form-section-label">👤 Personal Information</div>
+                <div className="form-section-divider" />
 
-              <div style={styles.inputWrapper}>
-                <label style={styles.label}>
-                  Full Name <span style={styles.required}>*</span>
-                </label>
-                <input
-                  placeholder="Enter full name"
-                  value={name}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    setFormErrors((p) => ({ ...p, name: "" }));
-                  }}
-                  style={{
-                    ...styles.formInput,
-                    ...(formErrors.name ? styles.inputError : {}),
-                  }}
-                />
-                <ErrorText error={formErrors.name} />
-              </div>
+                <div className="form-field">
+                  <label className="form-label">Full Name <span className="form-required">*</span></label>
+                  <input className={`form-input${formErrors.name ? " form-input-error" : ""}`}
+                    placeholder="Enter full name" value={name}
+                    onChange={(e) => { setName(e.target.value); setFormErrors((p) => ({ ...p, name:"" })); }} />
+                  <ErrMsg k="name" />
+                </div>
 
-              <div style={styles.inputWrapper}>
-                <label style={styles.label}>
-                  Mobile Number <span style={styles.required}>*</span>
-                </label>
-                <input
-                  placeholder="Enter 10-digit mobile number"
-                  value={mobile}
-                  maxLength={10}
-                  onChange={(e) => {
-                    setMobile(e.target.value.replace(/\D/g, ""));
-                    setFormErrors((p) => ({ ...p, mobile: "" }));
-                  }}
-                  style={{
-                    ...styles.formInput,
-                    ...(formErrors.mobile ? styles.inputError : {}),
-                  }}
-                />
-                <ErrorText error={formErrors.mobile} />
-              </div>
+                <div className="form-field">
+                  <label className="form-label">Mobile Number <span className="form-required">*</span></label>
+                  <input className={`form-input${formErrors.mobile ? " form-input-error" : ""}`}
+                    placeholder="10-digit mobile" value={mobile} maxLength={10}
+                    onChange={(e) => { setMobile(e.target.value.replace(/\D/g,"")); setFormErrors((p) => ({ ...p, mobile:"" })); }} />
+                  <ErrMsg k="mobile" />
+                </div>
 
-              <div style={styles.inputWrapper}>
-                <label style={styles.label}>Blood Group</label>
-                <select
-                  value={bloodgrp}
-                  onChange={(e) => setBloodgrp(e.target.value)}
-                  style={styles.formSelect}
-                >
-                  <option value="">Select Blood Group</option>
-                  {["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"].map(
-                    (bg) => (
-                      <option key={bg}>{bg}</option>
-                    ),
+                <div className="form-field">
+                  <label className="form-label">Blood Group</label>
+                  <select className="form-select" value={bloodgrp} onChange={(e) => setBloodgrp(e.target.value)}>
+                    <option value="">Select Blood Group</option>
+                    {["A+","A-","B+","B-","O+","O-","AB+","AB-"].map((b) => <option key={b}>{b}</option>)}
+                  </select>
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Date of Birth</label>
+                  <input type="date" className={`form-input${formErrors.dob ? " form-input-error" : ""}`}
+                    value={dob} max={new Date().toISOString().split("T")[0]}
+                    onChange={(e) => { setDob(e.target.value); setFormErrors((p) => ({ ...p, dob:"" })); }} />
+                  <ErrMsg k="dob" />
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Age</label>
+                  <input className={`form-input${formErrors.age ? " form-input-error" : ""}`}
+                    placeholder="18–80" value={age} maxLength={2}
+                    onChange={(e) => { setAge(e.target.value.replace(/\D/g,"")); setFormErrors((p) => ({ ...p, age:"" })); }} />
+                  <ErrMsg k="age" />
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Gender <span className="form-required">*</span></label>
+                  <select className={`form-select${formErrors.gender ? " form-input-error" : ""}`}
+                    value={gender} onChange={(e) => { setGender(e.target.value); setFormErrors((p) => ({ ...p, gender:"" })); }}>
+                    <option value="">Select Gender</option>
+                    <option>Male</option><option>Female</option><option>Other</option>
+                  </select>
+                  <ErrMsg k="gender" />
+                </div>
+
+                {/* ── Professional ── */}
+                <div className="form-section-label">🚗 Professional Details</div>
+                <div className="form-section-divider" />
+
+                <div className="form-field">
+                  <label className="form-label">Licence Number</label>
+                  <input className="form-input" placeholder="Enter licence number" value={licenceNo}
+                    onChange={(e) => setLicenceNo(e.target.value)} />
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Experience (Years)</label>
+                  <input className="form-input" placeholder="Years of experience" value={experience}
+                    onChange={(e) => setExperience(e.target.value.replace(/\D/g,""))} />
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Car Type <span className="form-required">*</span></label>
+                  <select className={`form-select${formErrors.car_type ? " form-input-error" : ""}`}
+                    value={car_type} onChange={(e) => { setCarType(e.target.value); setFormErrors((p) => ({ ...p, car_type:"" })); }}>
+                    <option value="">Select Car Type</option>
+                    <option>Automatic</option><option>Manual</option><option>Both</option>
+                  </select>
+                  <ErrMsg k="car_type" />
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Location</label>
+                  <input className="form-input" placeholder="Current location" value={location}
+                    onChange={(e) => setLocation(e.target.value)} />
+                </div>
+
+                {/* ── Status ── */}
+                <div className="form-section-label">⚙️ Status & Activity</div>
+                <div className="form-section-divider" />
+
+                <div className="form-field">
+                  <label className="form-label">
+                    Status
+                    {!editId && <span className="form-hint" style={{ marginLeft:6 }}>🔒 Auto: Offline</span>}
+                  </label>
+                  {editId ? (
+                    <select className="form-select" value={status} onChange={(e) => setStatus(e.target.value)}>
+                      <option value="offline">⚫ Offline</option>
+                      <option value="active">🟢 Active</option>
+                      <option value="inactive">🟡 Inactive</option>
+                      <option value="on Duty">🔵 On Duty</option>
+                      <option value="suspend">⛔ Suspended</option>
+                    </select>
+                  ) : (
+                    <div className="readonly-display">
+                      <span className="badge badge-gray">⚫ Offline</span>
+                      <span className="readonly-note">Set automatically</span>
+                    </div>
                   )}
-                </select>
-              </div>
+                </div>
 
-              <div style={styles.inputWrapper}>
-                <label style={styles.label}>Date of Birth</label>
-                <input
-                  type="date"
-                  value={dob}
-                  max={new Date().toISOString().split("T")[0]}
-                  onChange={(e) => {
-                    setDob(e.target.value);
-                    setFormErrors((p) => ({ ...p, dob: "" }));
-                  }}
-                  style={{
-                    ...styles.formInput,
-                    ...(formErrors.dob ? styles.inputError : {}),
-                  }}
-                />
-                <ErrorText error={formErrors.dob} />
-              </div>
+                <div className="form-field">
+                  <label className="form-label">Pay Active <span className="form-required">*</span></label>
+                  <select className={`form-select${formErrors.payactive ? " form-input-error" : ""}`}
+                    value={payactive} onChange={(e) => { setPayActive(e.target.value); setFormErrors((p) => ({ ...p, payactive:"" })); }}>
+                    <option value="">Select Pay Activity</option>
+                    <option value="Active">✅ Active</option>
+                    <option value="Deactive">🚫 Deactive</option>
+                  </select>
+                  <ErrMsg k="payactive" />
+                </div>
 
-              <div style={styles.inputWrapper}>
-                <label style={styles.label}>Age</label>
-                <input
-                  placeholder="18 – 80"
-                  value={age}
-                  maxLength={2}
-                  onChange={(e) => {
-                    setAge(e.target.value.replace(/\D/g, ""));
-                    setFormErrors((p) => ({ ...p, age: "" }));
-                  }}
-                  style={{
-                    ...styles.formInput,
-                    ...(formErrors.age ? styles.inputError : {}),
-                  }}
-                />
-                <ErrorText error={formErrors.age} />
-              </div>
+                {/* ── Payment ── */}
+                <div className="form-section-label">💳 Payment Information</div>
+                <div className="form-section-divider" />
 
-              <div style={styles.inputWrapper}>
-                <label style={styles.label}>
-                  Gender <span style={styles.required}>*</span>
-                </label>
-                <select
-                  value={gender}
-                  onChange={(e) => {
-                    setGender(e.target.value);
-                    setFormErrors((p) => ({ ...p, gender: "" }));
-                  }}
-                  style={{
-                    ...styles.formSelect,
-                    ...(formErrors.gender ? styles.inputError : {}),
-                  }}
-                >
-                  <option value="">Select Gender</option>
-                  <option>Male</option>
-                  <option>Female</option>
-                  <option>Other</option>
-                </select>
-                <ErrorText error={formErrors.gender} />
-              </div>
+                <div className="form-field">
+                  <label className="form-label">Payment Mode <span className="form-required">*</span></label>
+                  <select className={`form-select${formErrors.paymentmode ? " form-input-error" : ""}`}
+                    value={paymentmode} onChange={(e) => { setPaymentmode(e.target.value); setFormErrors((p) => ({ ...p, paymentmode:"" })); }}>
+                    <option value="">Select Payment Mode</option>
+                    <option>Online</option><option>Offline</option><option>Both</option>
+                  </select>
+                  <ErrMsg k="paymentmode" />
+                </div>
 
-              {/* ── Professional Details ── */}
-              <div style={styles.sectionHeader}>🚗 Professional Details</div>
-              <div style={styles.sectionDivider} />
-
-              <div style={styles.inputWrapper}>
-                <label style={styles.label}>Licence Number</label>
-                <input
-                  placeholder="Enter licence number"
-                  value={licenceNo}
-                  onChange={(e) => {
-                    setLicenceNo(e.target.value);
-                    setFormErrors((p) => ({ ...p, licenceNo: "" }));
-                  }}
-                  style={{
-                    ...styles.formInput,
-                    ...(formErrors.licenceNo ? styles.inputError : {}),
-                  }}
-                />
-                <ErrorText error={formErrors.licenceNo} />
-              </div>
-
-              <div style={styles.inputWrapper}>
-                <label style={styles.label}>Experience (Years)</label>
-                <input
-                  placeholder="Years of driving experience"
-                  value={experience}
-                  onChange={(e) =>
-                    setExperience(e.target.value.replace(/\D/g, ""))
-                  }
-                  style={styles.formInput}
-                />
-              </div>
-
-              <div style={styles.inputWrapper}>
-                <label style={styles.label}>
-                  Car Type <span style={styles.required}>*</span>
-                </label>
-                <select
-                  value={car_type}
-                  onChange={(e) => {
-                    setCarType(e.target.value);
-                    setFormErrors((p) => ({ ...p, car_type: "" }));
-                  }}
-                  style={{
-                    ...styles.formSelect,
-                    ...(formErrors.car_type ? styles.inputError : {}),
-                  }}
-                >
-                  <option value="">Select Car Type</option>
-                  <option>Automatic</option>
-                  <option>Manual</option>
-                  <option>Both</option>
-                </select>
-                <ErrorText error={formErrors.car_type} />
-              </div>
-
-              <div style={styles.inputWrapper}>
-                <label style={styles.label}>Location</label>
-                <input
-                  placeholder="Current location"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  style={styles.formInput}
-                />
-              </div>
-
-              {/* ── Status & Pay Active ── */}
-              <div style={styles.sectionHeader}>⚙️ Status & Activity</div>
-              <div style={styles.sectionDivider} />
-
-              <div style={styles.inputWrapper}>
-                <label style={styles.label}>
-                  Status <span style={styles.required}>*</span>
-                  <span style={styles.defaultHint}> (default: Offline)</span>
-                </label>
-                <select
-                  value={status}
-                  onChange={(e) => {
-                    setStatus(e.target.value);
-                    setFormErrors((p) => ({ ...p, status: "" }));
-                  }}
-                  style={{
-                    ...styles.formSelect,
-                    ...(formErrors.status ? styles.inputError : {}),
-                  }}
-                >
-                  <option value="offline">⚫ Offline</option>
-                  <option value="active">🟢 Active</option>
-                  <option value="inactive">🟡 Inactive</option>
-                  <option value="on Duty">🔵 On Duty</option>
-                  <option value="suspend">⛔ Suspended</option>
-                </select>
-                <ErrorText error={formErrors.status} />
-              </div>
-
-              {/* ── NEW: Pay Active field ── */}
-              <div style={styles.inputWrapper}>
-                <label style={styles.label}>
-                  Pay Active <span style={styles.required}>*</span>
-                </label>
-                <select
-                  value={payactive}
-                  onChange={(e) => {
-                    setPayActive(e.target.value);
-                    setFormErrors((p) => ({ ...p, payactive: "" }));
-                  }}
-                  style={{
-                    ...styles.formSelect,
-                    ...(formErrors.payactive ? styles.inputError : {}),
-                  }}
-                >
-                  <option value="">Select Pay Activity</option>
-                  <option value="Active">✅ Active</option>
-                  <option value="Deactive">🚫 Deactive</option>
-                </select>
-                <ErrorText error={formErrors.payactive} />
-              </div>
-
-              {/* ── Payment Information ── */}
-              <div style={styles.sectionHeader}>💳 Payment Information</div>
-              <div style={styles.sectionDivider} />
-
-              <div style={styles.inputWrapper}>
-                <label style={styles.label}>
-                  Payment Mode <span style={styles.required}>*</span>
-                </label>
-                <select
-                  value={paymentmode}
-                  onChange={(e) => {
-                    setPaymentmode(e.target.value);
-                    setFormErrors((p) => ({ ...p, paymentmode: "" }));
-                  }}
-                  style={{
-                    ...styles.formSelect,
-                    ...(formErrors.paymentmode ? styles.inputError : {}),
-                  }}
-                >
-                  <option value="">Select Payment Mode</option>
-                  <option>Online</option>
-                  <option>Offline</option>
-                  <option>Both</option>
-                </select>
-                <ErrorText error={formErrors.paymentmode} />
-              </div>
-
-              <div style={styles.inputWrapper}>
-                <label style={styles.label}>
-                  Fee Status <span style={styles.required}>*</span>
-                </label>
-                <select
-                  value={feeDetails}
-                  onChange={(e) => {
-                    setFeeDetails(e.target.value);
-                    setFormErrors((p) => ({ ...p, feeDetails: "" }));
-                  }}
-                  style={{
-                    ...styles.formSelect,
-                    ...(formErrors.feeDetails ? styles.inputError : {}),
-                  }}
-                >
-                  <option value="">Select Fee Status</option>
-                  <option value="Paid">✅ Paid</option>
-                  <option value="Not Paid">❌ Not Paid</option>
-                  <option value="Pending">⏳ Pending</option>
-                </select>
-                <ErrorText error={formErrors.feeDetails} />
+                <div className="form-field">
+                  <label className="form-label">Fee Status <span className="form-required">*</span></label>
+                  <select className={`form-select${formErrors.feeDetails ? " form-input-error" : ""}`}
+                    value={feeDetails} onChange={(e) => { setFeeDetails(e.target.value); setFormErrors((p) => ({ ...p, feeDetails:"" })); }}>
+                    <option value="">Select Fee Status</option>
+                    <option value="Paid">✅ Paid</option>
+                    <option value="Not Paid">❌ Not Paid</option>
+                    <option value="Pending">⏳ Pending</option>
+                  </select>
+                  <ErrMsg k="feeDetails" />
+                </div>
               </div>
             </div>
 
-            <div style={styles.btnRowForm}>
-              <button
-                style={styles.cancelBtnForm}
-                onClick={() => {
-                  setShowForm(false);
-                  resetForm();
-                }}
-              >
-                Cancel
-              </button>
-              <button style={styles.saveBtnForm} onClick={submitForm}>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => { setShowForm(false); resetForm(); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={submitForm}>
                 {editId ? "Update Driver" : "Add Driver"}
               </button>
             </div>
@@ -851,36 +644,28 @@ export default function DriverDashboard() {
         </div>
       )}
 
-      {/* ── Delete Confirmation Modal ── */}
+      {/* ── Delete Modal ── */}
       {showDeleteModal && (
-        <div style={styles.deleteOverlay}>
-          <div style={styles.deleteModal}>
-            <div style={styles.deleteIconWrapper}>
-              <span style={styles.deleteModalIcon}>🗑️</span>
+        <div className="modal-overlay">
+          <div className="modal modal-sm">
+            <div className="modal-header modal-header-danger">
+              <div className="modal-header-inner">
+                <span style={{ fontSize:22 }}>🗑️</span>
+                <span className="modal-title">Delete Driver</span>
+              </div>
+              <button className="modal-close" onClick={() => { setShowDeleteModal(false); setDeleteId(null); }}>✕</button>
             </div>
-            <h2 style={styles.deleteTitle}>Delete Driver</h2>
-            <p style={styles.deleteMessage}>
-              Are you sure you want to delete{" "}
-              <strong style={styles.deleteDriverName}>
-                "{deleteTargetName}"
-              </strong>
-              ?
-            </p>
-            <p style={styles.deleteWarning}>⚠ This action cannot be undone.</p>
-            <div style={styles.deleteButtonRow}>
-              <button
-                style={styles.deleteCancelBtn}
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setDeleteTargetId(null);
-                  setDeleteTargetName("");
-                }}
-              >
-                Cancel
-              </button>
-              <button style={styles.deleteConfirmBtn} onClick={deleteDriver}>
-                Yes, Delete
-              </button>
+            <div className="modal-body" style={{ textAlign:"center" }}>
+              <div className="delete-icon-ring">🗑️</div>
+              <p className="delete-modal-text">Are you sure?</p>
+              <p className="delete-modal-subtext">
+                You are about to delete <strong>"{deleteName}"</strong>. This cannot be undone.
+              </p>
+              <span className="delete-warning-pill">⚠ Irreversible Action</span>
+            </div>
+            <div className="modal-footer" style={{ justifyContent:"center", gap:14 }}>
+              <button className="btn btn-ghost" onClick={() => { setShowDeleteModal(false); setDeleteId(null); }}>Cancel</button>
+              <button className="btn btn-danger" onClick={deleteDriver}>Yes, Delete</button>
             </div>
           </div>
         </div>
@@ -888,572 +673,3 @@ export default function DriverDashboard() {
     </div>
   );
 }
-
-const styles = {
-  container: {
-    marginLeft: "260px",
-    padding: "40px",
-    background: "linear-gradient(135deg,#f0f4f8,#e2e8f0)",
-    minHeight: "100vh",
-  },
-
-  pageHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "35px",
-    flexWrap: "wrap",
-    gap: "20px",
-  },
-  mainTitle: {
-    fontSize: "32px",
-    fontWeight: 800,
-    color: "#1e293b",
-    margin: 0,
-    letterSpacing: "-0.5px",
-  },
-  subtitle: {
-    fontSize: "15px",
-    color: "#64748b",
-    margin: "5px 0 0 0",
-    fontWeight: 400,
-  },
-  addBtnLarge: {
-    background: "linear-gradient(135deg,#2563eb,#1d4ed8)",
-    color: "#fff",
-    border: "none",
-    padding: "14px 28px",
-    borderRadius: "12px",
-    cursor: "pointer",
-    fontWeight: 700,
-    fontSize: "15px",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    boxShadow: "0 10px 25px rgba(37,99,235,0.3)",
-  },
-  btnIcon: { fontSize: "20px", fontWeight: 700 },
-
-  statsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))",
-    gap: "25px",
-    marginBottom: "35px",
-  },
-  statCard: {
-    background: "#fff",
-    borderRadius: "16px",
-    padding: "24px",
-    display: "flex",
-    alignItems: "center",
-    gap: "20px",
-    boxShadow: "0 4px 6px rgba(0,0,0,0.05),0 10px 20px rgba(0,0,0,0.05)",
-    border: "1px solid rgba(255,255,255,0.8)",
-  },
-  statIconWrapper: {
-    width: "60px",
-    height: "60px",
-    borderRadius: "14px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    boxShadow: "0 8px 16px rgba(37,99,235,0.25)",
-  },
-  statIcon: { fontSize: "28px" },
-  statContent: { flex: 1 },
-  statLabel: {
-    fontSize: "13px",
-    color: "#64748b",
-    margin: 0,
-    fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
-  },
-  statValue: {
-    fontSize: "28px",
-    color: "#1e293b",
-    margin: "4px 0 0 0",
-    fontWeight: 800,
-  },
-
-  searchSection: {
-    background: "#fff",
-    borderRadius: "16px",
-    padding: "20px 24px",
-    marginBottom: "25px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    boxShadow: "0 4px 6px rgba(0,0,0,0.05)",
-    flexWrap: "wrap",
-    gap: "15px",
-  },
-  searchWrapper: {
-    position: "relative",
-    flex: "1",
-    minWidth: "300px",
-    maxWidth: "500px",
-  },
-  searchIcon: {
-    position: "absolute",
-    left: "16px",
-    top: "50%",
-    transform: "translateY(-50%)",
-    fontSize: "18px",
-    opacity: 0.5,
-  },
-  searchInput: {
-    width: "100%",
-    padding: "12px 16px 12px 45px",
-    borderRadius: "10px",
-    border: "2px solid #e2e8f0",
-    outline: "none",
-    fontSize: "15px",
-    background: "#f8fafc",
-    fontFamily: "inherit",
-  },
-  resultCount: { fontSize: "14px", color: "#64748b", fontWeight: 500 },
-
-  tableCard: {
-    background: "#fff",
-    borderRadius: "16px",
-    boxShadow: "0 4px 6px rgba(0,0,0,0.05),0 10px 20px rgba(0,0,0,0.05)",
-    overflow: "hidden",
-  },
-  tableHeader: {
-    padding: "24px 28px",
-    borderBottom: "2px solid #f1f5f9",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  tableTitle: {
-    fontSize: "20px",
-    fontWeight: 700,
-    color: "#1e293b",
-    margin: 0,
-  },
-  tableBadge: {
-    background: "#eff6ff",
-    color: "#2563eb",
-    padding: "6px 14px",
-    borderRadius: "20px",
-    fontSize: "13px",
-    fontWeight: 600,
-  },
-  tableWrapper: { overflowX: "auto" },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: "14px" },
-  th: {
-    background: "#f8fafc",
-    textAlign: "left",
-    padding: "16px 20px",
-    fontWeight: 700,
-    fontSize: "13px",
-    color: "#475569",
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
-    borderBottom: "2px solid #e2e8f0",
-  },
-  td: {
-    padding: "16px 20px",
-    borderBottom: "1px solid #f1f5f9",
-    color: "#334155",
-    fontSize: "14px",
-  },
-  evenRow: { background: "#fff" },
-  oddRow: { background: "#f9fafb" },
-  idBadge: {
-    background: "#f1f5f9",
-    padding: "4px 10px",
-    borderRadius: "6px",
-    fontSize: "13px",
-    fontWeight: 600,
-    color: "#475569",
-  },
-  nameCell: { display: "flex", alignItems: "center", gap: "12px" },
-  avatar: {
-    width: "36px",
-    height: "36px",
-    borderRadius: "50%",
-    background: "linear-gradient(135deg,#2563eb,#1d4ed8)",
-    color: "#fff",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontWeight: 700,
-    fontSize: "14px",
-  },
-  nameText: { fontWeight: 600, color: "#1e293b" },
-
-  statusActive: {
-    background: "#dcfce7",
-    color: "#15803d",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-  statusInactive: {
-    background: "#fee2e2",
-    color: "#b91c1c",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-  statusOnDuty: {
-    background: "#dbeafe",
-    color: "#1e40af",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-  statusSuspended: {
-    background: "#fee2e2",
-    color: "#7f1d1d",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-    textDecoration: "line-through",
-  },
-  statusOffline: {
-    background: "#f1f5f9",
-    color: "#475569",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-
-  /* ── Pay Active badges ── */
-  payActiveOn: {
-    background: "#dcfce7",
-    color: "#15803d",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-  payActiveOff: {
-    background: "#fee2e2",
-    color: "#b91c1c",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-  payActiveNone: {
-    background: "#f1f5f9",
-    color: "#94a3b8",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-
-  badgeAutomatic: {
-    background: "#dbeafe",
-    color: "#1e40af",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-  badgeManual: {
-    background: "#f3e8ff",
-    color: "#7c3aed",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-  badgeBoth: {
-    background: "#e0f2fe",
-    color: "#0369a1",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-
-  badgeOnline: {
-    background: "#dcfce7",
-    color: "#15803d",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-  badgeOffline: {
-    background: "#fee2e2",
-    color: "#b91c1c",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-
-  badgeGreen: {
-    background: "#dcfce7",
-    color: "#15803d",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-  badgePending: {
-    background: "#fef9c3",
-    color: "#854d0e",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-  badgeRed: {
-    background: "#fee2e2",
-    color: "#b91c1c",
-    padding: "5px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-
-  actionButtons: { display: "flex", gap: "8px" },
-  editBtn: {
-    background: "#2563eb",
-    color: "#fff",
-    border: "none",
-    padding: "8px 14px",
-    borderRadius: "8px",
-    cursor: "pointer",
-    fontWeight: 600,
-    fontSize: "13px",
-  },
-  deleteBtn: {
-    background: "#dc2626",
-    color: "#fff",
-    border: "none",
-    padding: "8px 14px",
-    borderRadius: "8px",
-    cursor: "pointer",
-    fontWeight: 600,
-    fontSize: "13px",
-  },
-  noData: { padding: "60px 20px", textAlign: "center" },
-  noDataContent: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "12px",
-    color: "#94a3b8",
-  },
-  noDataIcon: { fontSize: "48px", opacity: 0.5 },
-
-  /* Form modal */
-  overlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.6)",
-    backdropFilter: "blur(4px)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1000,
-  },
-  modalForm: {
-    width: "850px",
-    maxHeight: "90vh",
-    borderRadius: "20px",
-    overflow: "hidden",
-    boxShadow: "0 25px 50px -12px rgba(0,0,0,0.4)",
-    background: "#fff",
-    display: "flex",
-    flexDirection: "column",
-  },
-  modalHeaderForm: {
-    background: "linear-gradient(135deg,#2563eb,#1d4ed8)",
-    color: "#fff",
-    padding: "28px 35px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  headerContent: { display: "flex", alignItems: "center", gap: "12px" },
-  headerIcon: { fontSize: "28px" },
-  headerText: { fontSize: "24px", fontWeight: 700 },
-  closeIconForm: {
-    cursor: "pointer",
-    fontSize: "24px",
-    fontWeight: 700,
-    opacity: 0.9,
-  },
-  formGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2,1fr)",
-    gap: "20px",
-    padding: "35px",
-    background: "#fafafa",
-    maxHeight: "65vh",
-    overflowY: "auto",
-  },
-  sectionHeader: {
-    gridColumn: "1/-1",
-    fontSize: "15px",
-    fontWeight: 700,
-    color: "#1e40af",
-    marginTop: "10px",
-    marginBottom: "-5px",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-  },
-  sectionDivider: {
-    gridColumn: "1/-1",
-    height: "2px",
-    background: "linear-gradient(90deg,#2563eb,transparent)",
-    marginBottom: "5px",
-  },
-  inputWrapper: { display: "flex", flexDirection: "column", gap: "6px" },
-  label: { fontSize: "13px", fontWeight: 600, color: "#374151" },
-  required: { color: "#ef4444" },
-  defaultHint: { fontSize: "11px", color: "#94a3b8", fontWeight: 400 },
-  formInput: {
-    padding: "13px 16px",
-    borderRadius: "10px",
-    border: "2px solid #e5e7eb",
-    fontSize: "15px",
-    outline: "none",
-    background: "#fff",
-    fontFamily: "inherit",
-  },
-  formSelect: {
-    padding: "13px 16px",
-    borderRadius: "10px",
-    border: "2px solid #e5e7eb",
-    fontSize: "15px",
-    outline: "none",
-    background: "#fff",
-    cursor: "pointer",
-    fontFamily: "inherit",
-  },
-  inputError: { border: "2px solid #ef4444", background: "#fff5f5" },
-  errorText: {
-    fontSize: "12px",
-    color: "#ef4444",
-    fontWeight: 500,
-    marginTop: "2px",
-  },
-  btnRowForm: {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: "15px",
-    padding: "25px 35px",
-    background: "#f9fafb",
-    borderTop: "1px solid #e5e7eb",
-  },
-  saveBtnForm: {
-    background: "linear-gradient(135deg,#2563eb,#1d4ed8)",
-    color: "#fff",
-    border: "none",
-    padding: "14px 32px",
-    borderRadius: "10px",
-    cursor: "pointer",
-    fontWeight: 700,
-    fontSize: "15px",
-    boxShadow: "0 4px 6px rgba(37,99,235,0.3)",
-  },
-  cancelBtnForm: {
-    background: "#fff",
-    color: "#6b7280",
-    border: "2px solid #e5e7eb",
-    padding: "14px 32px",
-    borderRadius: "10px",
-    cursor: "pointer",
-    fontWeight: 600,
-    fontSize: "15px",
-  },
-
-  /* Delete modal */
-  deleteOverlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.6)",
-    backdropFilter: "blur(4px)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 2000,
-  },
-  deleteModal: {
-    background: "#fff",
-    borderRadius: "20px",
-    padding: "40px 36px",
-    width: "420px",
-    maxWidth: "90vw",
-    boxShadow: "0 25px 50px -12px rgba(0,0,0,0.4)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    textAlign: "center",
-  },
-  deleteIconWrapper: {
-    width: "80px",
-    height: "80px",
-    borderRadius: "50%",
-    background: "#fee2e2",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: "20px",
-  },
-  deleteModalIcon: { fontSize: "40px" },
-  deleteTitle: {
-    fontSize: "22px",
-    fontWeight: 800,
-    color: "#1e293b",
-    margin: "0 0 12px 0",
-  },
-  deleteMessage: {
-    fontSize: "15px",
-    color: "#475569",
-    margin: "0 0 8px 0",
-    lineHeight: "1.6",
-  },
-  deleteDriverName: { color: "#1e293b", fontWeight: 700 },
-  deleteWarning: {
-    fontSize: "13px",
-    color: "#ef4444",
-    fontWeight: 600,
-    margin: "0 0 28px 0",
-    background: "#fff5f5",
-    padding: "8px 16px",
-    borderRadius: "8px",
-    border: "1px solid #fecaca",
-  },
-  deleteButtonRow: { display: "flex", gap: "12px", width: "100%" },
-  deleteCancelBtn: {
-    flex: 1,
-    background: "#fff",
-    color: "#6b7280",
-    border: "2px solid #e5e7eb",
-    padding: "14px",
-    borderRadius: "12px",
-    cursor: "pointer",
-    fontWeight: 600,
-    fontSize: "15px",
-  },
-  deleteConfirmBtn: {
-    flex: 1,
-    background: "linear-gradient(135deg,#ef4444,#dc2626)",
-    color: "#fff",
-    border: "none",
-    padding: "14px",
-    borderRadius: "12px",
-    cursor: "pointer",
-    fontWeight: 700,
-    fontSize: "15px",
-    boxShadow: "0 4px 12px rgba(239,68,68,0.35)",
-  },
-};
