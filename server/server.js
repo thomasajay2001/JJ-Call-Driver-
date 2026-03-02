@@ -27,7 +27,7 @@ const mysql = require("mysql2");
 const db = mysql.createConnection({
   host: "localhost",
   user: "root",
-  password: "Gomathi@123",
+  password: "q2m@123",
   database: "jjdrivers",
 });
 
@@ -38,6 +38,60 @@ db.connect((err) => {
     console.log("Connected to MySQL Database");
   }
 });
+
+// ═══════════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+/** Returns null instead of NaN when mobile is empty / non-numeric */
+const safeMobile = (val) => {
+  if (val === null || val === undefined || val === "") return null;
+  const n = parseInt(String(val).replace(/\D/g, ""), 10);
+  return isNaN(n) ? null : n;
+};
+
+/** Returns null for empty / "0000-00-00" / invalid dates */
+const safeDate = (val) => {
+  if (!val) return null;
+  const s = String(val).trim();
+  if (!s || s.startsWith("0000") || s === "0000-00-00 00:00:00") return null;
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return null;
+  return s;
+};
+
+/** Truncates a string to maxLen, returns null if empty */
+const safeStr = (val, maxLen = 255) => {
+  if (val === null || val === undefined) return null;
+  const s = String(val).trim();
+  if (!s) return null;
+  return s.substring(0, maxLen);
+};
+
+/**
+ * Normalises blood-group strings from CSV long form to short:
+ *   "AB POSITIVE" → "AB+",  "O POSITIVE" → "O+",  "A1 POSITIVE" → "A1+"
+ * Also truncates to 10 chars as a safety net (column is VARCHAR(50) after ALTER).
+ */
+const normalizeBlood = (val) => {
+  if (!val) return null;
+  const s = String(val).trim().toUpperCase();
+  if (s.length <= 10) return s;
+  const map = {
+    "AB POSITIVE": "AB+",  "AB NEGATIVE": "AB-",
+    "A1 POSITIVE": "A1+",  "A1 NEGATIVE": "A1-",
+    "B1 POSITIVE": "B1+",  "B1 NEGATIVE": "B1-",
+    "A POSITIVE":  "A+",   "A NEGATIVE":  "A-",
+    "B POSITIVE":  "B+",   "B NEGATIVE":  "B-",
+    "O POSITIVE":  "O+",   "O NEGATIVE":  "O-",
+  };
+  for (const [long, short] of Object.entries(map)) {
+    if (s.includes(long)) return short;
+  }
+  return s.substring(0, 10);
+};
+
+// ═══════════════════════════════════════════════════════════════
 
 app.get("/", (req, res) => {
   res.send("Server running OK ✅");
@@ -318,11 +372,9 @@ app.put("/api/bookings/:id", async (req, res) => {
 });
 
 // ─── ACCEPT BOOKING ──────────────────────────
-// Admin assigns → status='assigned'. Driver accepts → status='accepted'
 app.post("/api/accept-booking", async (req, res) => {
   const { bookingId, driverId } = req.body;
   try {
-    // Check for 'assigned' status (admin-assigned flow)
     const [bookings] = await db.promise().query(
       "SELECT * FROM bookings WHERE id=? AND status='assigned'",
       [bookingId]
@@ -373,8 +425,6 @@ app.post("/api/accept-booking", async (req, res) => {
 });
 
 // ─── DECLINE BOOKING ─────────────────────────
-// Driver declines → reset driver_id=NULL, status='pending'
-// Booking reappears in admin panel for reassignment
 app.post("/api/decline-booking", async (req, res) => {
   const { bookingId, driverId } = req.body;
 
@@ -383,7 +433,6 @@ app.post("/api/decline-booking", async (req, res) => {
   }
 
   try {
-    // Confirm this booking is actually assigned to this driver
     const [rows] = await db.promise().query(
       "SELECT id, driver_id, status FROM bookings WHERE id=?",
       [bookingId]
@@ -395,24 +444,19 @@ app.post("/api/decline-booking", async (req, res) => {
 
     const booking = rows[0];
 
-    // Only allow decline if booking is in 'assigned' state
     if (booking.status !== "assigned") {
       return res.json({ success: false, message: `Cannot decline booking with status: ${booking.status}` });
     }
 
-    // Verify it's actually assigned to this driver (security check)
     if (driverId && String(booking.driver_id) !== String(driverId)) {
       return res.status(403).json({ success: false, message: "This booking is not assigned to you" });
     }
 
-    // ✅ Reset: driver_id = NULL, status = 'pending'
-    // This returns it to admin's unassigned list
     await db.promise().query(
       "UPDATE bookings SET driver_id = NULL, status = 'pending' WHERE id = ?",
       [bookingId]
     );
 
-    // Also reset driver status back to 'online' if they were set to something else
     if (driverId) {
       await db.promise().query(
         "UPDATE DRIVERS SET STATUS = 'online' WHERE ID = ? AND STATUS != 'offline'",
@@ -422,7 +466,6 @@ app.post("/api/decline-booking", async (req, res) => {
 
     console.log(`✅ Booking ${bookingId} declined by driver ${driverId} — reset to pending`);
 
-    // Notify admin via socket that booking needs reassignment
     io.to("admins").emit("bookingDeclined", {
       bookingId,
       message: "Driver declined — needs reassignment",
@@ -614,13 +657,47 @@ app.get("/api/customer", async (req, res) => {
 
 // ─── ADD DRIVER ──────────────────────────────
 app.post("/api/adddrivers", upload.none(), (req, res) => {
-  const { name, status, paymentmode, location, experience, feeDetails, dob, bloodgrp, age, licenceNo, gender, car_type, lat, lng, payactive } = req.body;
-  const mobile = parseInt(req.body.mobile);
-  const sql = "INSERT INTO DRIVERS (NAME, MOBILE, LOCATION, EXPERIENCE, FEES_DETAILS, DOB, BLOODGRP, AGE, GENDER, CAR_TYPE, LICENCENO, LAT, LNG, PAYMENT_METHOD, STATUS, PAYACTIVE) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
-  db.query(sql, [name, mobile, location, experience, feeDetails, dob, bloodgrp, age, gender, car_type, licenceNo, lat, lng, paymentmode, status, payactive], (err) => {
+  const {
+    name, status, paymentmode, location, experience, feeDetails,
+    age, licenceNo, gender, car_type, lat, lng, payactive,
+    driver_no, father_name, qualification, badge_no,
+    alt_no, cur_address, per_address, region, bike_status,
+    driver_status, remarks, engaged,
+  } = req.body;
+
+  const mobile    = safeMobile(req.body.mobile);
+  const dob       = safeDate(req.body.dob);
+  const joinDate  = safeDate(req.body.join_date);
+  const licExpiry = safeDate(req.body.license_expiry_date);
+  const blood     = normalizeBlood(req.body.bloodgrp);
+
+  const sql = `
+    INSERT INTO DRIVERS (
+      NAME, MOBILE, LOCATION, EXPERIENCE, FEES_DETAILS, DOB, BLOODGRP,
+      AGE, GENDER, CAR_TYPE, LICENCENO, LAT, LNG, PAYMENT_METHOD, STATUS, PAYACTIVE,
+      DRIVER_NO, FATHER_NAME, QUALIFICATION, BADGE_NO, JOIN_DATE,
+      ALT_NO, CUR_ADDRESS, PER_ADDRESS, REGION, BIKE_STATUS,
+      DRIVER_STATUS, REMARKS, ENGAGED, LICENSE_EXPIRY_DATE
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  `;
+
+  const values = [
+    safeStr(name),        mobile,              safeStr(location),    safeStr(experience, 50),
+    safeStr(feeDetails, 50), dob,              blood,                safeStr(age, 10),
+    safeStr(gender, 10),  safeStr(car_type, 50), safeStr(licenceNo, 50),
+    lat || null,          lng || null,         safeStr(paymentmode, 50),
+    status || "offline",  safeStr(payactive, 20),
+    safeStr(driver_no, 50),    safeStr(father_name),   safeStr(qualification, 100),
+    safeStr(badge_no, 50),     joinDate,
+    safeStr(alt_no, 50),  safeStr(cur_address), safeStr(per_address), safeStr(region, 100),
+    safeStr(bike_status, 20),  safeStr(driver_status, 20),
+    safeStr(remarks),     safeStr(engaged, 10) || "No", licExpiry,
+  ];
+
+  db.query(sql, values, (err) => {
     if (err) {
-      console.error("error inserting data:", err);
-      return res.status(500).send({ message: "Database Error" });
+      console.error("Error inserting driver:", err);
+      return res.status(500).send({ message: "Database Error", detail: err.sqlMessage });
     }
     return res.status(200).send({ message: "Driver added successfully" });
   });
@@ -629,18 +706,50 @@ app.post("/api/adddrivers", upload.none(), (req, res) => {
 // ─── GET DRIVERS ─────────────────────────────
 app.get("/api/drivers", (req, res) => {
   db.query(
-    "SELECT ID, NAME, MOBILE, LOCATION, STATUS, CAR_TYPE, EXPERIENCE, FEES_DETAILS, DOB, BLOODGRP, AGE, GENDER, LICENCENO, LAT, LNG, PAYMENT_METHOD, PAYACTIVE FROM DRIVERS ORDER BY ID DESC",
+    `SELECT ID, NAME, MOBILE, LOCATION, STATUS, CAR_TYPE, EXPERIENCE, FEES_DETAILS,
+            DOB, BLOODGRP, AGE, GENDER, LICENCENO, LAT, LNG, PAYMENT_METHOD, PAYACTIVE,
+            DRIVER_NO, FATHER_NAME, QUALIFICATION, BADGE_NO, JOIN_DATE,
+            ALT_NO, CUR_ADDRESS, PER_ADDRESS, REGION, BIKE_STATUS,
+            DRIVER_STATUS, REMARKS, ENGAGED, LICENSE_EXPIRY_DATE
+     FROM DRIVERS ORDER BY ID DESC`,
     function (error, results) {
       if (error) {
-        console.log(`Error fetching drivers: ${error.message}`);
+        console.error(`Error fetching drivers: ${error.message}`);
         return res.send(JSON.stringify({ status: false }));
       }
       const result = results.map((r) => ({
-        id: r.ID, name: r.NAME, mobile: r.MOBILE, location: r.LOCATION,
-        car_type: r.CAR_TYPE, experience: r.EXPERIENCE, feeDetails: r.FEES_DETAILS,
-        dob: r.DOB, bloodgrp: r.BLOODGRP, age: r.AGE, gender: r.GENDER,
-        licenceNo: r.LICENCENO, paymentmode: r.PAYMENT_METHOD, status: r.STATUS,
-        lat: parseFloat(r.LAT), lng: parseFloat(r.LNG), payactive: r.PAYACTIVE,
+        id:                   r.ID,
+        name:                 r.NAME,
+        mobile:               r.MOBILE,
+        location:             r.LOCATION,
+        car_type:             r.CAR_TYPE,
+        experience:           r.EXPERIENCE,
+        feeDetails:           r.FEES_DETAILS,
+        dob:                  r.DOB,
+        bloodgrp:             r.BLOODGRP,
+        age:                  r.AGE,
+        gender:               r.GENDER,
+        licenceNo:            r.LICENCENO,
+        paymentmode:          r.PAYMENT_METHOD,
+        status:               r.STATUS,
+        lat:                  parseFloat(r.LAT),
+        lng:                  parseFloat(r.LNG),
+        payactive:            r.PAYACTIVE,
+        // new fields
+        driver_no:            r.DRIVER_NO,
+        father_name:          r.FATHER_NAME,
+        qualification:        r.QUALIFICATION,
+        badge_no:             r.BADGE_NO,
+        join_date:            r.JOIN_DATE,
+        alt_no:               r.ALT_NO,
+        cur_address:          r.CUR_ADDRESS,
+        per_address:          r.PER_ADDRESS,
+        region:               r.REGION,
+        bike_status:          r.BIKE_STATUS,
+        driver_status:        r.DRIVER_STATUS,
+        remarks:              r.REMARKS,
+        engaged:              r.ENGAGED,
+        license_expiry_date:  r.LICENSE_EXPIRY_DATE,
       }));
       res.send(JSON.stringify(result));
     }
@@ -650,12 +759,48 @@ app.get("/api/drivers", (req, res) => {
 // ─── UPDATE DRIVER ───────────────────────────
 app.put("/api/updatedriver/:id", upload.none(), (req, res) => {
   const driverId = req.params.id;
-  const { name, mobile, location, paymentmode, experience, feeDetails, dob, bloodgrp, age, licenceNo, gender, car_type, lat, lng, status, payactive } = req.body;
-  const sql = "UPDATE DRIVERS SET NAME=?, MOBILE=?, LOCATION=?, EXPERIENCE=?, FEES_DETAILS=?, DOB=?, BLOODGRP=?, AGE=?, GENDER=?, CAR_TYPE=?, LICENCENO=?, PAYMENT_METHOD=?, LAT=?, LNG=?, STATUS=?, PAYACTIVE=? WHERE ID=?";
-  db.query(sql, [name, mobile, location, experience, feeDetails, dob, bloodgrp, age, gender, car_type, licenceNo, paymentmode, lat, lng, status, payactive, driverId], (err, result) => {
+
+  const {
+    name, location, paymentmode, experience, feeDetails,
+    age, licenceNo, gender, car_type, lat, lng, status, payactive,
+    driver_no, father_name, qualification, badge_no,
+    alt_no, cur_address, per_address, region, bike_status,
+    driver_status, remarks, engaged,
+  } = req.body;
+
+  const mobile    = safeMobile(req.body.mobile);
+  const dob       = safeDate(req.body.dob);
+  const joinDate  = safeDate(req.body.join_date);
+  const licExpiry = safeDate(req.body.license_expiry_date);
+  const blood     = normalizeBlood(req.body.bloodgrp);
+
+  const sql = `
+    UPDATE DRIVERS SET
+      NAME=?, MOBILE=?, LOCATION=?, EXPERIENCE=?, FEES_DETAILS=?, DOB=?,
+      BLOODGRP=?, AGE=?, GENDER=?, CAR_TYPE=?, LICENCENO=?, PAYMENT_METHOD=?,
+      LAT=?, LNG=?, STATUS=?, PAYACTIVE=?,
+      DRIVER_NO=?, FATHER_NAME=?, QUALIFICATION=?, BADGE_NO=?, JOIN_DATE=?,
+      ALT_NO=?, CUR_ADDRESS=?, PER_ADDRESS=?, REGION=?, BIKE_STATUS=?,
+      DRIVER_STATUS=?, REMARKS=?, ENGAGED=?, LICENSE_EXPIRY_DATE=?
+    WHERE ID=?
+  `;
+
+  const values = [
+    safeStr(name),           mobile,                safeStr(location),       safeStr(experience, 50),
+    safeStr(feeDetails, 50), dob,                   blood,                   safeStr(age, 10),
+    safeStr(gender, 10),     safeStr(car_type, 50), safeStr(licenceNo, 50),  safeStr(paymentmode, 50),
+    lat || null,             lng || null,            status || "offline",     safeStr(payactive, 20),
+    safeStr(driver_no, 50),  safeStr(father_name),  safeStr(qualification, 100), safeStr(badge_no, 50),
+    joinDate,                safeStr(alt_no, 50),   safeStr(cur_address),    safeStr(per_address),
+    safeStr(region, 100),    safeStr(bike_status, 20), safeStr(driver_status, 20),
+    safeStr(remarks),        safeStr(engaged, 10) || "No", licExpiry,
+    driverId,
+  ];
+
+  db.query(sql, values, (err, result) => {
     if (err) {
-      console.error("error updating driver:", err);
-      return res.status(500).send({ message: "Database error" });
+      console.error("Error updating driver:", err);
+      return res.status(500).send({ message: "Database error", detail: err.sqlMessage });
     }
     if (result.affectedRows === 0) {
       return res.status(404).send({ message: "Driver not found" });
@@ -715,16 +860,16 @@ app.get("/api/bookings", (req, res) => {
         return res.status(500).send({ message: "Database error" });
       }
       const result = results.map((r) => ({
-        id:              r.id,
-        name:            r.customer_name,
-        mobile:          r.customer_mobile,
-        pickup:          r.pickup,
-        drop:            r.drop_location,
-        status:          r.status,
-        driver:          r.driver_id,
-        pickup_lat:      r.pickup_lat,
-        pickup_lng:      r.pickup_lng,
-        triptype:        r.triptype,
+        id:         r.id,
+        name:       r.customer_name,
+        mobile:     r.customer_mobile,
+        pickup:     r.pickup,
+        drop:       r.drop_location,
+        status:     r.status,
+        driver:     r.driver_id,
+        pickup_lat: r.pickup_lat,
+        pickup_lng: r.pickup_lng,
+        triptype:   r.triptype,
       }));
       res.send(JSON.stringify(result));
     }

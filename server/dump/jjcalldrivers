@@ -44,33 +44,48 @@ CREATE TABLE SUPPORTTEAM (
 );
 
 INSERT INTO SUPPORTTEAM (USERNAME, PASSWORD)
-VALUES ('SAM', 'SAM@123');
+VALUES ('Admin', 'Admin@123');
 
 -- ========================================
 -- DRIVERS
 -- ========================================
 CREATE TABLE DRIVERS (
-  ID INT NOT NULL AUTO_INCREMENT,
-  NAME VARCHAR(255),
-  LOCATION VARCHAR(255),
-  MOBILE VARCHAR(50),
-  LICENCENO VARCHAR(50),
-  BLOODGRP VARCHAR(10),
-  AGE VARCHAR(10),
-  GENDER VARCHAR(10),
-  DOB DATE NULL,
-  FEES_DETAILS VARCHAR(50),
-  PAYMENT_METHOD VARCHAR(50),
-  EXPERIENCE VARCHAR(50),
-  CAR_TYPE VARCHAR(50),
-  STATUS VARCHAR(20) DEFAULT 'offline',
-  LAT VARCHAR(50),
-  LNG VARCHAR(50),
-  avg_rating DECIMAL(2,1) DEFAULT 0,
-  total_ratings INT DEFAULT 0,
-  PAYACTIVE VARCHAR(20) DEFAULT NULL,
+  ID                   INT          NOT NULL AUTO_INCREMENT,
+  DRIVER_NO            VARCHAR(50)  DEFAULT NULL,
+  NAME                 VARCHAR(255),
+  FATHER_NAME          VARCHAR(255) DEFAULT NULL,
+  MOBILE               VARCHAR(50),
+  ALT_NO               VARCHAR(50)  DEFAULT NULL,
+  LOCATION             VARCHAR(255),
+  CUR_ADDRESS          TEXT         DEFAULT NULL,
+  PER_ADDRESS          TEXT         DEFAULT NULL,
+  REGION               VARCHAR(100) DEFAULT NULL,
+  LICENCENO            VARCHAR(50),
+  LICENSE_EXPIRY_DATE  DATE NULL    DEFAULT NULL,
+  BADGE_NO             VARCHAR(50)  DEFAULT NULL,
+  BLOODGRP             VARCHAR(10),
+  AGE                  VARCHAR(10),
+  GENDER               VARCHAR(10),
+  DOB                  DATE NULL DEFAULT NULL,
+  QUALIFICATION        VARCHAR(100) DEFAULT NULL,
+  JOIN_DATE            DATE NULL DEFAULT NULL,
+  FEES_DETAILS         VARCHAR(50),
+  PAYMENT_METHOD       VARCHAR(50),
+  EXPERIENCE           VARCHAR(50),
+  CAR_TYPE             VARCHAR(50),
+  BIKE_STATUS          VARCHAR(20)  DEFAULT NULL,
+  STATUS               VARCHAR(20)  DEFAULT 'offline',
+  DRIVER_STATUS        VARCHAR(20)  DEFAULT NULL,
+  LAT                  VARCHAR(50),
+  LNG                  VARCHAR(50),
+  avg_rating           DECIMAL(2,1) DEFAULT 0,
+  total_ratings        INT          DEFAULT 0,
+  PAYACTIVE            VARCHAR(20)  DEFAULT NULL,
+  ENGAGED              VARCHAR(10)  DEFAULT 'No',
+  REMARKS              TEXT         DEFAULT NULL,
   PRIMARY KEY (ID)
 );
+
 
 -- ========================================
 -- BOOKINGS
@@ -134,4 +149,4 @@ CREATE TABLE accept_booking (
     REFERENCES DRIVERS(ID)
     ON DELETE CASCADE
     ON UPDATE CASCADE
-);
+); 
