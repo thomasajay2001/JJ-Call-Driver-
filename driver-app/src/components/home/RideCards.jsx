@@ -7,6 +7,7 @@ import { BASE_URL } from "../../utils/constants";
 export const IncomingRideCard = ({ ride, onAccept, onDecline }) => {
   const [accepting, setAccepting] = useState(false);
   const [timer,     setTimer]     = useState(60);
+  const audioRef = useRef(null);
 
   useEffect(() => {
     if (timer <= 0) { onDecline && onDecline(); return; }
@@ -14,11 +15,30 @@ export const IncomingRideCard = ({ ride, onAccept, onDecline }) => {
     return () => clearTimeout(t);
   }, [timer]);
 
+  // 🔔 Play sound when ride comes
+  useEffect(() => {
+    if (ride) {
+      audioRef.current?.play().catch(() => {});
+    }
+  }, [ride]);
+
+  useEffect(() => {
+    if (timer <= 0) {
+      audioRef.current?.pause();   // stop sound
+      onDecline && onDecline();
+      return;
+    }
+    const t = setTimeout(() => setTimer((p) => p - 1), 1000);
+    return () => clearTimeout(t);
+  }, [timer]);
+
   const handleAccept = async () => {
     setAccepting(true);
+    audioRef.current?.pause();   // stop sound
     await onAccept?.();
     setAccepting(false);
   };
+
 
   const pct        = (timer / 60) * 100;
   const isUrgent   = timer <= 15;
@@ -26,6 +46,11 @@ export const IncomingRideCard = ({ ride, onAccept, onDecline }) => {
 
   return (
     <div style={s.requestCard}>
+      <audio
+        ref={audioRef}
+        src="/sounds/tone.mpeg"
+        loop   
+      />
       {/* Timer bar */}
       <div style={s.timerBarBg}>
         <div style={{ ...s.timerBarFill, width: `${pct}%`, backgroundColor: timerColor }} />
@@ -223,6 +248,7 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
 
   return (
     <div style={s.activeTripCard}>
+      
       {/* Status badge */}
       <div style={{ ...s.statusBadge, backgroundColor: statusBg }}>
         <div style={{ ...s.statusDot, backgroundColor: statusColor }} />

@@ -1,145 +1,105 @@
+/**
+ * Dashboard.jsx
+ * Uses the shared useDrivers() hook so stat cards update in real-time
+ * whenever any driver toggles online/offline from the mobile app.
+ */
+import { useEffect, useState } from "react";
 import axios from "axios";
-import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { io } from "socket.io-client";
+import { useDrivers } from "../hooks/useDrivers";
 
-const BASE_URL   = import.meta.env.VITE_BASE_URL;
-const SOCKET_URL = "http://localhost:3000";
-const REFRESH_MS = 30000;
-
-/* ── time helper ── */
-const timeAgo = (ts) => {
-  if (!ts) return "Just now";
-  const m = Math.floor((Date.now() - new Date(ts)) / 60000);
-  if (m < 1)  return "Just now";
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-};
+const BASE_URL = import.meta.env.VITE_BASE_URL || "http://localhost:3000";
 
 export default function Dashboard() {
-  const navigate   = useNavigate();
-  const socketRef  = useRef(null);
-  const ivRef      = useRef(null);
-  const cdRef      = useRef(REFRESH_MS / 1000);
+  const { drivers, loading: driversLoading } = useDrivers();
+  const [bookings,  setBookings]  = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [bLoading,  setBLoading]  = useState(true);
 
-  const [bookings,     setBookings]     = useState([]);
-  const [drivers,      setDrivers]      = useState([]);
-  const [activities,   setActivities]   = useState([]);
-  const [notifs,       setNotifs]       = useState([]);
-  const [autoRefresh,  setAutoRefresh]  = useState(true);
-  const [lastUpdated,  setLastUpdated]  = useState(null);
-  const [countdown,    setCountdown]    = useState(REFRESH_MS / 1000);
-
-  const fetchAll = async () => {
-    await Promise.all([fetchBookings(), fetchDrivers()]);
-    setLastUpdated(new Date());
-    cdRef.current = REFRESH_MS / 1000;
-    setCountdown(REFRESH_MS / 1000);
-  };
+  useEffect(() => {
+    fetchBookings();
+    fetchCustomers();
+  }, []);
 
   const fetchBookings = async () => {
     try {
       const res = await axios.get(`${BASE_URL}/api/bookings`);
-      const data = res.data || [];
-      setBookings(data);
-      setActivities(
-        data.slice(0, 3).map((b) => ({
-          id: b.id,
-          type:
-            b.status?.toLowerCase() === "completed" ? "completed" :
-            b.driver ? "assigned" : "new",
-          title:
-            b.status?.toLowerCase() === "completed" ? `Booking #${b.id} completed` :
-            b.driver ? `Driver assigned to #${b.id}` : `New booking #${b.id}`,
-          time: timeAgo(b.created_at),
-        }))
-      );
+      setBookings(Array.isArray(res.data) ? res.data : []);
     } catch {}
+    finally { setBLoading(false); }
   };
 
-  const fetchDrivers = async () => {
+  const fetchCustomers = async () => {
     try {
-      const res = await axios.get(`${BASE_URL}/api/drivers`);
-      setDrivers(res.data || []);
+      const res = await axios.get(`${BASE_URL}/api/customer`);
+      setCustomers(Array.isArray(res.data) ? res.data : []);
     } catch {}
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  /* ── Live driver stats ── */
+  // Driver toggle sends "online" when active; treat both "online" and "active" as online
+  const onlineDrivers  = drivers.filter((d) =>
+    ["online", "active"].includes(d.status?.toLowerCase())
+  );
+  // const offlineDrivers = drivers.filter((d) =>
+  //   ["offline", "inactive"].includes(d.status?.toLowerCase())
+  // );
+  const inRideDrivers  = drivers.filter((d) =>
+    ["inride", "on duty", "assigned", "accepted"].includes(d.status?.toLowerCase())
+  );
 
-  /* auto-refresh interval */
-  useEffect(() => {
-    if (ivRef.current) clearInterval(ivRef.current);
-    if (!autoRefresh) return;
-    ivRef.current = setInterval(() => fetchAll(), REFRESH_MS);
-    return () => clearInterval(ivRef.current);
-  }, [autoRefresh]);
-
-  /* countdown tick */
-  useEffect(() => {
-    if (!autoRefresh) { setCountdown(0); return; }
-    const t = setInterval(() => {
-      cdRef.current = Math.max(0, cdRef.current - 1);
-      setCountdown(cdRef.current);
-    }, 1000);
-    return () => clearInterval(t);
-  }, [autoRefresh]);
-
-  /* socket */
-  useEffect(() => {
-    const socket = io(SOCKET_URL, { transports: ["websocket"] });
-    socketRef.current = socket;
-    socket.on("connect", () => socket.emit("joinAdminRoom"));
-    socket.on("newBooking", (data) => {
-      setBookings((prev) => [data, ...prev]);
-      setActivities((prev) => [
-        { id: data.id || Date.now(), type: "new", title: `New booking #${data.id || ""}`, time: "Just now" },
-        ...prev.slice(0, 2),
-      ]);
-      const id = Date.now();
-      setNotifs((prev) => [{ id, ...data }, ...prev]);
-      setTimeout(() => setNotifs((prev) => prev.map((n) => n.id === id ? { ...n, fade: true } : n)), 6000);
-      setTimeout(() => setNotifs((prev) => prev.filter((n) => n.id !== id)), 6500);
-    });
-    return () => socket.disconnect();
-  }, []);
-
-  /* ── Stats ── */
-  const totalBookings     = bookings.length;
-  const activeDrivers     = drivers.filter((d) => ["active","online"].includes(d.status?.toLowerCase())).length;
-  const liveTrips         = bookings.filter((b) => ["assigned","in progress"].includes(b.status?.toLowerCase())).length;
+  /* ── Booking stats ── */
+  // const totalBookings     = bookings.length;
+  const pendingBookings   = bookings.filter((b) => !b.driver || b.status?.toLowerCase() === "pending").length;
+  const assignedBookings  = bookings.filter((b) => b.status?.toLowerCase() === "assigned").length;
   const completedBookings = bookings.filter((b) => b.status?.toLowerCase() === "completed").length;
-  const todayRevenue      = completedBookings * 350;
-
-  /* ── Top drivers ── */
-  const topDrivers = (() => {
-    const map = {};
-    bookings.forEach((b) => {
-      if (b.driver && b.status?.toLowerCase() === "completed")
-        map[b.driver] = (map[b.driver] || 0) + 1;
-    });
-    const sorted = Object.entries(map)
-      .map(([name, trips]) => ({ name, trips, rating: (4.5 + Math.random() * 0.5).toFixed(1) }))
-      .sort((a, b) => b.trips - a.trips).slice(0, 3);
-    if (sorted.length === 0)
-      return drivers.slice(0, 3).map((d) => ({
-        name: d.name, trips: Math.floor(Math.random() * 10) + 3,
-        rating: (4.5 + Math.random() * 0.5).toFixed(1),
-      }));
-    return sorted;
-  })();
-
-  /* ── Countdown ring ── */
-  const R    = 10;
-  const circ = 2 * Math.PI * R;
-  const dash = circ * (autoRefresh ? countdown / (REFRESH_MS / 1000) : 0);
 
   const STATS = [
-    { icon:"📋", label:"Total Bookings",  value:totalBookings,              grad:"stat-icon-box-blue",   change:"+12% from last week" },
-    { icon:"🚗", label:"Active Drivers",  value:activeDrivers,              grad:"stat-icon-box-green",  change:"Online now" },
-    { icon:"🚖", label:"Live Trips",       value:liveTrips,                  grad:"stat-icon-box-amber",  change:"In progress" },
-    { icon:"💰", label:"Revenue Today",   value:`₹${todayRevenue.toLocaleString()}`, grad:"stat-icon-box-purple", change:"+8% from yesterday" },
+    /* ── Drivers (live) ── */
+    {
+      icon: "👥", label: "Total Drivers",
+      value: driversLoading ? "…" : drivers.length,
+      sub: "All registered",
+      cls: "stat-icon-box-blue", live: true,
+    },
+    {
+      icon: "🟢", label: "Online Drivers",
+      value: driversLoading ? "…" : onlineDrivers.length,
+      sub: "Available now",
+      cls: "stat-icon-box-green", live: true,
+    },
+    {
+      icon: "🚗", label: "In Ride",
+      value: driversLoading ? "…" : inRideDrivers.length,
+      sub: "Currently on trip",
+      cls: "stat-icon-box-amber", live: true,
+    },
+    // {
+    //   icon: "⚫", label: "Offline Drivers",
+    //   value: driversLoading ? "…" : offlineDrivers.length,
+    //   sub: "Not available",
+    //   cls: "stat-icon-box-gray", live: true,
+    // },
+    /* ── Bookings ── */
+    // {
+    //   icon: "📋", label: "Total Bookings",
+    //   value: bLoading ? "…" : totalBookings,
+    //   sub: "All time",
+    //   cls: "stat-icon-box-blue",
+    // },
+    {
+      icon: "⏳", label: "Pending",
+      value: bLoading ? "…" : pendingBookings,
+      sub: "Needs assignment",
+      cls: "stat-icon-box-red",
+    },
+
+    {
+      icon: "🎉", label: "Completed",
+      value: bLoading ? "…" : completedBookings,
+      sub: "Trips done",
+      cls: "stat-icon-box-green",
+    },
+  
   ];
 
   return (
@@ -148,174 +108,128 @@ export default function Dashboard() {
       <div className="page-header">
         <div className="page-header-left">
           <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">Real-time system overview and analytics</p>
+          <p className="page-subtitle">Live overview of your fleet and bookings</p>
         </div>
-
-        <div className="refresh-bar">
-          {lastUpdated && (
-            <div className="refresh-timestamp">
-              <span className="refresh-live-dot" />
-              {lastUpdated.toLocaleTimeString("en-US", { hour:"2-digit", minute:"2-digit", second:"2-digit" })}
-            </div>
-          )}
-          {autoRefresh && (
-            <div className="refresh-ring-wrap" title={`Refreshes in ${countdown}s`}>
-              <svg width="28" height="28" style={{ transform:"rotate(-90deg)" }}>
-                <circle cx="14" cy="14" r={R} fill="none" stroke="#e2e8f0" strokeWidth="3" />
-                <circle cx="14" cy="14" r={R} fill="none" stroke="#2563eb" strokeWidth="3"
-                  strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
-                  style={{ transition:"stroke-dasharray 1s linear" }} />
-              </svg>
-              <span className="refresh-ring-label">{countdown}s</span>
-            </div>
-          )}
-          <button
-            className={autoRefresh ? "refresh-toggle-on" : "refresh-toggle-off"}
-            onClick={() => { setAutoRefresh((v) => !v); cdRef.current = REFRESH_MS/1000; setCountdown(REFRESH_MS/1000); }}
-          >
-            {autoRefresh ? "🔄 Auto ON" : "⏸ Auto OFF"}
-          </button>
-          <button className="refresh-manual-btn" onClick={() => fetchAll()}>↻ Refresh</button>
-          <div className="live-badge">
-            <span className="live-badge-dot" />
-            Live
-          </div>
+        {/* Live indicator */}
+        <div className="live-badge">
+          <span className="live-badge-dot" />
+          Live
         </div>
       </div>
 
-      {/* ── Stats ── */}
+      {/* ── Stats Grid ── */}
       <div className="stats-grid">
         {STATS.map((s) => (
           <div key={s.label} className="stat-card">
-            <div className={`stat-icon-box ${s.grad}`}>
+            <div className={`stat-icon-box ${s.cls}`}>
               <span>{s.icon}</span>
             </div>
             <div>
-              <p className="stat-label">{s.label}</p>
+              <p className="stat-label">
+                {s.label}
+                {s.live && (
+                  <span style={{
+                    marginLeft: 6,
+                    fontSize: 9,
+                    fontWeight: 700,
+                    color: "#10b981",
+                    background: "#d1fae5",
+                    padding: "1px 6px",
+                    borderRadius: 20,
+                    verticalAlign: "middle",
+                    letterSpacing: 0.5,
+                  }}>
+                    LIVE
+                  </span>
+                )}
+              </p>
               <h3 className="stat-value">{s.value}</h3>
-              <p className="stat-change">{s.change}</p>
+              <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>{s.sub}</p>
             </div>
           </div>
         ))}
       </div>
 
-      {/* ── Quick cards ── */}
-      <div className="quick-grid">
-        {/* Recent Activity */}
-        <div className="quick-card">
-          <div className="quick-card-header">
-            <h3 className="quick-card-title">Recent Activity</h3>
-            <span className="quick-card-link" onClick={() => navigate("/booking")}>View All →</span>
-          </div>
-          <div className="activity-list">
-            {activities.length > 0 ? activities.map((a) => (
-              <div key={a.id} className="activity-item">
-                <div
-                  className="activity-icon"
-                  style={{
-                    background:
-                      a.type === "completed" ? "#dcfce7" :
-                      a.type === "assigned"  ? "#dbeafe" : "#fef3c7",
-                    color:
-                      a.type === "completed" ? "#15803d" :
-                      a.type === "assigned"  ? "#1e40af" : "#b45309",
-                  }}
-                >
-                  {a.type === "completed" ? "✓" : a.type === "assigned" ? "🚗" : "⏳"}
-                </div>
-                <div>
-                  <p className="activity-title">{a.title}</p>
-                  <p className="activity-time">{a.time}</p>
-                </div>
-              </div>
-            )) : (
-              <div className="empty-state">
-                <span className="empty-state-icon">📭</span>
-                <p className="empty-state-title">No recent activity</p>
-              </div>
-            )}
-          </div>
+      {/* ── Live Driver Status Breakdown ── */}
+      <div className="table-card" style={{ marginTop: 24 }}>
+        <div className="table-card-header">
+          <h3 className="table-card-title">
+            Driver Status
+            <span style={{
+              marginLeft: 10, fontSize: 10, fontWeight: 700, color: "#10b981",
+              background: "#d1fae5", padding: "2px 8px", borderRadius: 20,
+            }}>
+              LIVE
+            </span>
+          </h3>
+          <span className="table-record-badge">{drivers.length} Drivers</span>
         </div>
 
-        {/* Top Drivers */}
-        <div className="quick-card">
-          <div className="quick-card-header">
-            <h3 className="quick-card-title">Top Drivers Today</h3>
-            <span className="quick-card-link" onClick={() => navigate("/driver-dashboard")}>View All →</span>
-          </div>
-          <div className="driver-list">
-            {topDrivers.length > 0 ? topDrivers.map((d, i) => (
-              <div key={i} className="driver-item">
-                <div
-                  className="avatar avatar-lg"
-                  style={{
-                    background:
-                      i === 0 ? "linear-gradient(135deg,#2563eb,#1d4ed8)" :
-                      i === 1 ? "linear-gradient(135deg,#10b981,#059669)" :
-                               "linear-gradient(135deg,#f59e0b,#d97706)",
-                  }}
-                >
-                  {d.name?.charAt(0).toUpperCase()}
-                </div>
-                <div style={{ flex:1 }}>
-                  <p className="driver-item-name">{d.name}</p>
-                  <p className="driver-item-trips">{d.trips} trips completed</p>
-                </div>
-                <span className="driver-rating">⭐ {d.rating}</span>
-              </div>
-            )) : (
-              <div className="empty-state">
-                <span className="empty-state-icon">🚗</span>
-                <p className="empty-state-title">No driver data yet</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                {["ID", "Name", "Mobile", "Status", "Car Type", "Region", "Pay Active"].map((h) => (
+                  <th key={h}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {driversLoading ? (
+                <tr>
+                  <td colSpan="7" style={{ textAlign: "center", padding: 32, color: "var(--text-muted)" }}>
+                    Loading drivers...
+                  </td>
+                </tr>
+              ) : drivers.length === 0 ? (
+                <tr>
+                  <td colSpan="7">
+                    <div className="empty-state">
+                      <span className="empty-state-icon">📭</span>
+                      <p className="empty-state-title">No drivers found</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : drivers.map((d) => {
+                const st = d.status?.toLowerCase();
+                const badgeCls =
+                  st === "online"  || st === "active"   ? "badge badge-green"  :
+                  st === "inride"  || st === "on duty"  ? "badge badge-blue"   :
+                  st === "offline" || st === "inactive" ? "badge badge-gray"   :
+                  st === "suspend"                      ? "badge badge-red"    : "badge badge-amber";
+                const badgeLabel =
+                  st === "online"  ? "🟢 Online"   :
+                  st === "offline" ? "⚫ Offline"  :
+                  st === "inride"  ? "🚗 In Ride"  :
+                  st === "active"  ? "🟢 Active"   :
+                  st === "suspend" ? "⛔ Suspended" : d.status || "—";
 
-      {/* ── Notification toasts ── */}
-      <div className="notification-stack">
-        {notifs.map((n) => (
-          <div key={n.id} className={`notification-card${n.fade ? " fade-out" : ""}`}>
-            <div className="notif-header">
-              <span className="notif-header-icon">🚖</span>
-              <span className="notif-header-title">New Booking Alert</span>
-              <span className="notif-new-badge">NEW</span>
-            </div>
-            <div className="notif-body">
-              <div className="notif-customer">
-                <div className="avatar avatar-lg">
-                  {n.name?.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <p className="notif-cust-name">{n.name}</p>
-                  <p className="notif-cust-phone">{n.phone || n.mobile}</p>
-                </div>
-              </div>
-              <div className="notif-route">
-                <div className="notif-route-point">
-                  <span>📍</span>
-                  <div>
-                    <span className="notif-route-label">Pickup</span>
-                    <div className="notif-route-value">{n.pickup}</div>
-                  </div>
-                </div>
-                <div className="notif-arrow">→</div>
-                <div className="notif-route-point">
-                  <span>🎯</span>
-                  <div>
-                    <span className="notif-route-label">Drop</span>
-                    <div className="notif-route-value">{n.drop}</div>
-                  </div>
-                </div>
-              </div>
-              <div className="notif-actions">
-                <button className="btn btn-primary btn-sm" onClick={() => navigate("/booking")}>Assign Driver</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => navigate("/booking")}>View Details</button>
-              </div>
-            </div>
-          </div>
-        ))}
+                return (
+                  <tr key={d.id}>
+                    <td><span className="cell-id">{d.id}</span></td>
+                    <td>
+                      <div className="cell-name">
+                        <div className="avatar">{d.name?.charAt(0)?.toUpperCase()}</div>
+                        <span className="cell-name-text">{d.name}</span>
+                      </div>
+                    </td>
+                    <td style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}>{d.mobile}</td>
+                    <td><span className={badgeCls}>{badgeLabel}</span></td>
+                    <td>{d.car_type || "—"}</td>
+                    <td>{d.region || "—"}</td>
+                    <td>
+                      <span className={
+                        d.payactive?.toLowerCase() === "active" ? "badge badge-green" : "badge badge-red"
+                      }>
+                        {d.payactive?.toLowerCase() === "active" ? "✅ Active" : "🚫 Inactive"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

@@ -121,7 +121,7 @@ const AdminLayout = () => {
       <aside className={`sidebar${sidebarOpen ? " open" : ""}`}>
         <div className="sidebar-logo">
           <div className="sidebar-logo-icon">🚖</div>
-          JJ Drivers
+          JJ CallDrivers
         </div>
 
         <nav className="sidebar-nav">

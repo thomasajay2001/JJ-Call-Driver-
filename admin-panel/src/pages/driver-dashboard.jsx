@@ -1,10 +1,9 @@
 import axios from "axios";
 import { useEffect, useRef, useState } from "react";
-import { io } from "socket.io-client";
 import { PaginationBar, usePagination } from "../hooks/Usepagination";
+import { useDrivers } from "../hooks/useDrivers";
 
-const BASE_URL   = import.meta.env.VITE_BASE_URL;
-const SOCKET_URL = "http://localhost:3000";
+const BASE_URL = import.meta.env.VITE_BASE_URL || "http://localhost:3000";
 
 const CSV_COLUMNS = [
   "driver_no","name","father_name","driver_dob","qualification","blood_group",
@@ -71,7 +70,9 @@ const engagedBadge = (v) =>
 
 /* ════════════════════════════════════════════ */
 export default function DriverDashboard() {
-  const [drivers,          setDrivers]          = useState([]);
+  // ✅ Shared hook — live updates via socket, no manual wiring needed
+  const { drivers, refresh: fetchDrivers } = useDrivers();
+
   const [search,           setSearch]           = useState("");
   const [showForm,         setShowForm]         = useState(false);
   const [editId,           setEditId]           = useState(null);
@@ -120,16 +121,10 @@ export default function DriverDashboard() {
   const [formErrors, setFormErrors] = useState({});
 
   useEffect(() => {
-    fetchDrivers();
-    const socket = io(SOCKET_URL);
-    socket.on("newbooking", (d) => alert(`New Booking: ${d.name}`));
-    return () => socket.disconnect();
+    // fetchDrivers is called by useDrivers hook automatically
+    // newbooking alert kept here
+    // (socket joining + driverStatusChanged handled inside useDrivers)
   }, []);
-
-  const fetchDrivers = async () => {
-    const res = await axios.get(`${BASE_URL}/api/drivers`);
-    setDrivers(res.data || []);
-  };
 
   const resetForm = () => {
     setEditId(null);
