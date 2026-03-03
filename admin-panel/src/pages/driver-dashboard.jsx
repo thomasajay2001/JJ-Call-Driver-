@@ -3,15 +3,15 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { PaginationBar, usePagination } from "../hooks/Usepagination";
 
-const BASE_URL   = import.meta.env.VITE_BASE_URL;
+const BASE_URL = import.meta.env.VITE_BASE_URL;
 const SOCKET_URL = "http://localhost:3000";
 
 const CSV_COLUMNS = [
-  "driver_no","name","father_name","driver_dob","qualification","blood_group",
-  "expr","badge_no","join_date","mobile","alt_no","cur_address","per_address",
-  "region","bike_status","driver_status","status","remarks","engaged",
-  "license_expiry_date","location","experience","feeDetails","bloodgrp","age",
-  "gender","car_type","licenceNo","paymentmode","payactive",
+  "driver_no", "name", "father_name", "driver_dob", "qualification", "blood_group",
+  "expr", "badge_no", "join_date", "mobile", "alt_no", "cur_address", "per_address",
+  "region", "bike_status", "driver_status", "status", "remarks", "engaged",
+  "license_expiry_date", "location", "experience", "feeDetails", "bloodgrp", "age",
+  "gender", "car_type", "licenceNo", "paymentmode", "payactive",
 ];
 const SAMPLE_CSV = [
   "driver_no,name,father_name,driver_dob,qualification,blood_group,expr,badge_no,join_date,mobile,alt_no,cur_address,per_address,region,bike_status,driver_status,status,remarks,engaged,license_expiry_date,location,experience,feeDetails,bloodgrp,age,gender,car_type,licenceNo,paymentmode,payactive",
@@ -21,49 +21,49 @@ const SAMPLE_CSV = [
 
 /* ── status helpers ── */
 const STATUS_BADGE = {
-  active:    "badge badge-green",
-  inactive:  "badge badge-amber",
+  active: "badge badge-green",
+  inactive: "badge badge-amber",
   "on duty": "badge badge-blue",
-  suspend:   "badge badge-red",
-  offline:   "badge badge-gray",
-  online:    "badge badge-teal",
+  suspend: "badge badge-red",
+  offline: "badge badge-gray",
+  online: "badge badge-teal",
 };
 const STATUS_LABEL = {
-  active:"🟢 Active", inactive:"🟡 Inactive", "on duty":"🔵 On Duty",
-  suspend:"⛔ Suspended", offline:"⚫ Offline", online:"🟢 Online",
+  active: "🟢 Active", inactive: "🟡 Inactive", "on duty": "🔵 On Duty",
+  suspend: "⛔ Suspended", offline: "⚫ Offline", online: "🟢 Online",
 };
 const statusBadgeClass = (s) => STATUS_BADGE[s?.toLowerCase()] || "badge badge-gray";
-const statusLabel      = (s) => STATUS_LABEL[s?.toLowerCase()] || s || "N/A";
+const statusLabel = (s) => STATUS_LABEL[s?.toLowerCase()] || s || "N/A";
 
 /* ── payactive ── */
 const payBadge = (v) =>
-  v?.toLowerCase() === "active"   ? "badge badge-green" :
-  v?.toLowerCase() === "deactive" ? "badge badge-red"   : "badge badge-gray";
+  v?.toLowerCase() === "active" ? "badge badge-green" :
+    v?.toLowerCase() === "deactive" ? "badge badge-red" : "badge badge-gray";
 const payLabel = (v) =>
-  v?.toLowerCase() === "active"   ? "✅ Active" :
-  v?.toLowerCase() === "deactive" ? "🚫 Deactive" : "— N/A";
+  v?.toLowerCase() === "active" ? "✅ Active" :
+    v?.toLowerCase() === "deactive" ? "🚫 Deactive" : "— N/A";
 
 /* ── fee ── */
 const feeBadge = (v) =>
-  v === "Paid"    ? "badge badge-green" :
-  v === "Pending" ? "badge badge-amber" : "badge badge-red";
+  v === "Paid" ? "badge badge-green" :
+    v === "Pending" ? "badge badge-amber" : "badge badge-red";
 const feeLabel = (v) =>
   v === "Paid" ? "✅ Paid" : v === "Pending" ? "⏳ Pending" : "❌ Not Paid";
 
 /* ── car type ── */
 const carBadge = (v) =>
   v?.toLowerCase() === "automatic" ? "badge badge-blue" :
-  v?.toLowerCase() === "manual"    ? "badge badge-purple" : "badge badge-teal";
+    v?.toLowerCase() === "manual" ? "badge badge-purple" : "badge badge-teal";
 
 /* ── payment mode ── */
 const pmBadge = (v) =>
-  v?.toLowerCase() === "online"  ? "badge badge-green" :
-  v?.toLowerCase() === "offline" ? "badge badge-red"   : "badge badge-teal";
+  v?.toLowerCase() === "online" ? "badge badge-green" :
+    v?.toLowerCase() === "offline" ? "badge badge-red" : "badge badge-teal";
 
 /* ── bike status ── */
 const bikeBadge = (v) =>
-  v?.toLowerCase() === "active"   ? "badge badge-green" :
-  v?.toLowerCase() === "inactive" ? "badge badge-amber" : "badge badge-gray";
+  v?.toLowerCase() === "active" ? "badge badge-green" :
+    v?.toLowerCase() === "inactive" ? "badge badge-amber" : "badge badge-gray";
 
 /* ── engaged ── */
 const engagedBadge = (v) =>
@@ -71,50 +71,50 @@ const engagedBadge = (v) =>
 
 /* ════════════════════════════════════════════ */
 export default function DriverDashboard() {
-  const [drivers,          setDrivers]          = useState([]);
-  const [search,           setSearch]           = useState("");
-  const [showForm,         setShowForm]         = useState(false);
-  const [editId,           setEditId]           = useState(null);
-  const [showDeleteModal,  setShowDeleteModal]  = useState(false);
-  const [deleteId,         setDeleteId]         = useState(null);
-  const [deleteName,       setDeleteName]       = useState("");
-  const [showCsvModal,     setShowCsvModal]     = useState(false);
-  const [csvRows,          setCsvRows]          = useState([]);
-  const [csvError,         setCsvError]         = useState("");
-  const [csvUploading,     setCsvUploading]     = useState(false);
-  const [csvResult,        setCsvResult]        = useState(null);
+  const [drivers, setDrivers] = useState([]);
+  const [search, setSearch] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteId, setDeleteId] = useState(null);
+  const [deleteName, setDeleteName] = useState("");
+  const [showCsvModal, setShowCsvModal] = useState(false);
+  const [csvRows, setCsvRows] = useState([]);
+  const [csvError, setCsvError] = useState("");
+  const [csvUploading, setCsvUploading] = useState(false);
+  const [csvResult, setCsvResult] = useState(null);
   const csvRef = useRef(null);
 
   /* ── existing form fields ── */
-  const [name,        setName]        = useState("");
-  const [mobile,      setMobile]      = useState("");
-  const [location,    setLocation]    = useState("");
-  const [bloodgrp,    setBloodgrp]    = useState("");
-  const [dob,         setDob]         = useState("");
-  const [age,         setAge]         = useState("");
-  const [gender,      setGender]      = useState("");
-  const [licenceNo,   setLicenceNo]   = useState("");
-  const [feeDetails,  setFeeDetails]  = useState("");
-  const [experience,  setExperience]  = useState("");
-  const [car_type,    setCarType]     = useState("");
+  const [name, setName] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [location, setLocation] = useState("");
+  const [bloodgrp, setBloodgrp] = useState("");
+  const [dob, setDob] = useState("");
+  const [age, setAge] = useState("");
+  const [gender, setGender] = useState("");
+  const [licenceNo, setLicenceNo] = useState("");
+  const [feeDetails, setFeeDetails] = useState("");
+  const [experience, setExperience] = useState("");
+  const [car_type, setCarType] = useState("");
   const [paymentmode, setPaymentmode] = useState("");
-  const [payactive,   setPayActive]   = useState("");
-  const [status,      setStatus]      = useState("offline");
+  const [payactive, setPayActive] = useState("");
+  const [status, setStatus] = useState("offline");
 
   /* ── NEW form fields ── */
-  const [driverNo,          setDriverNo]          = useState("");
-  const [fatherName,        setFatherName]        = useState("");
-  const [qualification,     setQualification]     = useState("");
-  const [badgeNo,           setBadgeNo]           = useState("");
-  const [joinDate,          setJoinDate]          = useState("");
-  const [altNo,             setAltNo]             = useState("");
-  const [curAddress,        setCurAddress]        = useState("");
-  const [perAddress,        setPerAddress]        = useState("");
-  const [region,            setRegion]            = useState("");
-  const [bikeStatus,        setBikeStatus]        = useState("");
-  const [driverStatus,      setDriverStatus]      = useState("");
-  const [remarks,           setRemarks]           = useState("");
-  const [engaged,           setEngaged]           = useState("");
+  const [driverNo, setDriverNo] = useState("");
+  const [fatherName, setFatherName] = useState("");
+  const [qualification, setQualification] = useState("");
+  const [badgeNo, setBadgeNo] = useState("");
+  const [joinDate, setJoinDate] = useState("");
+  const [altNo, setAltNo] = useState("");
+  const [curAddress, setCurAddress] = useState("");
+  const [perAddress, setPerAddress] = useState("");
+  const [region, setRegion] = useState("");
+  const [bikeStatus, setBikeStatus] = useState("");
+  const [driverStatus, setDriverStatus] = useState("");
+  const [remarks, setRemarks] = useState("");
+  const [engaged, setEngaged] = useState("");
   const [licenseExpiryDate, setLicenseExpiryDate] = useState("");
 
   const [formErrors, setFormErrors] = useState({});
@@ -178,16 +178,16 @@ export default function DriverDashboard() {
 
   const validate = () => {
     const e = {};
-    if (!name.trim() || name.trim().length < 2) e.name      = "Full name required (min 2 chars)";
-    if (!/^[6-9]\d{9}$/.test(mobile))           e.mobile    = "Valid 10-digit mobile required";
-    if (!gender)                                 e.gender    = "Please select gender";
-    if (!payactive)                              e.payactive = "Please select pay activity";
-    if (!car_type)                               e.car_type  = "Please select car type";
-    if (!paymentmode)                            e.paymentmode = "Please select payment mode";
-    if (!feeDetails)                             e.feeDetails = "Please select fee status";
-    if (dob && new Date(dob) >= new Date())      e.dob       = "DOB must be in the past";
+    if (!name.trim() || name.trim().length < 2) e.name = "Full name required (min 2 chars)";
+    if (!/^[6-9]\d{9}$/.test(mobile)) e.mobile = "Valid 10-digit mobile required";
+    if (!gender) e.gender = "Please select gender";
+    if (!payactive) e.payactive = "Please select pay activity";
+    if (!car_type) e.car_type = "Please select car type";
+    if (!paymentmode) e.paymentmode = "Please select payment mode";
+    if (!feeDetails) e.feeDetails = "Please select fee status";
+    if (dob && new Date(dob) >= new Date()) e.dob = "DOB must be in the past";
     if (age && (isNaN(+age) || +age < 18 || +age > 80)) e.age = "Age must be 18–80";
-    if (altNo && !/^\d{10}$/.test(altNo))        e.altNo     = "Alternate number must be 10 digits";
+    if (altNo && !/^\d{10}$/.test(altNo)) e.altNo = "Alternate number must be 10 digits";
     setFormErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -207,7 +207,7 @@ export default function DriverDashboard() {
       remarks, engaged, license_expiry_date: licenseExpiryDate,
     };
     if (editId) await axios.put(`${BASE_URL}/api/updatedriver/${editId}`, body);
-    else        await axios.post(`${BASE_URL}/api/adddrivers`, body);
+    else await axios.post(`${BASE_URL}/api/adddrivers`, body);
     setShowForm(false); resetForm(); fetchDrivers();
   };
 
@@ -219,7 +219,7 @@ export default function DriverDashboard() {
 
   /* ── CSV ── */
   const downloadSample = () => {
-    const blob = new Blob([SAMPLE_CSV.join("\n")], { type:"text/csv" });
+    const blob = new Blob([SAMPLE_CSV.join("\n")], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob); a.download = "drivers_sample.csv"; a.click();
   };
@@ -244,14 +244,14 @@ export default function DriverDashboard() {
     reader.onload = (ev) => {
       const lines = ev.target.result.split(/\r?\n/).filter(Boolean);
       if (lines.length < 2) { setCsvError("CSV is empty"); return; }
-      const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase().replace(/\s+/g,""));
-      const missing = ["name","mobile"].filter((c) => !headers.includes(c));
+      const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase().replace(/\s+/g, ""));
+      const missing = ["name", "mobile"].filter((c) => !headers.includes(c));
       if (missing.length) { setCsvError(`Missing columns: ${missing.join(", ")}`); return; }
       const rows = [];
       for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
         const vals = parseCSVLine(lines[i]);
-        const obj  = {};
+        const obj = {};
         headers.forEach((h, idx) => { obj[h] = vals[idx] || ""; });
         obj.status = "offline";
         rows.push(obj);
@@ -305,6 +305,25 @@ export default function DriverDashboard() {
     fetchDrivers();
   };
 
+  const calculateAge = (date) => {
+    if (!date) return "";
+
+    const today = new Date();
+    const birthDate = new Date(date);
+
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 && today.getDate() < birthDate.getDate())
+    ) {
+      age--;
+    }
+
+    return age >= 0 ? age : "";
+  };
+
   const closeCsv = () => {
     setShowCsvModal(false); setCsvRows([]); setCsvError(""); setCsvResult(null);
     if (csvRef.current) csvRef.current.value = "";
@@ -320,11 +339,11 @@ export default function DriverDashboard() {
   const pg = usePagination(filtered, 10);
 
   /* ── Stats ── */
-  const totalD    = drivers.length;
-  const activeD   = drivers.filter((d) => d.status?.toLowerCase() === "active").length;
-  const paidFees  = drivers.filter((d) => d.feeDetails === "Paid").length;
-  const autoD     = drivers.filter((d) => d.car_type?.toLowerCase().includes("automatic")).length;
-  const engagedD  = drivers.filter((d) => d.engaged?.toLowerCase() === "yes").length;
+  const totalD = drivers.length;
+  const activeD = drivers.filter((d) => d.status?.toLowerCase() === "active").length;
+  const paidFees = drivers.filter((d) => d.feeDetails === "Paid").length;
+  const autoD = drivers.filter((d) => d.car_type?.toLowerCase().includes("automatic")).length;
+  const engagedD = drivers.filter((d) => d.engaged?.toLowerCase() === "yes").length;
 
   const ErrMsg = ({ k }) => formErrors[k]
     ? <span className="form-error">⚠ {formErrors[k]}</span> : null;
@@ -347,11 +366,11 @@ export default function DriverDashboard() {
       {/* ── Stats ── */}
       <div className="stats-grid">
         {[
-          { icon:"👥", label:"Total Drivers",    value:totalD,   cls:"stat-icon-box-blue"   },
-          { icon:"✓",  label:"Active Drivers",   value:activeD,  cls:"stat-icon-box-green"  },
-          { icon:"💳", label:"Fees Paid",         value:paidFees, cls:"stat-icon-box-purple" },
-          { icon:"🚗", label:"Automatic Cars",   value:autoD,    cls:"stat-icon-box-amber"  },
-          { icon:"🔵", label:"Currently Engaged",value:engagedD, cls:"stat-icon-box-blue"   },
+          { icon: "👥", label: "Total Drivers", value: totalD, cls: "stat-icon-box-blue" },
+          { icon: "✓", label: "Active Drivers", value: activeD, cls: "stat-icon-box-green" },
+          { icon: "💳", label: "Fees Paid", value: paidFees, cls: "stat-icon-box-purple" },
+          { icon: "🚗", label: "Automatic Cars", value: autoD, cls: "stat-icon-box-amber" },
+          { icon: "🔵", label: "Currently Engaged", value: engagedD, cls: "stat-icon-box-blue" },
         ].map((s) => (
           <div key={s.label} className="stat-card">
             <div className={`stat-icon-box ${s.cls}`}><span>{s.icon}</span></div>
@@ -391,11 +410,11 @@ export default function DriverDashboard() {
             <thead>
               <tr>
                 {[
-                  "ID","Driver No","Name","Father Name","Mobile","Alt No",
-                  "Gender","DOB · Age","Qualification","Badge No","Join Date",
-                  "Status","Driver Status","Pay Active","Bike Status","Engaged",
-                  "Car Type","Licence","Lic. Expiry","Payment","Fee Status",
-                  "Region","Location","Address","Remarks","Actions"
+                  "ID", "Driver No", "Name", "Father Name", "Mobile", "Alt No",
+                  "Gender", "DOB · Age", "Qualification", "Badge No", "Join Date",
+                  "Status", "Driver Status", "Pay Active", "Bike Status", "Engaged",
+                  "Car Type", "Licence", "Lic. Expiry", "Payment", "Fee Status",
+                  "Region", "Location", "Address", "Remarks", "Actions"
                 ].map((h) => <th key={h}>{h}</th>)}
               </tr>
             </thead>
@@ -413,7 +432,7 @@ export default function DriverDashboard() {
               ) : pg.slice.map((d) => (
                 <tr key={d.id}>
                   <td><span className="cell-id">{d.id}</span></td>
-                  <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{d.driver_no || "—"}</td>
+                  <td style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}>{d.driver_no || "—"}</td>
                   <td>
                     <div className="cell-name">
                       <div className="avatar">{d.name?.charAt(0).toUpperCase()}</div>
@@ -421,15 +440,15 @@ export default function DriverDashboard() {
                     </div>
                   </td>
                   <td>{d.father_name || "—"}</td>
-                  <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{d.mobile}</td>
-                  <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{d.alt_no || "—"}</td>
+                  <td style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}>{d.mobile}</td>
+                  <td style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}>{d.alt_no || "—"}</td>
                   <td>{d.gender || "—"}</td>
-                  <td style={{ whiteSpace:"nowrap" }}>
+                  <td style={{ whiteSpace: "nowrap" }}>
                     {d.dob ? new Date(d.dob).toLocaleDateString("en-GB") : "—"}{" · "}{d.age || "—"}
                   </td>
                   <td>{d.qualification || "—"}</td>
-                  <td style={{ fontFamily:"var(--font-mono)", fontSize:12 }}>{d.badge_no || "—"}</td>
-                  <td style={{ whiteSpace:"nowrap" }}>
+                  <td style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{d.badge_no || "—"}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
                     {d.join_date ? new Date(d.join_date).toLocaleDateString("en-GB") : "—"}
                   </td>
                   <td><span className={statusBadgeClass(d.status)}>{statusLabel(d.status)}</span></td>
@@ -442,8 +461,8 @@ export default function DriverDashboard() {
                     </span>
                   </td>
                   <td><span className={carBadge(d.car_type)}>{d.car_type || "N/A"}</span></td>
-                  <td style={{ fontFamily:"var(--font-mono)", fontSize:12 }}>{d.licenceNo || "—"}</td>
-                  <td style={{ whiteSpace:"nowrap", fontSize:12 }}>
+                  <td style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{d.licenceNo || "—"}</td>
+                  <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>
                     {d.license_expiry_date ? new Date(d.license_expiry_date).toLocaleDateString("en-GB") : "—"}
                   </td>
                   <td><span className={pmBadge(d.paymentmode)}>{d.paymentmode || "N/A"}</span></td>
@@ -455,16 +474,16 @@ export default function DriverDashboard() {
                       <span className="cell-loc-text">{d.location || "—"}</span>
                     </div>
                   </td>
-                  <td style={{ maxWidth:150, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}
+                  <td style={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                     title={d.cur_address}>
                     {d.cur_address || "—"}
                   </td>
-                  <td style={{ maxWidth:120, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}
+                  <td style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                     title={d.remarks}>
                     {d.remarks || "—"}
                   </td>
                   <td>
-                    <div style={{ display:"flex", gap:6 }}>
+                    <div style={{ display: "flex", gap: 6 }}>
                       <button className="action-edit" onClick={() => openEdit(d)}>✏️ Edit</button>
                       <button className="action-delete" onClick={() => confirmDelete(d.id, d.name)}>🗑️</button>
                     </div>
@@ -492,17 +511,17 @@ export default function DriverDashboard() {
           <div className="modal modal-lg">
             <div className="modal-header modal-header-success">
               <div className="modal-header-inner">
-                <span style={{ fontSize:26 }}>📂</span>
+                <span style={{ fontSize: 26 }}>📂</span>
                 <span className="modal-title">Import Drivers via CSV</span>
               </div>
               <button className="modal-close" onClick={closeCsv}>✕</button>
             </div>
 
-            <div className="modal-body" style={{ display:"flex", flexDirection:"column", gap:22 }}>
+            <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 22 }}>
               {/* Step 1 */}
               <div className="csv-step">
                 <div className="csv-step-num">1</div>
-                <div style={{ flex:1 }}>
+                <div style={{ flex: 1 }}>
                   <p className="csv-step-title">Download Sample CSV</p>
                   <p className="csv-step-desc">Use this template to fill in driver details.</p>
                   <button className="btn btn-outline btn-sm" onClick={downloadSample}>⬇ Download Sample</button>
@@ -516,13 +535,13 @@ export default function DriverDashboard() {
               {/* Step 2 */}
               <div className="csv-step">
                 <div className="csv-step-num">2</div>
-                <div style={{ flex:1 }}>
+                <div style={{ flex: 1 }}>
                   <p className="csv-step-title">Upload CSV File</p>
                   <label>
-                    <input ref={csvRef} type="file" accept=".csv" onChange={handleCsvFile} style={{ display:"none" }} />
+                    <input ref={csvRef} type="file" accept=".csv" onChange={handleCsvFile} style={{ display: "none" }} />
                     <span className="file-drop-zone">📁 Choose CSV File</span>
                   </label>
-                  {csvError && <p style={{ color:"var(--danger)", fontSize:13, marginTop:8 }}>⚠ {csvError}</p>}
+                  {csvError && <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>⚠ {csvError}</p>}
                 </div>
               </div>
 
@@ -530,13 +549,13 @@ export default function DriverDashboard() {
               {csvRows.length > 0 && !csvResult && (
                 <div className="csv-step">
                   <div className="csv-step-num">3</div>
-                  <div style={{ flex:1 }}>
+                  <div style={{ flex: 1 }}>
                     <p className="csv-step-title">Preview ({csvRows.length} driver{csvRows.length !== 1 ? "s" : ""})</p>
                     <div className="csv-preview-wrap">
                       <table>
                         <thead>
-                          <tr style={{ background:"var(--surface-2)" }}>
-                            {["Driver No","Name","Father Name","Mobile","Region","Badge No","Engaged","Fee"].map((h) => (
+                          <tr style={{ background: "var(--surface-2)" }}>
+                            {["Driver No", "Name", "Father Name", "Mobile", "Region", "Badge No", "Engaged", "Fee"].map((h) => (
                               <th key={h} className="csv-preview-th">{h}</th>
                             ))}
                           </tr>
@@ -557,14 +576,14 @@ export default function DriverDashboard() {
                         </tbody>
                       </table>
                       {csvRows.length > 10 && (
-                        <p style={{ textAlign:"center", color:"var(--text-muted)", fontSize:12, padding:"6px 0" }}>
+                        <p style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 12, padding: "6px 0" }}>
                           + {csvRows.length - 10} more rows
                         </p>
                       )}
                     </div>
                     <button
                       className="btn btn-success"
-                      style={{ width:"100%", opacity: csvUploading ? .65 : 1 }}
+                      style={{ width: "100%", opacity: csvUploading ? .65 : 1 }}
                       onClick={uploadCsv}
                       disabled={csvUploading}
                     >
@@ -583,7 +602,7 @@ export default function DriverDashboard() {
                     <span className="csv-added">✅ {csvResult.added} Added</span>
                     {csvResult.failed > 0 && <span className="csv-failed">❌ {csvResult.failed} Failed</span>}
                   </div>
-                  <button className="btn btn-primary" style={{ marginTop:8 }} onClick={closeCsv}>Done</button>
+                  <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={closeCsv}>Done</button>
                 </div>
               )}
             </div>
@@ -599,7 +618,7 @@ export default function DriverDashboard() {
           <div className="modal modal-lg">
             <div className="modal-header">
               <div className="modal-header-inner">
-                <span style={{ fontSize:26 }}>{editId ? "✏️" : "➕"}</span>
+                <span style={{ fontSize: 26 }}>{editId ? "✏️" : "➕"}</span>
                 <span className="modal-title">{editId ? "Edit Driver Details" : "Add New Driver"}</span>
               </div>
               <button className="modal-close" onClick={() => { setShowForm(false); resetForm(); }}>✕</button>
@@ -622,7 +641,7 @@ export default function DriverDashboard() {
                   <label className="form-label">Full Name <span className="form-required">*</span></label>
                   <input className={`form-input${formErrors.name ? " form-input-error" : ""}`}
                     placeholder="Enter full name" value={name}
-                    onChange={(e) => { setName(e.target.value); setFormErrors((p) => ({ ...p, name:"" })); }} />
+                    onChange={(e) => { setName(e.target.value); setFormErrors((p) => ({ ...p, name: "" })); }} />
                   <ErrMsg k="name" />
                 </div>
 
@@ -636,7 +655,7 @@ export default function DriverDashboard() {
                   <label className="form-label">Mobile Number <span className="form-required">*</span></label>
                   <input className={`form-input${formErrors.mobile ? " form-input-error" : ""}`}
                     placeholder="10-digit mobile" value={mobile} maxLength={10}
-                    onChange={(e) => { setMobile(e.target.value.replace(/\D/g,"")); setFormErrors((p) => ({ ...p, mobile:"" })); }} />
+                    onChange={(e) => { setMobile(e.target.value.replace(/\D/g, "")); setFormErrors((p) => ({ ...p, mobile: "" })); }} />
                   <ErrMsg k="mobile" />
                 </div>
 
@@ -644,7 +663,7 @@ export default function DriverDashboard() {
                   <label className="form-label">Alternate Number</label>
                   <input className={`form-input${formErrors.altNo ? " form-input-error" : ""}`}
                     placeholder="10-digit alternate number" value={altNo} maxLength={10}
-                    onChange={(e) => { setAltNo(e.target.value.replace(/\D/g,"")); setFormErrors((p) => ({ ...p, altNo:"" })); }} />
+                    onChange={(e) => { setAltNo(e.target.value.replace(/\D/g, "")); setFormErrors((p) => ({ ...p, altNo: "" })); }} />
                   <ErrMsg k="altNo" />
                 </div>
 
@@ -652,30 +671,42 @@ export default function DriverDashboard() {
                   <label className="form-label">Blood Group</label>
                   <select className="form-select" value={bloodgrp} onChange={(e) => setBloodgrp(e.target.value)}>
                     <option value="">Select Blood Group</option>
-                    {["A+","A-","B+","B-","O+","O-","AB+","AB-"].map((b) => <option key={b}>{b}</option>)}
+                    {["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"].map((b) => <option key={b}>{b}</option>)}
                   </select>
                 </div>
 
                 <div className="form-field">
                   <label className="form-label">Date of Birth</label>
-                  <input type="date" className={`form-input${formErrors.dob ? " form-input-error" : ""}`}
-                    value={dob} max={new Date().toISOString().split("T")[0]}
-                    onChange={(e) => { setDob(e.target.value); setFormErrors((p) => ({ ...p, dob:"" })); }} />
+                  <input
+                    type="date"
+                    className={`form-input${formErrors.dob ? " form-input-error" : ""}`}
+                    value={dob}
+                    max={new Date().toISOString().split("T")[0]}
+                    onChange={(e) => {
+                      const selectedDate = e.target.value;
+                      setDob(selectedDate);
+                      setAge(calculateAge(selectedDate));
+                      setFormErrors((p) => ({ ...p, dob: "" }));
+                    }}
+                  />
                   <ErrMsg k="dob" />
                 </div>
 
                 <div className="form-field">
                   <label className="form-label">Age</label>
-                  <input className={`form-input${formErrors.age ? " form-input-error" : ""}`}
-                    placeholder="18–80" value={age} maxLength={2}
-                    onChange={(e) => { setAge(e.target.value.replace(/\D/g,"")); setFormErrors((p) => ({ ...p, age:"" })); }} />
+                  <input
+                    className="form-input"
+                    value={age}
+                    readOnly
+                    placeholder="Auto calculated"
+                  />
                   <ErrMsg k="age" />
                 </div>
 
                 <div className="form-field">
                   <label className="form-label">Gender <span className="form-required">*</span></label>
                   <select className={`form-select${formErrors.gender ? " form-input-error" : ""}`}
-                    value={gender} onChange={(e) => { setGender(e.target.value); setFormErrors((p) => ({ ...p, gender:"" })); }}>
+                    value={gender} onChange={(e) => { setGender(e.target.value); setFormErrors((p) => ({ ...p, gender: "" })); }}>
                     <option value="">Select Gender</option>
                     <option>Male</option><option>Female</option><option>Other</option>
                   </select>
@@ -686,7 +717,7 @@ export default function DriverDashboard() {
                   <label className="form-label">Qualification</label>
                   <select className="form-select" value={qualification} onChange={(e) => setQualification(e.target.value)}>
                     <option value="">Select Qualification</option>
-                    {["8th","10th","12th","Diploma","Graduate","Post Graduate","Other"].map((q) => <option key={q}>{q}</option>)}
+                    {["8th", "10th", "12th", "Diploma", "Graduate", "Post Graduate", "Other"].map((q) => <option key={q}>{q}</option>)}
                   </select>
                 </div>
 
@@ -694,18 +725,18 @@ export default function DriverDashboard() {
                 <div className="form-section-label">🏠 Address Information</div>
                 <div className="form-section-divider" />
 
-                <div className="form-field" style={{ gridColumn:"1 / -1" }}>
+                <div className="form-field" style={{ gridColumn: "1 / -1" }}>
                   <label className="form-label">Current Address</label>
                   <textarea className="form-input" rows={2} placeholder="Current residential address"
                     value={curAddress} onChange={(e) => setCurAddress(e.target.value)}
-                    style={{ resize:"vertical" }} />
+                    style={{ resize: "vertical" }} />
                 </div>
 
-                <div className="form-field" style={{ gridColumn:"1 / -1" }}>
+                <div className="form-field" style={{ gridColumn: "1 / -1" }}>
                   <label className="form-label">Permanent Address</label>
                   <textarea className="form-input" rows={2} placeholder="Permanent residential address"
                     value={perAddress} onChange={(e) => setPerAddress(e.target.value)}
-                    style={{ resize:"vertical" }} />
+                    style={{ resize: "vertical" }} />
                 </div>
 
                 <div className="form-field">
@@ -751,13 +782,13 @@ export default function DriverDashboard() {
                 <div className="form-field">
                   <label className="form-label">Experience (Years)</label>
                   <input className="form-input" placeholder="Years of experience" value={experience}
-                    onChange={(e) => setExperience(e.target.value.replace(/\D/g,""))} />
+                    onChange={(e) => setExperience(e.target.value.replace(/\D/g, ""))} />
                 </div>
 
                 <div className="form-field">
                   <label className="form-label">Car Type <span className="form-required">*</span></label>
                   <select className={`form-select${formErrors.car_type ? " form-input-error" : ""}`}
-                    value={car_type} onChange={(e) => { setCarType(e.target.value); setFormErrors((p) => ({ ...p, car_type:"" })); }}>
+                    value={car_type} onChange={(e) => { setCarType(e.target.value); setFormErrors((p) => ({ ...p, car_type: "" })); }}>
                     <option value="">Select Car Type</option>
                     <option>Automatic</option><option>Manual</option><option>Both</option>
                   </select>
@@ -788,7 +819,7 @@ export default function DriverDashboard() {
                 <div className="form-field">
                   <label className="form-label">
                     Status
-                    {!editId && <span className="form-hint" style={{ marginLeft:6 }}>🔒 Auto: Offline</span>}
+                    {!editId && <span className="form-hint" style={{ marginLeft: 6 }}>🔒 Auto: Offline</span>}
                   </label>
                   {editId ? (
                     <select className="form-select" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -819,7 +850,7 @@ export default function DriverDashboard() {
                 <div className="form-field">
                   <label className="form-label">Pay Active <span className="form-required">*</span></label>
                   <select className={`form-select${formErrors.payactive ? " form-input-error" : ""}`}
-                    value={payactive} onChange={(e) => { setPayActive(e.target.value); setFormErrors((p) => ({ ...p, payactive:"" })); }}>
+                    value={payactive} onChange={(e) => { setPayActive(e.target.value); setFormErrors((p) => ({ ...p, payactive: "" })); }}>
                     <option value="">Select Pay Activity</option>
                     <option value="Active">✅ Active</option>
                     <option value="Deactive">🚫 Deactive</option>
@@ -834,7 +865,7 @@ export default function DriverDashboard() {
                 <div className="form-field">
                   <label className="form-label">Payment Mode <span className="form-required">*</span></label>
                   <select className={`form-select${formErrors.paymentmode ? " form-input-error" : ""}`}
-                    value={paymentmode} onChange={(e) => { setPaymentmode(e.target.value); setFormErrors((p) => ({ ...p, paymentmode:"" })); }}>
+                    value={paymentmode} onChange={(e) => { setPaymentmode(e.target.value); setFormErrors((p) => ({ ...p, paymentmode: "" })); }}>
                     <option value="">Select Payment Mode</option>
                     <option>Online</option><option>Offline</option><option>Both</option>
                   </select>
@@ -844,7 +875,7 @@ export default function DriverDashboard() {
                 <div className="form-field">
                   <label className="form-label">Fee Status <span className="form-required">*</span></label>
                   <select className={`form-select${formErrors.feeDetails ? " form-input-error" : ""}`}
-                    value={feeDetails} onChange={(e) => { setFeeDetails(e.target.value); setFormErrors((p) => ({ ...p, feeDetails:"" })); }}>
+                    value={feeDetails} onChange={(e) => { setFeeDetails(e.target.value); setFormErrors((p) => ({ ...p, feeDetails: "" })); }}>
                     <option value="">Select Fee Status</option>
                     <option value="Paid">✅ Paid</option>
                     <option value="Not Paid">❌ Not Paid</option>
@@ -857,11 +888,11 @@ export default function DriverDashboard() {
                 <div className="form-section-label">📝 Additional Notes</div>
                 <div className="form-section-divider" />
 
-                <div className="form-field" style={{ gridColumn:"1 / -1" }}>
+                <div className="form-field" style={{ gridColumn: "1 / -1" }}>
                   <label className="form-label">Remarks</label>
                   <textarea className="form-input" rows={3} placeholder="Any additional remarks..."
                     value={remarks} onChange={(e) => setRemarks(e.target.value)}
-                    style={{ resize:"vertical" }} />
+                    style={{ resize: "vertical" }} />
                 </div>
 
               </div>
@@ -883,12 +914,12 @@ export default function DriverDashboard() {
           <div className="modal modal-sm">
             <div className="modal-header modal-header-danger">
               <div className="modal-header-inner">
-                <span style={{ fontSize:22 }}>🗑️</span>
+                <span style={{ fontSize: 22 }}>🗑️</span>
                 <span className="modal-title">Delete Driver</span>
               </div>
               <button className="modal-close" onClick={() => { setShowDeleteModal(false); setDeleteId(null); }}>✕</button>
             </div>
-            <div className="modal-body" style={{ textAlign:"center" }}>
+            <div className="modal-body" style={{ textAlign: "center" }}>
               <div className="delete-icon-ring">🗑️</div>
               <p className="delete-modal-text">Are you sure?</p>
               <p className="delete-modal-subtext">
@@ -896,7 +927,7 @@ export default function DriverDashboard() {
               </p>
               <span className="delete-warning-pill">⚠ Irreversible Action</span>
             </div>
-            <div className="modal-footer" style={{ justifyContent:"center", gap:14 }}>
+            <div className="modal-footer" style={{ justifyContent: "center", gap: 14 }}>
               <button className="btn btn-ghost" onClick={() => { setShowDeleteModal(false); setDeleteId(null); }}>Cancel</button>
               <button className="btn btn-danger" onClick={deleteDriver}>Yes, Delete</button>
             </div>

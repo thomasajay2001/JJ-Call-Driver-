@@ -329,23 +329,51 @@ app.post("/api/verify-otp", (req, res) => {
 });
 
 // ─── TRIP BOOKING ────────────────────────────
+// ─── TRIP BOOKING ────────────────────────────
 app.post("/api/trip-booking", async (req, res) => {
   try {
-    const { name, phone, pickup, pickupLat, pickupLng, drop, bookingphnno, triptype } = req.body;
+    const {
+      name, phone, pickup, pickupLat, pickupLng,
+      drop, bookingphnno, triptype,
+      preferred_driver_id,   // ← new: driver chosen by customer (or null)
+    } = req.body;
+
     if (!name || !phone || !pickup || !drop || !bookingphnno) {
-      return res
-        .status(400)
-        .json({ success: false, error: "All fields are required" });
+      return res.status(400).json({ success: false, error: "All fields are required" });
     }
+
     const [result] = await db.promise().query(
-      `INSERT INTO bookings (customer_name, customer_mobile, booking_phnno, pickup, pickup_lat, pickup_lng, drop_location, triptype, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, phone, bookingphnno, pickup, pickupLat || null, pickupLng || null, drop, triptype || "local", "pending"]
+      `INSERT INTO bookings
+         (customer_name, customer_mobile, booking_phnno,
+          pickup, pickup_lat, pickup_lng,
+          drop_location, triptype, status, driver_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      [
+        name,
+        phone,
+        bookingphnno,
+        pickup,
+        pickupLat  || null,
+        pickupLng  || null,
+        drop,
+        triptype   || "local",
+        preferred_driver_id || null,   // ← saved into driver_id column
+      ]
     );
-    res.json({ success: true, message: "Booking created successfully", bookingId: result.insertId });
+
+    res.json({
+      success: true,
+      message: "Booking created successfully",
+      bookingId: result.insertId,
+    });
+
   } catch (error) {
     console.error("Trip booking error:", error);
-    res.status(500).json({ success: false, error: "Failed to create booking", message: error.message });
+    res.status(500).json({
+      success: false,
+      error: "Failed to create booking",
+      message: error.message,
+    });
   }
 });
 
@@ -479,6 +507,71 @@ app.post("/api/decline-booking", async (req, res) => {
 });
 
 // ─── CUSTOMER BOOKINGS ───────────────────────
+
+
+// routes/recommendedDrivers.js
+// Mount with: app.use("/", require("./routes/recommendedDrivers"));
+
+app.get("/recommended-drivers/:phone", async (req, res) => {
+  const { phone } = req.params;
+
+  try {
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number required",
+      });
+    }
+
+    /* ─────────────────────────────────────────────────
+       1️⃣  Block if customer has an active booking right now
+    ───────────────────────────────────────────────── */
+    // ✅ Use db.promise().query() — your server uses mysql2 (callback), not mysql2/promise
+    const [activeBooking] = await db.promise().query(
+      `SELECT id
+       FROM bookings
+       WHERE booking_phnno = ?
+         AND status IN ('pending','accepted','assigned','inride')
+       LIMIT 1`,
+      [phone]
+    );
+
+    if (activeBooking.length > 0) {
+      // Customer is mid-ride — no recommendations needed
+      return res.json({ success: true, drivers: [] });
+    }
+
+    /* ─────────────────────────────────────────────────
+       2️⃣  Return drivers this customer has used > 1 time
+           ordered by ride count (most frequent first)
+    ───────────────────────────────────────────────── */
+    const [drivers] = await db.promise().query(
+      `SELECT
+         d.id,
+         d.name,
+         d.status,                         -- e.g. 'available' | 'busy' | 'offline'
+         COUNT(b.id)   AS total_rides
+       FROM bookings b
+       JOIN drivers  d ON b.driver_id = d.id
+       WHERE b.booking_phnno = ?
+         AND b.status        = 'completed'
+         AND b.driver_id     IS NOT NULL
+       GROUP BY d.id, d.name, d.status
+       HAVING COUNT(b.id) > 1
+       ORDER BY total_rides DESC`,
+      [phone]
+    );
+
+    return res.json({ success: true, drivers });
+
+  } catch (error) {
+    console.error("Recommended drivers error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+});
 app.get("/api/bookings/customer", async (req, res) => {
   try {
     const { phone } = req.query;
