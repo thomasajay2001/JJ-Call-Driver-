@@ -4,7 +4,7 @@ import { io } from "socket.io-client";
 import { PaginationBar, usePagination } from "../hooks/Usepagination";
 
 const BASE_URL   = import.meta.env.VITE_BASE_URL;
-const SOCKET_URL = "http://13.60.174.204/:3000";
+const SOCKET_URL = "http://localhost:3000";
 
 const CSV_COLUMNS = [
   "driver_no","name","father_name","driver_dob","qualification","blood_group",
