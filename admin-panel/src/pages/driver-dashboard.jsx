@@ -4,17 +4,19 @@ import { io } from "socket.io-client";
 import { PaginationBar, usePagination } from "../hooks/Usepagination";
 
 const BASE_URL   = import.meta.env.VITE_BASE_URL;
-const SOCKET_URL = "http://localhost:3000";
+const SOCKET_URL = "http://13.60.174.204/:3000";
 
 const CSV_COLUMNS = [
-  "name","mobile","location","experience","feeDetails",
-  "dob","bloodgrp","age","gender","car_type",
-  "licenceNo","paymentmode","payactive",
+  "driver_no","name","father_name","driver_dob","qualification","blood_group",
+  "expr","badge_no","join_date","mobile","alt_no","cur_address","per_address",
+  "region","bike_status","driver_status","status","remarks","engaged",
+  "license_expiry_date","location","experience","feeDetails","bloodgrp","age",
+  "gender","car_type","licenceNo","paymentmode","payactive",
 ];
 const SAMPLE_CSV = [
-  "name,mobile,location,experience,feeDetails,dob,bloodgrp,age,gender,car_type,licenceNo,paymentmode,payactive",
-  "Ravi Kumar,9876543210,Chennai,5,Paid,1990-05-15,O+,34,Male,Automatic,TN01-20190001234,Online,Active",
-  "Priya Devi,9123456789,Tambaram,3,Pending,1995-08-22,B+,29,Female,Manual,TN01-20210005678,Offline,Active",
+  "driver_no,name,father_name,driver_dob,qualification,blood_group,expr,badge_no,join_date,mobile,alt_no,cur_address,per_address,region,bike_status,driver_status,status,remarks,engaged,license_expiry_date,location,experience,feeDetails,bloodgrp,age,gender,car_type,licenceNo,paymentmode,payactive",
+  "DRV001,Ravi Kumar,Suresh Kumar,1990-05-15,10th,O+,5,B1234,2020-01-10,9876543210,9876500000,12 Main St Chennai,45 Park Ave Chennai,South,Active,Active,active,,No,2028-05-15,Chennai,5,Paid,O+,34,Male,Automatic,TN01-20190001234,Online,Active",
+  "DRV002,Priya Devi,Murugan,1995-08-22,12th,B+,3,B5678,2021-06-01,9123456789,9123400000,7 Anna Nagar Tambaram,7 Anna Nagar Tambaram,North,Inactive,Active,active,,No,2027-08-22,Tambaram,3,Pending,B+,29,Female,Manual,TN01-20210005678,Offline,Active",
 ];
 
 /* ── status helpers ── */
@@ -58,6 +60,15 @@ const pmBadge = (v) =>
   v?.toLowerCase() === "online"  ? "badge badge-green" :
   v?.toLowerCase() === "offline" ? "badge badge-red"   : "badge badge-teal";
 
+/* ── bike status ── */
+const bikeBadge = (v) =>
+  v?.toLowerCase() === "active"   ? "badge badge-green" :
+  v?.toLowerCase() === "inactive" ? "badge badge-amber" : "badge badge-gray";
+
+/* ── engaged ── */
+const engagedBadge = (v) =>
+  v?.toLowerCase() === "yes" ? "badge badge-blue" : "badge badge-gray";
+
 /* ════════════════════════════════════════════ */
 export default function DriverDashboard() {
   const [drivers,          setDrivers]          = useState([]);
@@ -74,7 +85,7 @@ export default function DriverDashboard() {
   const [csvResult,        setCsvResult]        = useState(null);
   const csvRef = useRef(null);
 
-  /* form fields */
+  /* ── existing form fields ── */
   const [name,        setName]        = useState("");
   const [mobile,      setMobile]      = useState("");
   const [location,    setLocation]    = useState("");
@@ -89,7 +100,24 @@ export default function DriverDashboard() {
   const [paymentmode, setPaymentmode] = useState("");
   const [payactive,   setPayActive]   = useState("");
   const [status,      setStatus]      = useState("offline");
-  const [formErrors,  setFormErrors]  = useState({});
+
+  /* ── NEW form fields ── */
+  const [driverNo,          setDriverNo]          = useState("");
+  const [fatherName,        setFatherName]        = useState("");
+  const [qualification,     setQualification]     = useState("");
+  const [badgeNo,           setBadgeNo]           = useState("");
+  const [joinDate,          setJoinDate]          = useState("");
+  const [altNo,             setAltNo]             = useState("");
+  const [curAddress,        setCurAddress]        = useState("");
+  const [perAddress,        setPerAddress]        = useState("");
+  const [region,            setRegion]            = useState("");
+  const [bikeStatus,        setBikeStatus]        = useState("");
+  const [driverStatus,      setDriverStatus]      = useState("");
+  const [remarks,           setRemarks]           = useState("");
+  const [engaged,           setEngaged]           = useState("");
+  const [licenseExpiryDate, setLicenseExpiryDate] = useState("");
+
+  const [formErrors, setFormErrors] = useState({});
 
   useEffect(() => {
     fetchDrivers();
@@ -104,20 +132,48 @@ export default function DriverDashboard() {
   };
 
   const resetForm = () => {
-    setEditId(null); setName(""); setMobile(""); setLocation(""); setAge("");
-    setDob(""); setGender(""); setBloodgrp(""); setLicenceNo(""); setFeeDetails("");
+    setEditId(null);
+    // existing
+    setName(""); setMobile(""); setLocation(""); setAge(""); setDob("");
+    setGender(""); setBloodgrp(""); setLicenceNo(""); setFeeDetails("");
     setExperience(""); setCarType(""); setPaymentmode(""); setPayActive("");
-    setStatus("offline"); setFormErrors({});
+    setStatus("offline");
+    // new
+    setDriverNo(""); setFatherName(""); setQualification(""); setBadgeNo("");
+    setJoinDate(""); setAltNo(""); setCurAddress(""); setPerAddress("");
+    setRegion(""); setBikeStatus(""); setDriverStatus(""); setRemarks("");
+    setEngaged(""); setLicenseExpiryDate("");
+    setFormErrors({});
   };
 
   const openCreate = () => { resetForm(); setShowForm(true); };
+
   const openEdit = (d) => {
-    setEditId(d.id); setName(d.name); setMobile(d.mobile); setLocation(d.location);
+    setEditId(d.id);
+    // existing
+    setName(d.name); setMobile(d.mobile); setLocation(d.location);
     setBloodgrp(d.bloodgrp); setDob(d.dob ? d.dob.split("T")[0] : ""); setAge(d.age);
     setGender(d.gender); setCarType(d.car_type); setLicenceNo(d.licenceNo);
     setFeeDetails(d.feeDetails); setExperience(d.experience);
     setPaymentmode(d.paymentmode); setStatus(d.status || "offline");
-    setPayActive(d.payactive || ""); setFormErrors({}); setShowForm(true);
+    setPayActive(d.payactive || "");
+    // new
+    setDriverNo(d.driver_no || "");
+    setFatherName(d.father_name || "");
+    setQualification(d.qualification || "");
+    setBadgeNo(d.badge_no || "");
+    setJoinDate(d.join_date ? d.join_date.split("T")[0] : "");
+    setAltNo(d.alt_no || "");
+    setCurAddress(d.cur_address || "");
+    setPerAddress(d.per_address || "");
+    setRegion(d.region || "");
+    setBikeStatus(d.bike_status || "");
+    setDriverStatus(d.driver_status || "");
+    setRemarks(d.remarks || "");
+    setEngaged(d.engaged || "");
+    setLicenseExpiryDate(d.license_expiry_date ? d.license_expiry_date.split("T")[0] : "");
+    setFormErrors({});
+    setShowForm(true);
   };
 
   const validate = () => {
@@ -127,19 +183,29 @@ export default function DriverDashboard() {
     if (!gender)                                 e.gender    = "Please select gender";
     if (!payactive)                              e.payactive = "Please select pay activity";
     if (!car_type)                               e.car_type  = "Please select car type";
-    if (!paymentmode)                            e.paymentmode="Please select payment mode";
+    if (!paymentmode)                            e.paymentmode = "Please select payment mode";
     if (!feeDetails)                             e.feeDetails = "Please select fee status";
     if (dob && new Date(dob) >= new Date())      e.dob       = "DOB must be in the past";
     if (age && (isNaN(+age) || +age < 18 || +age > 80)) e.age = "Age must be 18–80";
+    if (altNo && !/^\d{10}$/.test(altNo))        e.altNo     = "Alternate number must be 10 digits";
     setFormErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const submitForm = async () => {
     if (!validate()) return;
-    const body = { name, mobile, location, experience, feeDetails, dob, bloodgrp,
-                   age, gender, car_type, licenceNo, paymentmode, payactive,
-                   status: editId ? status : "offline" };
+    const body = {
+      // existing
+      name, mobile, location, experience, feeDetails, dob, bloodgrp,
+      age, gender, car_type, licenceNo, paymentmode, payactive,
+      status: editId ? status : "offline",
+      // new
+      driver_no: driverNo, father_name: fatherName, qualification,
+      badge_no: badgeNo, join_date: joinDate, alt_no: altNo,
+      cur_address: curAddress, per_address: perAddress, region,
+      bike_status: bikeStatus, driver_status: driverStatus,
+      remarks, engaged, license_expiry_date: licenseExpiryDate,
+    };
     if (editId) await axios.put(`${BASE_URL}/api/updatedriver/${editId}`, body);
     else        await axios.post(`${BASE_URL}/api/adddrivers`, body);
     setShowForm(false); resetForm(); fetchDrivers();
@@ -202,14 +268,34 @@ export default function DriverDashboard() {
     for (const row of csvRows) {
       try {
         await axios.post(`${BASE_URL}/api/adddrivers`, {
+          // existing fields
           name: row.name, mobile: row.mobile,
-          location: row.location || "", experience: row.experience || "",
+          location: row.location || "",
+          experience: row.experience || row.expr || "",
           feeDetails: row.feedetails || row.feeDetails || "",
-          dob: row.dob || "", bloodgrp: row.bloodgrp || "",
+          dob: row.dob || row.driver_dob || "",
+          bloodgrp: row.bloodgrp || row.blood_group || "",
           age: row.age || "", gender: row.gender || "",
-          car_type: row.car_type || "", licenceNo: row.licenceno || row.licenceNo || "",
-          paymentmode: row.paymentmode || "", payactive: row.payactive || "",
+          car_type: row.car_type || "",
+          licenceNo: row.licenceno || row.licenceNo || "",
+          paymentmode: row.paymentmode || "",
+          payactive: row.payactive || "",
           status: "offline",
+          // new fields
+          driver_no: row.driver_no || "",
+          father_name: row.father_name || "",
+          qualification: row.qualification || "",
+          badge_no: row.badge_no || "",
+          join_date: row.join_date || "",
+          alt_no: row.alt_no || "",
+          cur_address: row.cur_address || "",
+          per_address: row.per_address || "",
+          region: row.region || "",
+          bike_status: row.bike_status || "",
+          driver_status: row.driver_status || "",
+          remarks: row.remarks || "",
+          engaged: row.engaged || "",
+          license_expiry_date: row.license_expiry_date || "",
         });
         added++;
       } catch { failed++; }
@@ -226,8 +312,10 @@ export default function DriverDashboard() {
 
   /* ── Filter + paginate ── */
   const filtered = drivers.filter((d) =>
-    d.name.toLowerCase().includes(search.toLowerCase()) ||
-    String(d.mobile).includes(search)
+    (d.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    String(d.mobile ?? "").includes(search) ||
+    (d.driver_no ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (d.region ?? "").toLowerCase().includes(search.toLowerCase())
   );
   const pg = usePagination(filtered, 10);
 
@@ -236,6 +324,7 @@ export default function DriverDashboard() {
   const activeD   = drivers.filter((d) => d.status?.toLowerCase() === "active").length;
   const paidFees  = drivers.filter((d) => d.feeDetails === "Paid").length;
   const autoD     = drivers.filter((d) => d.car_type?.toLowerCase().includes("automatic")).length;
+  const engagedD  = drivers.filter((d) => d.engaged?.toLowerCase() === "yes").length;
 
   const ErrMsg = ({ k }) => formErrors[k]
     ? <span className="form-error">⚠ {formErrors[k]}</span> : null;
@@ -258,10 +347,11 @@ export default function DriverDashboard() {
       {/* ── Stats ── */}
       <div className="stats-grid">
         {[
-          { icon:"👥", label:"Total Drivers",  value:totalD,   cls:"stat-icon-box-blue"   },
-          { icon:"✓",  label:"Active Drivers", value:activeD,  cls:"stat-icon-box-green"  },
-          { icon:"💳", label:"Fees Paid",       value:paidFees, cls:"stat-icon-box-purple" },
-          { icon:"🚗", label:"Automatic Cars", value:autoD,    cls:"stat-icon-box-amber"  },
+          { icon:"👥", label:"Total Drivers",    value:totalD,   cls:"stat-icon-box-blue"   },
+          { icon:"✓",  label:"Active Drivers",   value:activeD,  cls:"stat-icon-box-green"  },
+          { icon:"💳", label:"Fees Paid",         value:paidFees, cls:"stat-icon-box-purple" },
+          { icon:"🚗", label:"Automatic Cars",   value:autoD,    cls:"stat-icon-box-amber"  },
+          { icon:"🔵", label:"Currently Engaged",value:engagedD, cls:"stat-icon-box-blue"   },
         ].map((s) => (
           <div key={s.label} className="stat-card">
             <div className={`stat-icon-box ${s.cls}`}><span>{s.icon}</span></div>
@@ -300,14 +390,19 @@ export default function DriverDashboard() {
           <table>
             <thead>
               <tr>
-                {["ID","Name","Mobile","Gender","Status","Pay Active","DOB · Age","Car Type","Licence","Payment","Fee Status","Location","Actions"]
-                  .map((h) => <th key={h}>{h}</th>)}
+                {[
+                  "ID","Driver No","Name","Father Name","Mobile","Alt No",
+                  "Gender","DOB · Age","Qualification","Badge No","Join Date",
+                  "Status","Driver Status","Pay Active","Bike Status","Engaged",
+                  "Car Type","Licence","Lic. Expiry","Payment","Fee Status",
+                  "Region","Location","Address","Remarks","Actions"
+                ].map((h) => <th key={h}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {pg.slice.length === 0 ? (
                 <tr>
-                  <td colSpan="13">
+                  <td colSpan="26">
                     <div className="empty-state">
                       <span className="empty-state-icon">📭</span>
                       <p className="empty-state-title">No drivers found</p>
@@ -318,28 +413,55 @@ export default function DriverDashboard() {
               ) : pg.slice.map((d) => (
                 <tr key={d.id}>
                   <td><span className="cell-id">{d.id}</span></td>
+                  <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{d.driver_no || "—"}</td>
                   <td>
                     <div className="cell-name">
                       <div className="avatar">{d.name?.charAt(0).toUpperCase()}</div>
                       <span className="cell-name-text">{d.name}</span>
                     </div>
                   </td>
+                  <td>{d.father_name || "—"}</td>
                   <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{d.mobile}</td>
+                  <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{d.alt_no || "—"}</td>
                   <td>{d.gender || "—"}</td>
-                  <td><span className={statusBadgeClass(d.status)}>{statusLabel(d.status)}</span></td>
-                  <td><span className={payBadge(d.payactive)}>{payLabel(d.payactive)}</span></td>
                   <td style={{ whiteSpace:"nowrap" }}>
                     {d.dob ? new Date(d.dob).toLocaleDateString("en-GB") : "—"}{" · "}{d.age || "—"}
                   </td>
+                  <td>{d.qualification || "—"}</td>
+                  <td style={{ fontFamily:"var(--font-mono)", fontSize:12 }}>{d.badge_no || "—"}</td>
+                  <td style={{ whiteSpace:"nowrap" }}>
+                    {d.join_date ? new Date(d.join_date).toLocaleDateString("en-GB") : "—"}
+                  </td>
+                  <td><span className={statusBadgeClass(d.status)}>{statusLabel(d.status)}</span></td>
+                  <td><span className={statusBadgeClass(d.driver_status)}>{statusLabel(d.driver_status)}</span></td>
+                  <td><span className={payBadge(d.payactive)}>{payLabel(d.payactive)}</span></td>
+                  <td><span className={bikeBadge(d.bike_status)}>{d.bike_status || "—"}</span></td>
+                  <td>
+                    <span className={engagedBadge(d.engaged)}>
+                      {d.engaged?.toLowerCase() === "yes" ? "🔵 Yes" : d.engaged || "—"}
+                    </span>
+                  </td>
                   <td><span className={carBadge(d.car_type)}>{d.car_type || "N/A"}</span></td>
                   <td style={{ fontFamily:"var(--font-mono)", fontSize:12 }}>{d.licenceNo || "—"}</td>
+                  <td style={{ whiteSpace:"nowrap", fontSize:12 }}>
+                    {d.license_expiry_date ? new Date(d.license_expiry_date).toLocaleDateString("en-GB") : "—"}
+                  </td>
                   <td><span className={pmBadge(d.paymentmode)}>{d.paymentmode || "N/A"}</span></td>
                   <td><span className={feeBadge(d.feeDetails)}>{feeLabel(d.feeDetails)}</span></td>
+                  <td>{d.region || "—"}</td>
                   <td>
                     <div className="cell-loc">
                       <span>📍</span>
                       <span className="cell-loc-text">{d.location || "—"}</span>
                     </div>
+                  </td>
+                  <td style={{ maxWidth:150, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}
+                    title={d.cur_address}>
+                    {d.cur_address || "—"}
+                  </td>
+                  <td style={{ maxWidth:120, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}
+                    title={d.remarks}>
+                    {d.remarks || "—"}
                   </td>
                   <td>
                     <div style={{ display:"flex", gap:6 }}>
@@ -353,7 +475,6 @@ export default function DriverDashboard() {
           </table>
         </div>
 
-        {/* ── Pagination ── */}
         {filtered.length > 0 && (
           <PaginationBar
             pg={pg}
@@ -415,7 +536,7 @@ export default function DriverDashboard() {
                       <table>
                         <thead>
                           <tr style={{ background:"var(--surface-2)" }}>
-                            {["Name","Mobile","Gender","Car Type","Fee","Pay Active"].map((h) => (
+                            {["Driver No","Name","Father Name","Mobile","Region","Badge No","Engaged","Fee"].map((h) => (
                               <th key={h} className="csv-preview-th">{h}</th>
                             ))}
                           </tr>
@@ -423,12 +544,14 @@ export default function DriverDashboard() {
                         <tbody>
                           {csvRows.slice(0, 10).map((r, i) => (
                             <tr key={i}>
+                              <td className="csv-preview-td">{r.driver_no || "—"}</td>
                               <td className="csv-preview-td">{r.name || "—"}</td>
+                              <td className="csv-preview-td">{r.father_name || "—"}</td>
                               <td className="csv-preview-td">{r.mobile || "—"}</td>
-                              <td className="csv-preview-td">{r.gender || "—"}</td>
-                              <td className="csv-preview-td">{r.car_type || "—"}</td>
+                              <td className="csv-preview-td">{r.region || "—"}</td>
+                              <td className="csv-preview-td">{r.badge_no || "—"}</td>
+                              <td className="csv-preview-td">{r.engaged || "—"}</td>
                               <td className="csv-preview-td">{r.feedetails || r.feeDetails || "—"}</td>
-                              <td className="csv-preview-td">{r.payactive || "—"}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -484,9 +607,16 @@ export default function DriverDashboard() {
 
             <div className="modal-body">
               <div className="form-grid">
+
                 {/* ── Personal ── */}
                 <div className="form-section-label">👤 Personal Information</div>
                 <div className="form-section-divider" />
+
+                <div className="form-field">
+                  <label className="form-label">Driver No</label>
+                  <input className="form-input" placeholder="e.g. DRV001" value={driverNo}
+                    onChange={(e) => setDriverNo(e.target.value)} />
+                </div>
 
                 <div className="form-field">
                   <label className="form-label">Full Name <span className="form-required">*</span></label>
@@ -497,11 +627,25 @@ export default function DriverDashboard() {
                 </div>
 
                 <div className="form-field">
+                  <label className="form-label">Father's Name</label>
+                  <input className="form-input" placeholder="Father's full name" value={fatherName}
+                    onChange={(e) => setFatherName(e.target.value)} />
+                </div>
+
+                <div className="form-field">
                   <label className="form-label">Mobile Number <span className="form-required">*</span></label>
                   <input className={`form-input${formErrors.mobile ? " form-input-error" : ""}`}
                     placeholder="10-digit mobile" value={mobile} maxLength={10}
                     onChange={(e) => { setMobile(e.target.value.replace(/\D/g,"")); setFormErrors((p) => ({ ...p, mobile:"" })); }} />
                   <ErrMsg k="mobile" />
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Alternate Number</label>
+                  <input className={`form-input${formErrors.altNo ? " form-input-error" : ""}`}
+                    placeholder="10-digit alternate number" value={altNo} maxLength={10}
+                    onChange={(e) => { setAltNo(e.target.value.replace(/\D/g,"")); setFormErrors((p) => ({ ...p, altNo:"" })); }} />
+                  <ErrMsg k="altNo" />
                 </div>
 
                 <div className="form-field">
@@ -538,14 +682,70 @@ export default function DriverDashboard() {
                   <ErrMsg k="gender" />
                 </div>
 
+                <div className="form-field">
+                  <label className="form-label">Qualification</label>
+                  <select className="form-select" value={qualification} onChange={(e) => setQualification(e.target.value)}>
+                    <option value="">Select Qualification</option>
+                    {["8th","10th","12th","Diploma","Graduate","Post Graduate","Other"].map((q) => <option key={q}>{q}</option>)}
+                  </select>
+                </div>
+
+                {/* ── Address ── */}
+                <div className="form-section-label">🏠 Address Information</div>
+                <div className="form-section-divider" />
+
+                <div className="form-field" style={{ gridColumn:"1 / -1" }}>
+                  <label className="form-label">Current Address</label>
+                  <textarea className="form-input" rows={2} placeholder="Current residential address"
+                    value={curAddress} onChange={(e) => setCurAddress(e.target.value)}
+                    style={{ resize:"vertical" }} />
+                </div>
+
+                <div className="form-field" style={{ gridColumn:"1 / -1" }}>
+                  <label className="form-label">Permanent Address</label>
+                  <textarea className="form-input" rows={2} placeholder="Permanent residential address"
+                    value={perAddress} onChange={(e) => setPerAddress(e.target.value)}
+                    style={{ resize:"vertical" }} />
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Region</label>
+                  <input className="form-input" placeholder="e.g. South, North, East" value={region}
+                    onChange={(e) => setRegion(e.target.value)} />
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Location</label>
+                  <input className="form-input" placeholder="Current city/area" value={location}
+                    onChange={(e) => setLocation(e.target.value)} />
+                </div>
+
                 {/* ── Professional ── */}
                 <div className="form-section-label">🚗 Professional Details</div>
                 <div className="form-section-divider" />
 
                 <div className="form-field">
+                  <label className="form-label">Badge Number</label>
+                  <input className="form-input" placeholder="e.g. B1234" value={badgeNo}
+                    onChange={(e) => setBadgeNo(e.target.value)} />
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Join Date</label>
+                  <input type="date" className="form-input" value={joinDate}
+                    onChange={(e) => setJoinDate(e.target.value)} />
+                </div>
+
+                <div className="form-field">
                   <label className="form-label">Licence Number</label>
                   <input className="form-input" placeholder="Enter licence number" value={licenceNo}
                     onChange={(e) => setLicenceNo(e.target.value)} />
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Licence Expiry Date</label>
+                  <input type="date" className="form-input" value={licenseExpiryDate}
+                    onChange={(e) => setLicenseExpiryDate(e.target.value)} />
                 </div>
 
                 <div className="form-field">
@@ -565,9 +765,20 @@ export default function DriverDashboard() {
                 </div>
 
                 <div className="form-field">
-                  <label className="form-label">Location</label>
-                  <input className="form-input" placeholder="Current location" value={location}
-                    onChange={(e) => setLocation(e.target.value)} />
+                  <label className="form-label">Bike Status</label>
+                  <select className="form-select" value={bikeStatus} onChange={(e) => setBikeStatus(e.target.value)}>
+                    <option value="">Select Bike Status</option>
+                    <option>Active</option><option>Inactive</option>
+                  </select>
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Engaged</label>
+                  <select className="form-select" value={engaged} onChange={(e) => setEngaged(e.target.value)}>
+                    <option value="">Select Engagement</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
                 </div>
 
                 {/* ── Status ── */}
@@ -593,6 +804,16 @@ export default function DriverDashboard() {
                       <span className="readonly-note">Set automatically</span>
                     </div>
                   )}
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Driver Status</label>
+                  <select className="form-select" value={driverStatus} onChange={(e) => setDriverStatus(e.target.value)}>
+                    <option value="">Select Driver Status</option>
+                    <option value="active">🟢 Active</option>
+                    <option value="inactive">🟡 Inactive</option>
+                    <option value="suspend">⛔ Suspended</option>
+                  </select>
                 </div>
 
                 <div className="form-field">
@@ -631,6 +852,18 @@ export default function DriverDashboard() {
                   </select>
                   <ErrMsg k="feeDetails" />
                 </div>
+
+                {/* ── Remarks ── */}
+                <div className="form-section-label">📝 Additional Notes</div>
+                <div className="form-section-divider" />
+
+                <div className="form-field" style={{ gridColumn:"1 / -1" }}>
+                  <label className="form-label">Remarks</label>
+                  <textarea className="form-input" rows={3} placeholder="Any additional remarks..."
+                    value={remarks} onChange={(e) => setRemarks(e.target.value)}
+                    style={{ resize:"vertical" }} />
+                </div>
+
               </div>
             </div>
 

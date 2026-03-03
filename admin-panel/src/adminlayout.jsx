@@ -2,7 +2,7 @@ import axios from "axios";
 import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
-const BASE_URL = import.meta.env.VITE_BASE_URL || "http://localhost:3000";
+const BASE_URL = import.meta.env.VITE_BASE_URL || "http://13.60.174.204:3000";
 
 const NAV_ITEMS = [
   { path: "/dashboard",        label: "Dashboard", icon: "📊" },
