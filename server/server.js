@@ -27,7 +27,7 @@ const mysql = require("mysql2");
 const db = mysql.createConnection({
   host: "localhost",
   user: "root",
-  password: "Gomathi@123",
+  password: "q2m@123",
   database: "jjdrivers",
 });
 
@@ -937,6 +937,11 @@ app.post("/api/driver/updateStatus", (req, res) => {
       console.error("Error updating status:", err);
       return res.status(500).send({ success: false });
     }
+    // ✅ Broadcast to admin dashboard so status updates live
+    io.to("admins").emit("driverStatusChanged", {
+      driverId: Number(driverId),
+      status,
+    });
     res.send({ success: true, message: "Status updated" });
   });
 });
