@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { useDrivers } from "../hooks/useDrivers";
+import { PaginationBar, usePagination } from "../hooks/Usepagination";  // ← added
 
 const BASE_URL = import.meta.env.VITE_BASE_URL || "http://localhost:3000";
 
@@ -36,25 +37,22 @@ export default function Dashboard() {
   };
 
   /* ── Live driver stats ── */
-  // Driver toggle sends "online" when active; treat both "online" and "active" as online
-  const onlineDrivers  = drivers.filter((d) =>
+  const onlineDrivers = drivers.filter((d) =>
     ["online", "active"].includes(d.status?.toLowerCase())
   );
-  // const offlineDrivers = drivers.filter((d) =>
-  //   ["offline", "inactive"].includes(d.status?.toLowerCase())
-  // );
-  const inRideDrivers  = drivers.filter((d) =>
+  const inRideDrivers = drivers.filter((d) =>
     ["inride", "on duty", "assigned", "accepted"].includes(d.status?.toLowerCase())
   );
 
   /* ── Booking stats ── */
-  // const totalBookings     = bookings.length;
   const pendingBookings   = bookings.filter((b) => !b.driver || b.status?.toLowerCase() === "pending").length;
   const assignedBookings  = bookings.filter((b) => b.status?.toLowerCase() === "assigned").length;
   const completedBookings = bookings.filter((b) => b.status?.toLowerCase() === "completed").length;
 
+  /* ── Pagination for driver table ── */
+  const pg = usePagination(drivers, 10);  // ← 10 rows per page
+
   const STATS = [
-    /* ── Drivers (live) ── */
     {
       icon: "👥", label: "Total Drivers",
       value: driversLoading ? "…" : drivers.length,
@@ -73,33 +71,18 @@ export default function Dashboard() {
       sub: "Currently on trip",
       cls: "stat-icon-box-amber", live: true,
     },
-    // {
-    //   icon: "⚫", label: "Offline Drivers",
-    //   value: driversLoading ? "…" : offlineDrivers.length,
-    //   sub: "Not available",
-    //   cls: "stat-icon-box-gray", live: true,
-    // },
-    /* ── Bookings ── */
-    // {
-    //   icon: "📋", label: "Total Bookings",
-    //   value: bLoading ? "…" : totalBookings,
-    //   sub: "All time",
-    //   cls: "stat-icon-box-blue",
-    // },
     {
       icon: "⏳", label: "Pending",
       value: bLoading ? "…" : pendingBookings,
       sub: "Needs assignment",
       cls: "stat-icon-box-red",
     },
-
     {
       icon: "🎉", label: "Completed",
       value: bLoading ? "…" : completedBookings,
       sub: "Trips done",
       cls: "stat-icon-box-green",
     },
-  
   ];
 
   return (
@@ -110,7 +93,6 @@ export default function Dashboard() {
           <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">Live overview of your fleet and bookings</p>
         </div>
-        {/* Live indicator */}
         <div className="live-badge">
           <span className="live-badge-dot" />
           Live
@@ -129,15 +111,10 @@ export default function Dashboard() {
                 {s.label}
                 {s.live && (
                   <span style={{
-                    marginLeft: 6,
-                    fontSize: 9,
-                    fontWeight: 700,
-                    color: "#10b981",
-                    background: "#d1fae5",
-                    padding: "1px 6px",
-                    borderRadius: 20,
-                    verticalAlign: "middle",
-                    letterSpacing: 0.5,
+                    marginLeft: 6, fontSize: 9, fontWeight: 700,
+                    color: "#10b981", background: "#d1fae5",
+                    padding: "1px 6px", borderRadius: 20,
+                    verticalAlign: "middle", letterSpacing: 0.5,
                   }}>
                     LIVE
                   </span>
@@ -150,7 +127,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* ── Live Driver Status Breakdown ── */}
+      {/* ── Live Driver Status Table ── */}
       <div className="table-card" style={{ marginTop: 24 }}>
         <div className="table-card-header">
           <h3 className="table-card-title">
@@ -181,7 +158,7 @@ export default function Dashboard() {
                     Loading drivers...
                   </td>
                 </tr>
-              ) : drivers.length === 0 ? (
+              ) : pg.slice.length === 0 ? (
                 <tr>
                   <td colSpan="7">
                     <div className="empty-state">
@@ -190,19 +167,19 @@ export default function Dashboard() {
                     </div>
                   </td>
                 </tr>
-              ) : drivers.map((d) => {
+              ) : pg.slice.map((d) => {    {/* ← pg.slice instead of drivers.map */}
                 const st = d.status?.toLowerCase();
                 const badgeCls =
-                  st === "online"  || st === "active"   ? "badge badge-green"  :
-                  st === "inride"  || st === "on duty"  ? "badge badge-blue"   :
-                  st === "offline" || st === "inactive" ? "badge badge-gray"   :
-                  st === "suspend"                      ? "badge badge-red"    : "badge badge-amber";
+                  st === "online"  || st === "active"   ? "badge badge-green" :
+                  st === "inride"  || st === "on duty"  ? "badge badge-blue"  :
+                  st === "offline" || st === "inactive" ? "badge badge-gray"  :
+                  st === "suspend"                      ? "badge badge-red"   : "badge badge-amber";
                 const badgeLabel =
-                  st === "online"  ? "🟢 Online"   :
-                  st === "offline" ? "⚫ Offline"  :
-                  st === "inride"  ? "🚗 In Ride"  :
-                  st === "active"  ? "🟢 Active"   :
-                  st === "suspend" ? "⛔ Suspended" : d.status || "—";
+                  st === "online"  ? "🟢 Online"    :
+                  st === "offline" ? "⚫ Offline"   :
+                  st === "inride"  ? "🚗 In Ride"   :
+                  st === "active"  ? "🟢 Active"    :
+                  st === "suspend" ? "⛔ Suspended"  : d.status || "—";
 
                 return (
                   <tr key={d.id}>
@@ -230,6 +207,15 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
+
+        {/* ── Pagination ── */}
+        {!driversLoading && drivers.length > 0 && (
+          <PaginationBar
+            pg={pg}
+            onPageChange={pg.setPage}
+            onSizeChange={(size) => { pg.setPageSize(size); pg.setPage(1); }}
+          />
+        )}
       </div>
     </div>
   );
