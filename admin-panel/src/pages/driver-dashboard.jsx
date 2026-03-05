@@ -337,7 +337,7 @@ export default function DriverDashboard() {
 
   /* ── Stats ── */
   const totalD = drivers.length;
-  const activeD = drivers.filter((d) => d.status?.toLowerCase() === "active").length;
+  const activeD = drivers.filter((d) => d.driver_status?.toLowerCase() === "active").length;
   const paidFees = drivers.filter((d) => d.feeDetails === "Paid").length;
   const autoD = drivers.filter((d) => d.car_type?.toLowerCase().includes("automatic")).length;
   const engagedD = drivers.filter((d) => d.engaged?.toLowerCase() === "yes").length;

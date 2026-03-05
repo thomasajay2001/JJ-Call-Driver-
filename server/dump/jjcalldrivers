@@ -126,7 +126,27 @@ CREATE TABLE bookings (
     ON UPDATE CASCADE
 );
 
--- ========================================
+ALTER TABLE bookings
+  ADD COLUMN recommended_driver_id INT NULL DEFAULT NULL,
+  ADD CONSTRAINT fk_recommended_driver
+    FOREIGN KEY (recommended_driver_id)
+    REFERENCES DRIVERS(ID)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE;
+
+ALTER TABLE bookings
+  MODIFY COLUMN status ENUM(
+    'pending',
+    'assigned',
+    'accepted',
+    'inride',
+    'completed',
+    'wait5',
+    'wait10',
+    'wait30',
+    'allbusy'
+  ) DEFAULT 'pending';
+
 -- ACCEPT BOOKING (Driver Accept History)
 -- ========================================
 CREATE TABLE accept_booking (
