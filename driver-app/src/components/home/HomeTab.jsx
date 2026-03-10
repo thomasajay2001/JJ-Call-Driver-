@@ -78,11 +78,34 @@ const HomeTab = () => {
   useEffect(() => {
     if (role !== "driver" || !DRIVER_ID) return;
 
-    const poll = async () => {
+  const poll = async () => {
       if (acceptedRide) return; // already in a ride, skip
       try {
         const res  = await axios.get(`${BASE_URL}/api/bookings`);
         const list = Array.isArray(res.data) ? res.data : [];
+
+        // Restore accepted/inride ride after page refresh
+        const activeRide = list.find(
+          (b) => String(b.driver) === String(DRIVER_ID) &&
+                 (b.status === "accepted" || b.status === "inride")
+        );
+        if (activeRide) {
+          setAcceptedRide({
+            ...activeRide,
+            status:          activeRide.status,
+            driver_id:       DRIVER_ID,
+            customer_name:   activeRide.name   || activeRide.customer_name,
+            customer_mobile: activeRide.mobile || activeRide.customer_mobile,
+            pickup:          activeRide.pickup,
+            drop_location:   activeRide.drop   || activeRide.drop_location,
+            pickup_lat:      activeRide.pickup_lat,
+            pickup_lng:      activeRide.pickup_lng,
+          });
+          setPendingRide(null);
+          return;
+        }
+
+        // Check for newly assigned ride
         const found = list.find(
           (b) => String(b.driver) === String(DRIVER_ID) && b.status === "assigned"
         );
