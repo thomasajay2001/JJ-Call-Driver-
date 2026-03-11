@@ -238,6 +238,14 @@ export default function Booking() {
     return d ? (d.name || d.NAME) : `Driver #${id}`;
   };
 
+  /* ───────── completed trips per driver ───────── */
+  const completedByDriver = bookings.reduce((acc, b) => {
+    if (b.status?.toLowerCase() === "completed" && b.driver) {
+      acc[String(b.driver)] = (acc[String(b.driver)] || 0) + 1;
+    }
+    return acc;
+  }, {});
+
   /* ───────── filter + paginate ───────── */
   const filtered = bookings.filter((b) =>
     (b.name || "").toLowerCase().includes(search.toLowerCase()) ||
@@ -489,13 +497,39 @@ export default function Booking() {
                         ⚠️ No drivers online right now.
                       </div>
                     ) : (
-                      <select className="form-select" value={driver} onChange={(e) => setDriver(e.target.value)}>
-                        <option value="">— Choose a driver —</option>
-                        {drivers.map((d) => {
-                          const isPref = String(d.id) === String(editBooking.recommended_driver_id);
-                          return <option key={d.id} value={d.id}>{isPref?"⭐ ":""}{d.name||d.NAME} — {d.car_type||"N/A"} (ID:{d.id})</option>;
-                        })}
-                      </select>
+                      <>
+                        <select className="form-select" value={driver} onChange={(e) => setDriver(e.target.value)}>
+                          <option value="">— Choose a driver —</option>
+                          {drivers.map((d) => {
+                            const isPref = String(d.id) === String(editBooking.recommended_driver_id);
+                            const trips  = completedByDriver[String(d.id)] || 0;
+                            return (
+                              <option key={d.id} value={d.id}>
+                                {isPref?"⭐ ":""}{d.name||d.NAME} — {d.car_type||"N/A"} (ID:{d.id}) · - {trips} trip{trips!==1?"s completed":""}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        {/* Selected driver summary card */}
+                        {driver && (() => {
+                          const sel   = drivers.find((d) => String(d.id) === String(driver));
+                          const trips = completedByDriver[String(driver)] || 0;
+                          if (!sel) return null;
+                          return (
+                            <div style={S.driverCard}>
+                              <div style={S.driverAvatar}>{(sel.name||sel.NAME||"?")[0].toUpperCase()}</div>
+                              <div style={{ flex:1 }}>
+                                <p style={S.driverCardName}>{sel.name||sel.NAME}</p>
+                                <p style={S.driverCardSub}>{sel.car_type||"N/A"} · ID: {sel.id}</p>
+                              </div>
+                              <div style={S.tripBadge}>
+                                <span style={S.tripBadgeNum}>{trips}</span>
+                                <span style={S.tripBadgeLbl}>trips done</span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </>
                     )}
                   </div>
                 )}
@@ -601,12 +635,37 @@ export default function Booking() {
                     ⚠️ No drivers online right now.
                   </div>
                 ) : (
-                  <select className="form-select" value={acceptedDriver} onChange={(e) => setAcceptedDriver(e.target.value)}>
-                    <option value="">— Choose a driver —</option>
-                    {drivers.map((d) => (
-                      <option key={d.id} value={d.id}>{d.name||d.NAME} — {d.car_type||"N/A"} (ID:{d.id})</option>
-                    ))}
-                  </select>
+                  <>
+                    <select className="form-select" value={acceptedDriver} onChange={(e) => setAcceptedDriver(e.target.value)}>
+                      <option value="">— Choose a driver —</option>
+                      {drivers.map((d) => {
+                        const trips = completedByDriver[String(d.id)] || 0;
+                        return (
+                          <option key={d.id} value={d.id}>
+                            {d.name||d.NAME} — {d.car_type||"N/A"} (ID:{d.id}) · ✅ {trips} trip{trips!==1?"s":""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    {acceptedDriver && (() => {
+                      const sel   = drivers.find((d) => String(d.id) === String(acceptedDriver));
+                      const trips = completedByDriver[String(acceptedDriver)] || 0;
+                      if (!sel) return null;
+                      return (
+                        <div style={S.driverCard}>
+                          <div style={S.driverAvatar}>{(sel.name||sel.NAME||"?")[0].toUpperCase()}</div>
+                          <div style={{ flex:1 }}>
+                            <p style={S.driverCardName}>{sel.name||sel.NAME}</p>
+                            <p style={S.driverCardSub}>{sel.car_type||"N/A"} · ID: {sel.id}</p>
+                          </div>
+                          <div style={S.tripBadge}>
+                            <span style={S.tripBadgeNum}>{trips}</span>
+                            <span style={S.tripBadgeLbl}>trips done</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
                 )}
               </div>
             </div>
@@ -651,4 +710,12 @@ const S = {
   routeRow:    { display:"flex", alignItems:"flex-start", gap:6 },
   routeTxt:    { fontSize:12, color:"#475569", lineHeight:1.4 },
   prefNote:    { marginTop:10, padding:"6px 10px", backgroundColor:"#FFF7ED", border:"1px solid #FED7AA", borderRadius:8, fontSize:12, color:"#92400E", fontWeight:600 },
+
+  driverCard:     { display:"flex", alignItems:"center", gap:10, marginTop:10, backgroundColor:"#F0FDF4", border:"1.5px solid #BBF7D0", borderRadius:12, padding:"10px 12px" },
+  driverAvatar:   { width:36, height:36, borderRadius:"50%", backgroundColor:"#16A34A", color:"#fff", fontSize:15, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 },
+  driverCardName: { margin:0, fontSize:13, fontWeight:700, color:"#1E293B" },
+  driverCardSub:  { margin:"2px 0 0", fontSize:11, color:"#64748B" },
+  tripBadge:      { display:"flex", flexDirection:"column", alignItems:"center", backgroundColor:"#DCFCE7", border:"1.5px solid #BBF7D0", borderRadius:10, padding:"6px 10px", flexShrink:0, minWidth:56 },
+  tripBadgeNum:   { fontSize:18, fontWeight:900, color:"#15803D", lineHeight:1 },
+  tripBadgeLbl:   { fontSize:9, fontWeight:700, color:"#16A34A", textTransform:"uppercase", letterSpacing:"0.3px", marginTop:2 },
 };
