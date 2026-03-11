@@ -27,7 +27,7 @@ const mysql = require("mysql2");
 const db = mysql.createConnection({
   host: "localhost",
   user: "root",
-  password: "Gomathi@123",
+  password: "q2m@123",
   database: "jjdrivers",
 });
 
@@ -223,8 +223,39 @@ app.post("/api/trip-booking", async (req, res) => {
   }
 });
 
+// ─── CANCEL BOOKING (customer aborts during wait/allbusy) ────
+app.post("/api/bookings/:id/cancel", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [rows] = await db.promise().query(
+      "SELECT status FROM bookings WHERE id = ?", [id]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: "Booking not found" });
+
+    const cancelableStatuses = ["pending", "wait5", "wait10", "wait30", "allbusy"];
+    if (!cancelableStatuses.includes(rows[0].status)) {
+      return res.json({ success: false, message: "Cannot cancel booking at this stage" });
+    }
+
+    await db.promise().query(
+      "UPDATE bookings SET status = 'cancelled', driver_id = NULL WHERE id = ?", [id]
+    );
+
+    // Notify admin panel in real time
+    io.to("admins").emit("bookingCancelled", {
+      bookingId: id,
+      message: "Customer cancelled the booking",
+    });
+
+    console.log(`✅ Booking ${id} cancelled by customer`);
+    res.json({ success: true, message: "Booking cancelled" });
+  } catch (err) {
+    console.error("Cancel booking error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ─── GET ALL BOOKINGS (admin) ─────────────────
-// NOTE: Only ONE definition — includes recommended_driver_id
 app.get("/api/bookings", (req, res) => {
   db.query(
     `SELECT id, customer_name, customer_mobile, pickup, drop_location,
@@ -255,7 +286,6 @@ app.get("/api/bookings", (req, res) => {
 });
 
 // ─── BOOKING STATUS (customer polling) ───────
-// Driver name/phone hidden until status = accepted/inride/completed
 app.get("/api/bookings/status/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -384,12 +414,12 @@ app.get("/recommended-drivers/:phone", async (req, res) => {
     if (activeBooking.length > 0) return res.json({ success: true, drivers: [] });
 
     const [drivers] = await db.promise().query(
-      `SELECT d.id, d.name, d.status, COUNT(b.id) AS total_rides
+      `SELECT d.ID as id, d.NAME as name, d.STATUS as status, COUNT(b.id) AS total_rides
        FROM bookings b
-       JOIN drivers d ON b.driver_id = d.id
+       JOIN DRIVERS d ON b.driver_id = d.ID
        WHERE b.booking_phnno = ? AND b.status = 'completed' AND b.driver_id IS NOT NULL
-       GROUP BY d.id, d.name, d.status
-       HAVING COUNT(b.id) > 1
+       GROUP BY d.ID, d.NAME, d.STATUS
+       HAVING COUNT(b.id) >= 1
        ORDER BY total_rides DESC`,
       [phone]
     );
@@ -622,8 +652,6 @@ app.post("/api/driver/updateStatus", (req, res) => {
     res.send({ success: true, message: "Status updated" });
   });
 });
-// ── Replace your existing /api/driver-stats/:driverId with this ─────────────
-// Accepts: ?filter=today|yesterday|thisweek|thismonth|custom&from=YYYY-MM-DD&to=YYYY-MM-DD
 
 const INCOME_PER_RIDE = 350;
 
@@ -631,30 +659,17 @@ app.get("/api/driver-stats/:driverId", async (req, res) => {
   const { driverId } = req.params;
   const { filter = "all", from, to } = req.query;
 
-  // ── build date WHERE clause ──
   let dateClause = "";
   switch (filter) {
-    case "today":
-      dateClause = "AND DATE(created_at) = CURDATE()";
-      break;
-    case "yesterday":
-      dateClause = "AND DATE(created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)";
-      break;
-    case "thisweek":
-      dateClause = "AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1)";
-      break;
-    case "thismonth":
-      dateClause = "AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())";
-      break;
-    case "custom":
-      if (from && to) dateClause = `AND DATE(created_at) BETWEEN '${from}' AND '${to}'`;
-      break;
-    default:
-      dateClause = "";
+    case "today":     dateClause = "AND DATE(created_at) = CURDATE()"; break;
+    case "yesterday": dateClause = "AND DATE(created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)"; break;
+    case "thisweek":  dateClause = "AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1)"; break;
+    case "thismonth": dateClause = "AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())"; break;
+    case "custom":    if (from && to) dateClause = `AND DATE(created_at) BETWEEN '${from}' AND '${to}'`; break;
+    default:          dateClause = "";
   }
 
   try {
-    // ── 1. Aggregate totals ──
     const [summary] = await db.promise().query(
       `SELECT
          COUNT(*)                                          AS totalRides,
@@ -675,37 +690,26 @@ app.get("/api/driver-stats/:driverId", async (req, res) => {
     const totalRides  = Number(row.totalRides) || 0;
     const totalIncome = totalRides * INCOME_PER_RIDE;
 
-    // ── 2. Comments ──
     const [comments] = await db.promise().query(
-      `SELECT
-         b.id, b.customer_name, b.pickup, b.drop_location,
-         b.rating, b.feedback, b.created_at
+      `SELECT b.id, b.customer_name, b.pickup, b.drop_location,
+              b.rating, b.feedback, b.created_at
        FROM bookings b
-       WHERE b.driver_id = ?
-         AND b.status    = 'completed'
-         AND b.rating    IS NOT NULL
-         ${dateClause}
-       ORDER BY b.created_at DESC
-       LIMIT 50`,
+       WHERE b.driver_id = ? AND b.status = 'completed' AND b.rating IS NOT NULL
+       ${dateClause}
+       ORDER BY b.created_at DESC LIMIT 50`,
       [driverId]
     );
 
     return res.json({
-      success:     true,
-      totalRides,
-      totalIncome,
+      success: true, totalRides, totalIncome,
       avgRating:   row.avgRating           || 0,
       ratingCount: Number(row.ratingCount) || 0,
       ratingBreakdown: {
-        5: Number(row.r5) || 0,
-        4: Number(row.r4) || 0,
-        3: Number(row.r3) || 0,
-        2: Number(row.r2) || 0,
-        1: Number(row.r1) || 0,
+        5: Number(row.r5) || 0, 4: Number(row.r4) || 0,
+        3: Number(row.r3) || 0, 2: Number(row.r2) || 0, 1: Number(row.r1) || 0,
       },
       comments,
     });
-
   } catch (err) {
     console.error("Driver stats error:", err);
     return res.status(500).json({ success: false, message: err.message });
@@ -729,6 +733,57 @@ app.put("/api/customers/update-name", async (req, res) => {
     res.json({ success: true, message: "Name updated successfully" });
   } catch (error) {
     res.status(500).json({ error: "Failed to update name" });
+  }
+});
+
+// ─── NOTIFY CUSTOMER: preferred driver unavailable ───
+app.post("/api/bookings/:id/preferred-unavailable", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [rows] = await db.promise().query(
+      "SELECT status, booking_phnno FROM bookings WHERE id = ?", [id]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: "Booking not found" });
+
+    // Mark as waiting for customer response
+    await db.promise().query(
+      "UPDATE bookings SET status = 'preferred_query' WHERE id = ?", [id]
+    );
+
+    // Notify customer via socket
+    io.to(`customer_${rows[0].booking_phnno}`).emit("preferredUnavailable", {
+      bookingId: id,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Preferred unavailable error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── CUSTOMER RESPONDS to preferred unavailable ───
+app.post("/api/bookings/:id/preferred-response", async (req, res) => {
+  const { id } = req.params;
+  const { accept } = req.body; // true = yes assign another, false = cancel
+  try {
+    if (accept) {
+      await db.promise().query(
+        "UPDATE bookings SET status = 'pending' WHERE id = ?", [id]
+      );
+      io.to("admins").emit("customerAcceptedAlternate", { bookingId: id });
+    } else {
+      await db.promise().query(
+        "UPDATE bookings SET status = 'cancelled', driver_id = NULL WHERE id = ?", [id]
+      );
+      io.to("admins").emit("bookingCancelled", {
+        bookingId: id,
+        message: "Customer declined alternate driver",
+      });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
