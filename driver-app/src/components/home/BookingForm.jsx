@@ -522,7 +522,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
           <div style={st.miniMapWrap}>
             <div ref={miniMapDiv} style={st.miniMap}/>
             <div style={st.miniMapFooter}>
-              <span>📍</span><span style={{fontSize:11,color:"#2563EB",fontWeight:600}}>Pickup location set</span>
+              <span style={{fontSize:11,color:"#2563EB",fontWeight:600}}>Pickup location set</span>
               <button style={st.clearLocBtn} onClick={()=>{setArea("");setPickupCoords(null);if(miniMap.current){miniMap.current.remove();miniMap.current=null;}}}>✕ Clear</button>
             </div>
           </div>
@@ -539,7 +539,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
         <div style={{display:"flex",gap:10,margin:"6px 0 4px"}}>
           {["local","outstation"].map(t=>(
             <button key={t} style={{...st.tripBtn,...(triptype===t?st.tripActive:{})}} onClick={()=>setTriptype(t)}>
-              {t==="local"?"🏙️ Local":"🛣️ Outstation"}
+              {t==="local"?" Local":" Outstation"}
             </button>
           ))}
         </div>
@@ -548,7 +548,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
         <RecommendedDrivers phone={phone} selectedId={preferredDriver?.id??null} onSelect={setPreferredDriver}/>
 
         <button style={{...st.submitBtn,opacity:submitting?0.7:1}} onClick={handleSubmit} disabled={submitting}>
-          {submitting?(preferredDriver?`📡 Sending to ${preferredDriver.name.split(" ")[0]}…`:"⏳ Booking..."):(preferredDriver?`🚖 Book with ${preferredDriver.name.split(" ")[0]}`:"🚖 Book Ride")}
+          {submitting?(preferredDriver?` Sending to ${preferredDriver.name.split(" ")[0]}…`:"⏳ Booking..."):(preferredDriver?`Book with ${preferredDriver.name.split(" ")[0]}`:"Book Ride")}
         </button>
       </div>
     </div>

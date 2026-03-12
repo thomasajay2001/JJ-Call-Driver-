@@ -346,7 +346,7 @@ const HomeTab = () => {
         <button style={st.bookBtn} onClick={() => {
           setInitialDrop(""); setInitialTriptype(""); setShowBookingForm(true);
         }}>
-          🚖 Book a Ride
+           Book a Ride
         </button>
       </div>
       <BookingForm
