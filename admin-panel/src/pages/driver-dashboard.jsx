@@ -285,7 +285,7 @@ export default function DriverDashboard() {
           <table>
             <thead>
               <tr>
-                {["ID", "Driver No", "Name", "Mobile", "Region", "Status", "Driver Status", "Actions"].map((h) => (
+                {["ID", "Driver No", "Name", "Mobile", "Region", "Driver Status", "Actions"].map((h) => (
                   <th key={h}>{h}</th>
                 ))}
               </tr>
@@ -311,7 +311,6 @@ export default function DriverDashboard() {
                   </td>
                   <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{d.mobile}</td>
                   <td>{d.region || "—"}</td>
-                  <td><span className={statusBadgeClass(d.status)}>{statusLabel(d.status)}</span></td>
                   <td><span className={statusBadgeClass(d.driver_status)}>{statusLabel(d.driver_status)}</span></td>
                   <td>
                     <div style={{ display:"flex", gap:6 }}>
