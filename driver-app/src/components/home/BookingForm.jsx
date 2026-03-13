@@ -2,9 +2,215 @@ import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { BASE_URL } from "../../utils/constants";
 
-/* ─────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════
+   CALENDAR + TIME PICKER HELPERS
+   ═══════════════════════════════════════════════════════ */
+const DAYS   = ["Su","Mo","Tu","We","Th","Fr","Sa"];
+const MONTHS = ["January","February","March","April","May","June",
+                "July","August","September","October","November","December"];
+
+const ALL_TIME_SLOTS = (() => {
+  const s = [];
+  for (let h = 0; h < 24; h++)
+    for (let m = 0; m < 60; m += 30) {
+      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+      s.push({ h, m, label: `${h12}:${String(m).padStart(2,"0")} ${h < 12 ? "AM" : "PM"}` });
+    }
+  return s;
+})();
+
+const isSameDay = (a, b) =>
+  a.getFullYear() === b.getFullYear() &&
+  a.getMonth()    === b.getMonth()    &&
+  a.getDate()     === b.getDate();
+
+const buildCal = (year, month) => {
+  const first = new Date(year, month, 1).getDay();
+  const last  = new Date(year, month + 1, 0).getDate();
+  const weeks = [];
+  let day = 1 - first;
+  for (let w = 0; w < 6; w++) {
+    const week = [];
+    for (let d = 0; d < 7; d++, day++)
+      week.push(day >= 1 && day <= last ? day : null);
+    weeks.push(week);
+    if (day > last) break;
+  }
+  return weeks;
+};
+
+/* ── Mini Calendar ── */
+const MiniCalendar = ({ selectedDate, onChange, minDate }) => {
+  const today = new Date();
+  const [vy, setVy] = useState((selectedDate || today).getFullYear());
+  const [vm, setVm] = useState((selectedDate || today).getMonth());
+
+  const prev = () => { if (vm === 0) { setVy(y => y-1); setVm(11); } else setVm(m => m-1); };
+  const next = () => { if (vm === 11) { setVy(y => y+1); setVm(0);  } else setVm(m => m+1); };
+
+  const isDisabled = (day) => {
+    if (!day) return true;
+    const d = new Date(vy, vm, day); d.setHours(23,59,0,0);
+    return minDate && d < minDate;
+  };
+  const isSelected = (day) => day && selectedDate && isSameDay(new Date(vy, vm, day), selectedDate);
+  const isToday    = (day) => day && isSameDay(new Date(vy, vm, day), today);
+
+  return (
+    <div style={cal.wrap}>
+      <div style={cal.nav}>
+        <button type="button" style={cal.nb} onClick={prev}>‹</button>
+        <span style={cal.ntitle}>{MONTHS[vm].slice(0,3)} {vy}</span>
+        <button type="button" style={cal.nb} onClick={next}>›</button>
+      </div>
+      <div style={cal.grid}>
+        {DAYS.map(d => <div key={d} style={cal.dh}>{d}</div>)}
+        {buildCal(vy, vm).flat().map((day, i) => {
+          const sel = isSelected(day), dis = isDisabled(day), tod = isToday(day);
+          return (
+            <button key={i} type="button" disabled={dis || !day}
+              style={{ ...cal.cell,
+                ...(sel            ? cal.sel   : {}),
+                ...(tod && !sel    ? cal.tod   : {}),
+                ...(dis            ? cal.dis   : {}),
+                ...(!day           ? cal.empty : {}) }}
+              onClick={() => { if (!day || dis) return; onChange(new Date(vy, vm, day)); }}>
+              {day || ""}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/* ── Time Picker ── */
+const TimePicker = ({ selectedDate, onChange }) => {
+  const now = new Date();
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const el = ref.current.querySelector("[data-active='true']");
+    if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [selectedDate?.toDateString()]);
+
+  const isDis = (slot) => {
+    if (!selectedDate) return false;
+    const c = new Date(selectedDate); c.setHours(slot.h, slot.m, 0, 0);
+    return c < new Date(now.getTime() + 30 * 60 * 1000);
+  };
+  const isSel = (slot) =>
+    selectedDate &&
+    selectedDate.getHours()   === slot.h &&
+    selectedDate.getMinutes() === slot.m;
+
+  return (
+    <div style={tp.wrap}>
+      <p style={tp.hd}>⏰ Time</p>
+      <div ref={ref} style={tp.scroll}>
+        {ALL_TIME_SLOTS.map((slot, i) => {
+          const dis = isDis(slot), sel = isSel(slot);
+          return (
+            <button key={i} type="button" data-active={sel ? "true" : "false"} disabled={dis}
+              style={{ ...tp.slot, ...(sel ? tp.active : {}), ...(dis ? tp.dis : {}) }}
+              onClick={() => {
+                if (!selectedDate || dis) return;
+                const next = new Date(selectedDate); next.setHours(slot.h, slot.m, 0, 0); onChange(next);
+              }}>
+              {slot.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/* ── Schedule Picker ── */
+const SchedulePicker = ({ scheduledAt, onChange }) => {
+  const [mode, setMode] = useState("now");
+
+  const switchNow = () => { setMode("now"); onChange(null); };
+  const switchLater = () => {
+    setMode("later");
+    if (!scheduledAt) {
+      const d = new Date();
+      d.setMinutes(Math.ceil(d.getMinutes() / 30) * 30 + 30, 0, 0);
+      onChange(d);
+    }
+  };
+
+  const handleDateChange = (pickedDay) => {
+    const next = scheduledAt ? new Date(scheduledAt) : new Date();
+    next.setFullYear(pickedDay.getFullYear(), pickedDay.getMonth(), pickedDay.getDate());
+    if (next < new Date(Date.now() + 30 * 60 * 1000)) {
+      const now = new Date();
+      next.setHours(now.getHours(), Math.ceil(now.getMinutes() / 30) * 30 + 30, 0, 0);
+    }
+    onChange(next);
+  };
+
+  const minDate = new Date(); minDate.setHours(0, 0, 0, 0);
+
+  return (
+    <div style={sc.wrap}>
+      {/* Toggle row */}
+      <div style={sc.toggleRow}>
+        <button type="button"
+          style={{ ...sc.btn, ...(mode === "now" ? sc.btnNow : {}) }}
+          onClick={switchNow}>
+          <span style={{ fontSize: 16 }}>⚡</span><span>Ride Now</span>
+        </button>
+        <button type="button"
+          style={{ ...sc.btn, ...(mode === "later" ? sc.btnSched : {}) }}
+          onClick={switchLater}>
+          <span style={{ fontSize: 16 }}>📅</span><span>Schedule</span>
+        </button>
+      </div>
+
+      {/* Ride Now badge */}
+      {mode === "now" && (
+        <div style={sc.nowBadge}>
+          <span>✅</span>
+          <span style={sc.nowTxt}>Driver will be assigned immediately</span>
+        </div>
+      )}
+
+      {/* Schedule picker */}
+      {mode === "later" && (
+        <div style={sc.laterWrap}>
+          {/* Summary pill */}
+          {scheduledAt && (
+            <div style={sc.pill}>
+              <span style={{ fontSize: 20 }}>🗓️</span>
+              <div style={{ flex: 1 }}>
+                <p style={sc.pillDate}>
+                  {scheduledAt.toLocaleDateString("en-IN", { weekday:"short", day:"numeric", month:"short", year:"numeric" })}
+                </p>
+                <p style={sc.pillTime}>
+                  {scheduledAt.toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true })}
+                </p>
+              </div>
+              <span style={sc.pillCheck}>✓ Set</span>
+            </div>
+          )}
+
+          {/* Calendar + Time side-by-side */}
+          <div style={sc.pickerBox}>
+            <MiniCalendar selectedDate={scheduledAt} onChange={handleDateChange} minDate={minDate} />
+            <div style={sc.divider} />
+            <TimePicker selectedDate={scheduledAt} onChange={onChange} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════
    BookingStatusTracker
-   ───────────────────────────────────────────────────── */
+   ═══════════════════════════════════════════════════════ */
 const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
   const [booking,          setBooking]          = useState(null);
   const [loading,          setLoading]          = useState(true);
@@ -23,7 +229,6 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
   const countRef        = useRef(null);
   const waitInitialized = useRef(false);
 
-  /* poll booking status */
   const fetchStatus = async () => {
     try {
       const r    = await fetch(`${BASE_URL}/api/bookings/status/${bookingId}`);
@@ -39,7 +244,6 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
     return () => clearInterval(timerRef.current);
   }, [bookingId]);
 
-  /* show rating when completed */
   useEffect(() => {
     if (booking?.status === "completed") {
       clearInterval(timerRef.current);
@@ -47,7 +251,6 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
     }
   }, [booking?.status]);
 
-  /* countdown for wait statuses */
   useEffect(() => {
     if (!booking) return;
     const s    = booking.status?.toLowerCase();
@@ -63,7 +266,6 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
     }
   }, [booking?.status]);
 
-  /* socket — listen for preferred unavailable notification */
   useEffect(() => {
     if (!bookingId) return;
     const phone = localStorage.getItem("customerPhone");
@@ -79,7 +281,6 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
     return () => { if (socket) socket.disconnect(); };
   }, [bookingId]);
 
-  /* tick the countdown */
   useEffect(() => {
     if (waitCountdown === null) return;
     if (waitCountdown <= 0) { setWaitExpired(true); clearInterval(countRef.current); return; }
@@ -112,6 +313,7 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
   const status    = booking.status?.toLowerCase();
   const isWaiting = ["wait5","wait10","wait30"].includes(status);
   const isAllBusy = status === "allbusy";
+  const isScheduled = status === "scheduled";
   const waitMins  = status==="wait5"?5 : status==="wait10"?10 : 30;
   const pct       = waitCountdown!==null && waitTotalSecs ? (waitCountdown/waitTotalSecs)*100 : 0;
 
@@ -131,7 +333,12 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
       <div style={tr.header}>
         <div>
           <p style={tr.headerSub}>Booking #{booking.id}</p>
-          <h3 style={tr.headerTitle}>{isWaiting?"⏱ Please Wait":isAllBusy?"🚫 All Drivers Busy":"Tracking Your Ride"}</h3>
+          <h3 style={tr.headerTitle}>
+            {isScheduled ? "📅 Ride Scheduled"
+              : isWaiting  ? "⏱ Please Wait"
+              : isAllBusy  ? "🚫 All Drivers Busy"
+              : "Tracking Your Ride"}
+          </h3>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {status==="completed" && <button style={tr.doneBtn} onClick={()=>onClose(status)}>Done ✓</button>}
@@ -139,6 +346,30 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
           <button style={tr.closeIcon} onClick={()=>onClose(status)} title="Close">✕</button>
         </div>
       </div>
+
+      {/* scheduled ride banner */}
+      {isScheduled && (
+        <div style={tr.scheduledBox}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <span style={{fontSize:28}}>📅</span>
+            <div>
+              <p style={{margin:"0 0 2px",fontSize:14,fontWeight:800,color:"#0F766E"}}>Ride Scheduled!</p>
+              <p style={{margin:0,fontSize:12,color:"#0D9488"}}>Your ride is confirmed and will be dispatched on time.</p>
+            </div>
+          </div>
+          {booking.scheduled_at && (
+            <div style={tr.schedTimeBox}>
+              <span style={{fontSize:13}}>🗓️</span>
+              <span style={{fontSize:13,fontWeight:700,color:"#0F766E"}}>
+                {new Date(booking.scheduled_at).toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"})}
+                {" · "}
+                {new Date(booking.scheduled_at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true})}
+              </span>
+            </div>
+          )}
+          <button style={tr.cancelScheduledBtn} onClick={()=>onClose(status)}>✕ Cancel Booking</button>
+        </div>
+      )}
 
       {/* wait countdown */}
       {isWaiting && (
@@ -188,7 +419,7 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
       )}
 
       {/* step tracker */}
-      {!isWaiting && !isAllBusy && (
+      {!isWaiting && !isAllBusy && !isScheduled && (
         <div style={{marginBottom:14}}>
           {steps.map((step, i) => {
             const done=activeIdx>i, current=activeIdx===i;
@@ -241,9 +472,8 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
         <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{...tr.routeDot,backgroundColor:"#EF4444"}}/><p style={tr.routeTxt}>{booking.drop_location}</p></div>
       </div>
 
-      {status!=="completed" && !isWaiting && !isAllBusy && <p style={tr.pollNote}>🔄 Auto-updating every 5 seconds</p>}
+      {status!=="completed" && !isWaiting && !isAllBusy && !isScheduled && <p style={tr.pollNote}>🔄 Auto-updating every 5 seconds</p>}
 
-      {/* rating submitted */}
       {status==="completed" && ratingSubmitted && (
         <div style={{backgroundColor:"#F0FDF4",border:"1.5px solid #BBF7D0",borderRadius:12,padding:"12px 14px",marginTop:10,textAlign:"center"}}>
           <p style={{margin:0,fontSize:14,fontWeight:700,color:"#16A34A"}}>⭐ Thanks for your rating!</p>
@@ -279,12 +509,7 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
         </div>
       )}
 
-      {/* ─────────────────────────────────────────────────────────────
-          PREFERRED DRIVER UNAVAILABLE POPUP — customer side
-          ─ Shows when admin clicks "Not Available" ─
-          Customer taps YES → API call → closes popup → tracks normally
-          Admin receives socket "customerAcceptedAlternate" → admin popup
-          ───────────────────────────────────────────────────────────── */}
+      {/* preferred unavailable popup */}
       {preferredPopup && (
         <div style={{position:"fixed",inset:0,backgroundColor:"rgba(0,0,0,0.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{backgroundColor:"#fff",borderRadius:24,padding:28,maxWidth:340,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.2)"}}>
@@ -297,36 +522,17 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
               </p>
             </div>
             <div style={{display:"flex",gap:10}}>
-              {/* NO → cancel booking */}
-              <button
-                style={{flex:1,padding:"13px 0",backgroundColor:"#FEE2E2",color:"#9F1239",border:"1.5px solid #FECDD3",borderRadius:12,fontWeight:700,fontSize:15,cursor:"pointer"}}
-                onClick={async () => {
+              <button style={{flex:1,padding:"13px 0",backgroundColor:"#FEE2E2",color:"#9F1239",border:"1.5px solid #FECDD3",borderRadius:12,fontWeight:700,fontSize:15,cursor:"pointer"}}
+                onClick={async()=>{
                   setPreferredPopup(false);
-                  try {
-                    await fetch(`${BASE_URL}/api/bookings/${bookingId}/preferred-response`, {
-                      method:"POST", headers:{"Content-Type":"application/json"},
-                      body: JSON.stringify({ accept: false }),
-                    });
-                  } catch {}
-                  if (onClose) onClose("cancelled");
-                }}
-              >❌ No, Cancel</button>
-
-              {/* YES → close popup, call API, continue tracking.
-                  Backend emits "customerAcceptedAlternate" to admin room. */}
-              <button
-                style={{flex:1,padding:"13px 0",backgroundColor:"#2563EB",color:"#fff",border:"none",borderRadius:12,fontWeight:700,fontSize:15,cursor:"pointer"}}
-                onClick={async () => {
-                  setPreferredPopup(false);   // ← just dismiss, no waiting state for customer
-                  try {
-                    await fetch(`${BASE_URL}/api/bookings/${bookingId}/preferred-response`, {
-                      method:"POST", headers:{"Content-Type":"application/json"},
-                      body: JSON.stringify({ accept: true }),
-                    });
-                  } catch {}
-                  // Customer continues tracking their booking as normal
-                }}
-              >✅ Yes, Proceed</button>
+                  try{await fetch(`${BASE_URL}/api/bookings/${bookingId}/preferred-response`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({accept:false})});}catch{}
+                  if(onClose)onClose("cancelled");
+                }}>❌ No, Cancel</button>
+              <button style={{flex:1,padding:"13px 0",backgroundColor:"#2563EB",color:"#fff",border:"none",borderRadius:12,fontWeight:700,fontSize:15,cursor:"pointer"}}
+                onClick={async()=>{
+                  setPreferredPopup(false);
+                  try{await fetch(`${BASE_URL}/api/bookings/${bookingId}/preferred-response`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({accept:true})});}catch{}
+                }}>✅ Yes, Proceed</button>
             </div>
           </div>
         </div>
@@ -341,9 +547,9 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
   );
 };
 
-/* ─────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════
    RecommendedDrivers
-   ───────────────────────────────────────────────────── */
+   ═══════════════════════════════════════════════════════ */
 const RecommendedDrivers = ({ phone, selectedId, onSelect }) => {
   const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -386,17 +592,25 @@ const RecommendedDrivers = ({ phone, selectedId, onSelect }) => {
   );
 };
 
-/* ─────────────────────────────────────────────────────
-   BookingForm
-   ───────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════
+   BookingForm  — main export
+   ═══════════════════════════════════════════════════════ */
 const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype }) => {
-  const [name,setName]=useState(""); const [phone,setPhone]=useState(""); const [area,setArea]=useState("");
-  const [darea,setDArea]=useState(initialDrop||""); const [triptype,setTriptype]=useState(initialTriptype||"");
+  const [name,setName]=useState("");
+  const [phone,setPhone]=useState("");
+  const [area,setArea]=useState("");
+  const [darea,setDArea]=useState(initialDrop||"");
+  const [triptype,setTriptype]=useState(initialTriptype||"");
   const [preferredDriver,setPreferredDriver]=useState(null);
-  const [suggestions,setSuggestions]=useState([]); const [dropSuggestions,setDropSuggestions]=useState([]);
-  const [errors,setErrors]=useState({}); const [locLoading,setLocLoading]=useState(false);
-  const [submitting,setSubmitting]=useState(false); const [pickupCoords,setPickupCoords]=useState(null);
+  const [scheduledAt,setScheduledAt]=useState(null);           // ← NEW
+  const [suggestions,setSuggestions]=useState([]);
+  const [dropSuggestions,setDropSuggestions]=useState([]);
+  const [errors,setErrors]=useState({});
+  const [locLoading,setLocLoading]=useState(false);
+  const [submitting,setSubmitting]=useState(false);
+  const [pickupCoords,setPickupCoords]=useState(null);
   const [bookedId,setBookedId]=useState(null);
+
   const miniMapDiv=useRef(null); const miniMap=useRef(null); const miniMarker=useRef(null);
 
   useEffect(()=>{if(initialDrop)setDArea(initialDrop);if(initialTriptype)setTriptype(initialTriptype);},[initialDrop,initialTriptype]);
@@ -404,7 +618,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
   useEffect(()=>{
     if(!visible){
       setName("");setPhone("");setArea("");setDArea(initialDrop||"");setTriptype(initialTriptype||"");
-      setPreferredDriver(null);setSuggestions([]);setDropSuggestions([]);
+      setPreferredDriver(null);setScheduledAt(null);setSuggestions([]);setDropSuggestions([]);
       setErrors({});setPickupCoords(null);setSubmitting(false);setBookedId(null);
       if(miniMap.current){miniMap.current.remove();miniMap.current=null;}
     }
@@ -452,6 +666,8 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
     if(!area.trim())e.area="Pickup location required";
     if(!darea.trim())e.darea="Drop location required";
     if(!triptype)e.triptype="Select trip type";
+    if(scheduledAt && scheduledAt < new Date(Date.now()+29*60*1000))
+      e.schedule="Schedule must be at least 30 minutes from now";
     setErrors(e);return Object.keys(e).length===0;
   };
 
@@ -460,32 +676,52 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
     setSubmitting(true);
     try{
       const bookingphnno=localStorage.getItem("customerPhone")||localStorage.getItem("userPhone")||phone;
-      const res=await axios.post(`${BASE_URL}/api/trip-booking`,{name,phone,pickup:area,pickupLat:pickupCoords?.lat??null,pickupLng:pickupCoords?.lng??null,drop:darea,triptype,bookingphnno,recommended_driver_id:preferredDriver?.id??null});
-      if(res.data.success){if(miniMap.current){miniMap.current.remove();miniMap.current=null;}setBookedId(res.data.bookingId);onSuccess();}
-      else alert(res.data.message||"Booking failed.");
+      const res=await axios.post(`${BASE_URL}/api/trip-booking`,{
+        name,phone,
+        pickup:area,pickupLat:pickupCoords?.lat??null,pickupLng:pickupCoords?.lng??null,
+        drop:darea,triptype,bookingphnno,
+        recommended_driver_id:preferredDriver?.id??null,
+        scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,   // ← NEW
+        is_scheduled: !!scheduledAt,                                     // ← NEW
+      });
+      if(res.data.success){
+        if(miniMap.current){miniMap.current.remove();miniMap.current=null;}
+        setBookedId(res.data.bookingId);onSuccess();
+      } else alert(res.data.message||"Booking failed.");
     }catch(err){const msg=err?.response?.data?.message||err?.response?.data?.error;alert(msg?`Server error: ${msg}`:"Failed to submit booking.");}
     finally{setSubmitting(false);}
   };
 
   const handleRebook=()=>{
-    setBookedId(null);setName("");setArea("");setDArea(initialDrop||"");setTriptype(initialTriptype||"");setPreferredDriver(null);
-    setSuggestions([]);setDropSuggestions([]);setErrors({});setPickupCoords(null);setSubmitting(false);
+    setBookedId(null);setName("");setArea("");setDArea(initialDrop||"");setTriptype(initialTriptype||"");
+    setPreferredDriver(null);setScheduledAt(null);setSuggestions([]);setDropSuggestions([]);
+    setErrors({});setPickupCoords(null);setSubmitting(false);
     if(miniMap.current){miniMap.current.remove();miniMap.current=null;}
   };
 
   const handleCloseTracker=async(currentStatus)=>{
-    if(bookedId&&["wait5","wait10","wait30","allbusy","pending"].includes(currentStatus)){
+    if(bookedId&&["wait5","wait10","wait30","allbusy","pending","scheduled"].includes(currentStatus)){
       try{await fetch(`${BASE_URL}/api/bookings/${bookedId}/cancel`,{method:"POST"});}catch{}
     }
     onClose();
   };
 
   if(!visible)return null;
+
   if(bookedId)return(
     <div style={st.overlay} onClick={e=>e.stopPropagation()}>
       <div style={st.sheet}><BookingStatusTracker bookingId={bookedId} onClose={handleCloseTracker} onRebook={handleRebook}/></div>
     </div>
   );
+
+  /* Dynamic submit label */
+  const submitLabel = submitting
+    ? (scheduledAt ? "⏳ Scheduling…" : "⏳ Booking…")
+    : scheduledAt
+      ? `📅 Schedule · ${scheduledAt.toLocaleDateString("en-IN",{day:"numeric",month:"short"})} ${scheduledAt.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true})}`
+      : preferredDriver
+        ? `🚖 Book with ${preferredDriver.name.split(" ")[0]}`
+        : "🚖 Book Ride";
 
   return(
     <div style={st.overlay} onClick={onClose}>
@@ -545,10 +781,22 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
         </div>
         {errors.triptype&&<p style={st.err}>{errors.triptype}</p>}
 
+        {/* ─── SCHEDULE PICKER ─── */}
+        <label style={st.label}>When do you need the ride?</label>
+        <SchedulePicker scheduledAt={scheduledAt} onChange={setScheduledAt}/>
+        {errors.schedule&&<p style={st.err}>{errors.schedule}</p>}
+
         <RecommendedDrivers phone={phone} selectedId={preferredDriver?.id??null} onSelect={setPreferredDriver}/>
 
-        <button style={{...st.submitBtn,opacity:submitting?0.7:1}} onClick={handleSubmit} disabled={submitting}>
-          {submitting?(preferredDriver?`📡 Sending to ${preferredDriver.name.split(" ")[0]}…`:"⏳ Booking..."):(preferredDriver?`🚖 Book with ${preferredDriver.name.split(" ")[0]}`:"🚖 Book Ride")}
+        <button
+          style={{
+            ...st.submitBtn,
+            opacity: submitting ? 0.7 : 1,
+            backgroundColor: scheduledAt ? "#0F766E" : "#2563EB",
+            boxShadow: scheduledAt ? "0 4px 14px rgba(15,118,110,0.35)" : "0 4px 14px rgba(37,99,235,0.3)",
+          }}
+          onClick={handleSubmit} disabled={submitting}>
+          {submitLabel}
         </button>
       </div>
     </div>
@@ -557,7 +805,62 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
 
 export default BookingForm;
 
-const tr={wrap:{padding:"4px 0 8px"},center:{display:"flex",flexDirection:"column",alignItems:"center",padding:"24px 0"},spinner:{width:28,height:28,border:"3px solid #E2E8F0",borderTopColor:"#2563EB",borderRadius:"50%",animation:"spin 0.8s linear infinite"},spinnerTxt:{marginTop:10,fontSize:12,color:"#94A3B8"},header:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16},headerSub:{margin:0,fontSize:11,color:"#94A3B8",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.4px"},headerTitle:{margin:"3px 0 0",fontSize:18,fontWeight:800,color:"#1E293B"},doneBtn:{backgroundColor:"#2563EB",color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",fontSize:13,fontWeight:700,cursor:"pointer"},cancelBtn:{backgroundColor:"#FFF1F2",color:"#9F1239",border:"1.5px solid #FECDD3",borderRadius:10,padding:"8px 14px",fontSize:13,fontWeight:700,cursor:"pointer"},waitBox:{backgroundColor:"#FFFBEB",border:"1.5px solid #FDE68A",borderRadius:14,padding:"14px",marginBottom:14},countdownBox:{backgroundColor:"#FEF3C7",borderRadius:12,padding:"14px 16px",textAlign:"center",border:"1px solid #FDE68A"},countdownLabel:{margin:"0 0 4px",fontSize:10,fontWeight:700,color:"#92400E",textTransform:"uppercase",letterSpacing:"0.8px"},countdownTime:{margin:"0 0 10px",fontSize:38,fontWeight:900,color:"#D97706",fontFamily:"monospace",letterSpacing:2},progressBg:{height:8,backgroundColor:"#FDE68A",borderRadius:999,overflow:"hidden",marginBottom:6},progressFill:{height:"100%",borderRadius:999,transition:"width 1s linear, background-color 0.5s"},countdownSub:{margin:0,fontSize:11,color:"#B45309",fontWeight:600},expiredBox:{backgroundColor:"#FFF1F2",border:"1.5px solid #FECDD3",borderRadius:12,padding:"16px",textAlign:"center",marginTop:10},rebookBtn:{width:"100%",padding:"13px 0",backgroundColor:"#2563EB",border:"none",borderRadius:12,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer"},busyBox:{backgroundColor:"#FFF1F2",border:"1.5px solid #FECDD3",borderRadius:14,padding:"14px",marginBottom:14},bannerTitle:{margin:0,fontSize:13,fontWeight:700},bannerSub:{margin:"3px 0 0",fontSize:12},stepSub:{margin:"2px 0 0",fontSize:11,color:"#64748B"},driverCard:{display:"flex",alignItems:"center",gap:12,backgroundColor:"#F0FDF4",border:"1.5px solid #BBF7D0",borderRadius:14,padding:"12px 14px",marginBottom:12},driverAvatar:{width:42,height:42,borderRadius:"50%",backgroundColor:"#16A34A",color:"#fff",fontSize:16,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0},driverName:{margin:0,fontSize:14,fontWeight:700,color:"#1E293B"},driverPhone:{display:"block",margin:"2px 0",fontSize:13,color:"#2563EB",textDecoration:"none",fontWeight:600},driverLabel:{margin:0,fontSize:11,color:"#64748B"},statusPill:{borderRadius:20,padding:"4px 10px",fontSize:11,fontWeight:700},searchingBox:{display:"flex",flexDirection:"column",alignItems:"center",padding:"10px 0 12px"},searchingTxt:{margin:0,fontSize:12,color:"#64748B"},routeBox:{backgroundColor:"#F8FAFC",borderRadius:10,padding:"10px 12px",marginBottom:10},routeDot:{width:7,height:7,borderRadius:"50%",flexShrink:0},routeTxt:{margin:0,fontSize:12,color:"#1E293B",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"},pollNote:{margin:0,textAlign:"center",fontSize:11,color:"#CBD5E1"},closeIcon:{width:32,height:32,borderRadius:"50%",backgroundColor:"#F1F5F9",border:"1.5px solid #E2E8F0",fontSize:15,fontWeight:700,color:"#64748B",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}};
-const st={overlay:{position:"fixed",inset:0,backgroundColor:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16},sheet:{position:"relative",width:"100%",maxWidth:420,backgroundColor:"#fff",borderRadius:28,padding:"48px 20px 24px",maxHeight:"92vh",overflowY:"auto"},closeBtn:{position:"absolute",top:14,right:14,width:36,height:36,borderRadius:"50%",backgroundColor:"#F8FAFC",border:"none",fontSize:18,fontWeight:700,cursor:"pointer"},sheetTitle:{margin:"0 0 16px",fontSize:20,fontWeight:700,color:"#1E293B",textAlign:"center"},label:{display:"block",fontSize:13,fontWeight:600,color:"#64748B",margin:"10px 0 4px"},input:{width:"100%",boxSizing:"border-box",backgroundColor:"#F8FAFC",border:"1.5px solid #E2E8F0",borderRadius:14,padding:"12px 14px",fontSize:14,color:"#1E293B",outline:"none"},inputErr:{borderColor:"#EF4444"},err:{margin:"4px 0 0",fontSize:12,color:"#EF4444"},inputRow:{display:"flex",alignItems:"center",gap:8},inputInner:{flex:1,boxSizing:"border-box",backgroundColor:"#F8FAFC",border:"1.5px solid #E2E8F0",borderRadius:14,padding:"12px 14px",fontSize:14,color:"#1E293B",outline:"none"},locBtn:{flexShrink:0,width:46,height:46,borderRadius:14,backgroundColor:"#EFF6FF",border:"1.5px solid #BFDBFE",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"},spinner:{width:18,height:18,border:"2.5px solid #bfdbfe",borderTopColor:"#2563EB",borderRadius:"50%",animation:"spin 0.8s linear infinite"},suggBox:{position:"absolute",top:"100%",left:0,right:0,backgroundColor:"#fff",borderRadius:14,boxShadow:"0 6px 20px rgba(0,0,0,0.12)",zIndex:20,maxHeight:200,overflowY:"auto",marginTop:4},suggItem:{display:"flex",alignItems:"flex-start",padding:"10px 14px",borderBottom:"1px solid #F1F5F9",cursor:"pointer"},miniMapWrap:{margin:"8px 0 4px",borderRadius:14,overflow:"hidden",border:"1.5px solid #BFDBFE"},miniMap:{width:"100%",height:110},miniMapFooter:{display:"flex",alignItems:"center",gap:6,backgroundColor:"#EFF6FF",padding:"6px 12px"},clearLocBtn:{marginLeft:"auto",background:"none",border:"none",fontSize:11,color:"#EF4444",fontWeight:700,cursor:"pointer"},tripBtn:{flex:1,padding:"12px 0",borderRadius:14,border:"1.5px solid #E2E8F0",backgroundColor:"#F8FAFC",fontSize:14,fontWeight:600,color:"#64748B",cursor:"pointer"},tripActive:{backgroundColor:"#2563EB",borderColor:"#2563EB",color:"#fff"},submitBtn:{width:"100%",padding:"16px 0",border:"none",borderRadius:18,fontSize:16,fontWeight:800,color:"#fff",cursor:"pointer",marginTop:12,backgroundColor:"#2563EB",boxShadow:"0 4px 14px rgba(37,99,235,0.3)"}};
+/* ═══════════════════════════════════════════════════════
+   STYLES
+   ═══════════════════════════════════════════════════════ */
+
+/* Calendar */
+const cal = {
+  wrap:  { flex:"1 1 0", minWidth:0 },
+  nav:   { display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 },
+  nb:    { background:"none", border:"none", fontSize:20, fontWeight:700, color:"#2563EB", cursor:"pointer", padding:"0 4px", lineHeight:1 },
+  ntitle:{ fontSize:12, fontWeight:800, color:"#1E293B" },
+  grid:  { display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 },
+  dh:    { textAlign:"center", fontSize:9, fontWeight:700, color:"#94A3B8", padding:"2px 0 4px" },
+  cell:  { width:"100%", aspectRatio:"1", border:"none", borderRadius:7, backgroundColor:"transparent", fontSize:11, fontWeight:500, color:"#1E293B", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 },
+  sel:   { backgroundColor:"#2563EB", color:"#fff", fontWeight:700 },
+  tod:   { outline:"2px solid #2563EB", outlineOffset:"-2px", color:"#2563EB", fontWeight:700 },
+  dis:   { color:"#CBD5E1", cursor:"not-allowed" },
+  empty: { cursor:"default", pointerEvents:"none" },
+};
+
+/* Time picker */
+const tp = {
+  wrap:   { flex:"0 0 82px", display:"flex", flexDirection:"column" },
+  hd:     { margin:"0 0 6px", fontSize:9, fontWeight:700, color:"#94A3B8", textTransform:"uppercase", letterSpacing:"0.5px" },
+  scroll: { flex:1, maxHeight:192, overflowY:"auto", display:"flex", flexDirection:"column", gap:3, paddingRight:2, scrollbarWidth:"thin", scrollbarColor:"#CBD5E1 transparent" },
+  slot:   { flexShrink:0, padding:"6px 4px", border:"1.5px solid #E2E8F0", borderRadius:8, backgroundColor:"#F8FAFC", fontSize:10, fontWeight:600, color:"#475569", cursor:"pointer", textAlign:"center", whiteSpace:"nowrap" },
+  active: { backgroundColor:"#2563EB", borderColor:"#2563EB", color:"#fff", boxShadow:"0 2px 6px rgba(37,99,235,0.3)" },
+  dis:    { color:"#CBD5E1", cursor:"not-allowed", backgroundColor:"#FAFAFA", borderColor:"#F1F5F9" },
+};
+
+/* Schedule picker */
+const sc = {
+  wrap:      { margin:"6px 0 4px" },
+  toggleRow: { display:"flex", gap:8, marginBottom:10 },
+  btn:       { flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"12px 0", borderRadius:14, border:"1.5px solid #E2E8F0", backgroundColor:"#F8FAFC", fontSize:13, fontWeight:600, color:"#64748B", cursor:"pointer" },
+  btnNow:    { backgroundColor:"#2563EB", borderColor:"#2563EB", color:"#fff", boxShadow:"0 3px 10px rgba(37,99,235,0.25)" },
+  btnSched:  { backgroundColor:"#0F766E", borderColor:"#0F766E", color:"#fff", boxShadow:"0 3px 10px rgba(15,118,110,0.25)" },
+  nowBadge:  { display:"flex", alignItems:"center", gap:8, backgroundColor:"#F0FDF4", border:"1.5px solid #BBF7D0", borderRadius:12, padding:"10px 14px" },
+  nowTxt:    { fontSize:12, fontWeight:600, color:"#16A34A" },
+  laterWrap: { display:"flex", flexDirection:"column", gap:10 },
+  pill:      { display:"flex", alignItems:"center", gap:10, backgroundColor:"#F0FDFA", border:"1.5px solid #99F6E4", borderRadius:14, padding:"10px 14px" },
+  pillDate:  { margin:0, fontSize:13, fontWeight:700, color:"#0F766E" },
+  pillTime:  { margin:"2px 0 0", fontSize:12, color:"#0D9488", fontWeight:600 },
+  pillCheck: { marginLeft:"auto", fontSize:11, color:"#0F766E", fontWeight:700, backgroundColor:"#CCFBF1", borderRadius:6, padding:"3px 8px", whiteSpace:"nowrap" },
+  pickerBox: { display:"flex", gap:10, backgroundColor:"#F8FAFC", borderRadius:16, padding:"12px 10px", border:"1.5px solid #E2E8F0" },
+  divider:   { width:1, backgroundColor:"#E2E8F0", flexShrink:0 },
+};
+
+/* Tracker */
+const tr={wrap:{padding:"4px 0 8px"},center:{display:"flex",flexDirection:"column",alignItems:"center",padding:"24px 0"},spinner:{width:28,height:28,border:"3px solid #E2E8F0",borderTopColor:"#2563EB",borderRadius:"50%",animation:"spin 0.8s linear infinite"},spinnerTxt:{marginTop:10,fontSize:12,color:"#94A3B8"},header:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16},headerSub:{margin:0,fontSize:11,color:"#94A3B8",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.4px"},headerTitle:{margin:"3px 0 0",fontSize:18,fontWeight:800,color:"#1E293B"},doneBtn:{backgroundColor:"#2563EB",color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",fontSize:13,fontWeight:700,cursor:"pointer"},cancelBtn:{backgroundColor:"#FFF1F2",color:"#9F1239",border:"1.5px solid #FECDD3",borderRadius:10,padding:"8px 14px",fontSize:13,fontWeight:700,cursor:"pointer"},closeIcon:{width:32,height:32,borderRadius:"50%",backgroundColor:"#F1F5F9",border:"1.5px solid #E2E8F0",fontSize:15,fontWeight:700,color:"#64748B",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0},
+scheduledBox:{backgroundColor:"#F0FDFA",border:"1.5px solid #99F6E4",borderRadius:14,padding:"14px",marginBottom:14},
+schedTimeBox:{display:"flex",alignItems:"center",gap:8,backgroundColor:"#CCFBF1",borderRadius:10,padding:"8px 12px",marginBottom:10},
+cancelScheduledBtn:{width:"100%",padding:"10px 0",backgroundColor:"#FEE2E2",color:"#9F1239",border:"1.5px solid #FECDD3",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer"},
+waitBox:{backgroundColor:"#FFFBEB",border:"1.5px solid #FDE68A",borderRadius:14,padding:"14px",marginBottom:14},countdownBox:{backgroundColor:"#FEF3C7",borderRadius:12,padding:"14px 16px",textAlign:"center",border:"1px solid #FDE68A"},countdownLabel:{margin:"0 0 4px",fontSize:10,fontWeight:700,color:"#92400E",textTransform:"uppercase",letterSpacing:"0.8px"},countdownTime:{margin:"0 0 10px",fontSize:38,fontWeight:900,color:"#D97706",fontFamily:"monospace",letterSpacing:2},progressBg:{height:8,backgroundColor:"#FDE68A",borderRadius:999,overflow:"hidden",marginBottom:6},progressFill:{height:"100%",borderRadius:999,transition:"width 1s linear, background-color 0.5s"},countdownSub:{margin:0,fontSize:11,color:"#B45309",fontWeight:600},expiredBox:{backgroundColor:"#FFF1F2",border:"1.5px solid #FECDD3",borderRadius:12,padding:"16px",textAlign:"center",marginTop:10},rebookBtn:{width:"100%",padding:"13px 0",backgroundColor:"#2563EB",border:"none",borderRadius:12,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer"},busyBox:{backgroundColor:"#FFF1F2",border:"1.5px solid #FECDD3",borderRadius:14,padding:"14px",marginBottom:14},bannerTitle:{margin:0,fontSize:13,fontWeight:700},bannerSub:{margin:"3px 0 0",fontSize:12},stepSub:{margin:"2px 0 0",fontSize:11,color:"#64748B"},driverCard:{display:"flex",alignItems:"center",gap:12,backgroundColor:"#F0FDF4",border:"1.5px solid #BBF7D0",borderRadius:14,padding:"12px 14px",marginBottom:12},driverAvatar:{width:42,height:42,borderRadius:"50%",backgroundColor:"#16A34A",color:"#fff",fontSize:16,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0},driverName:{margin:0,fontSize:14,fontWeight:700,color:"#1E293B"},driverPhone:{display:"block",margin:"2px 0",fontSize:13,color:"#2563EB",textDecoration:"none",fontWeight:600},driverLabel:{margin:0,fontSize:11,color:"#64748B"},statusPill:{borderRadius:20,padding:"4px 10px",fontSize:11,fontWeight:700},searchingBox:{display:"flex",flexDirection:"column",alignItems:"center",padding:"10px 0 12px"},searchingTxt:{margin:0,fontSize:12,color:"#64748B"},routeBox:{backgroundColor:"#F8FAFC",borderRadius:10,padding:"10px 12px",marginBottom:10},routeDot:{width:7,height:7,borderRadius:"50%",flexShrink:0},routeTxt:{margin:0,fontSize:12,color:"#1E293B",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"},pollNote:{margin:0,textAlign:"center",fontSize:11,color:"#CBD5E1"}};
+
+/* Form */
+const st={overlay:{position:"fixed",inset:0,backgroundColor:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16},sheet:{position:"relative",width:"100%",maxWidth:420,backgroundColor:"#fff",borderRadius:28,padding:"48px 20px 24px",maxHeight:"92vh",overflowY:"auto"},closeBtn:{position:"absolute",top:14,right:14,width:36,height:36,borderRadius:"50%",backgroundColor:"#F8FAFC",border:"none",fontSize:18,fontWeight:700,cursor:"pointer"},sheetTitle:{margin:"0 0 16px",fontSize:20,fontWeight:700,color:"#1E293B",textAlign:"center"},label:{display:"block",fontSize:13,fontWeight:600,color:"#64748B",margin:"10px 0 4px"},input:{width:"100%",boxSizing:"border-box",backgroundColor:"#F8FAFC",border:"1.5px solid #E2E8F0",borderRadius:14,padding:"12px 14px",fontSize:14,color:"#1E293B",outline:"none"},inputErr:{borderColor:"#EF4444"},err:{margin:"4px 0 0",fontSize:12,color:"#EF4444"},inputRow:{display:"flex",alignItems:"center",gap:8},inputInner:{flex:1,boxSizing:"border-box",backgroundColor:"#F8FAFC",border:"1.5px solid #E2E8F0",borderRadius:14,padding:"12px 14px",fontSize:14,color:"#1E293B",outline:"none"},locBtn:{flexShrink:0,width:46,height:46,borderRadius:14,backgroundColor:"#EFF6FF",border:"1.5px solid #BFDBFE",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"},spinner:{width:18,height:18,border:"2.5px solid #bfdbfe",borderTopColor:"#2563EB",borderRadius:"50%",animation:"spin 0.8s linear infinite"},suggBox:{position:"absolute",top:"100%",left:0,right:0,backgroundColor:"#fff",borderRadius:14,boxShadow:"0 6px 20px rgba(0,0,0,0.12)",zIndex:20,maxHeight:200,overflowY:"auto",marginTop:4},suggItem:{display:"flex",alignItems:"flex-start",padding:"10px 14px",borderBottom:"1px solid #F1F5F9",cursor:"pointer"},miniMapWrap:{margin:"8px 0 4px",borderRadius:14,overflow:"hidden",border:"1.5px solid #BFDBFE"},miniMap:{width:"100%",height:110},miniMapFooter:{display:"flex",alignItems:"center",gap:6,backgroundColor:"#EFF6FF",padding:"6px 12px"},clearLocBtn:{marginLeft:"auto",background:"none",border:"none",fontSize:11,color:"#EF4444",fontWeight:700,cursor:"pointer"},tripBtn:{flex:1,padding:"12px 0",borderRadius:14,border:"1.5px solid #E2E8F0",backgroundColor:"#F8FAFC",fontSize:14,fontWeight:600,color:"#64748B",cursor:"pointer"},tripActive:{backgroundColor:"#2563EB",borderColor:"#2563EB",color:"#fff"},submitBtn:{width:"100%",padding:"16px 0",border:"none",borderRadius:18,fontSize:16,fontWeight:800,color:"#fff",cursor:"pointer",marginTop:12,transition:"background-color 0.3s, opacity 0.2s"}};
+
+/* Recommended drivers */
 const rec={row2:{display:"flex",alignItems:"center",gap:8,margin:"12px 0 4px",padding:"9px 12px",backgroundColor:"#F8FAFC",borderRadius:12},spinSm:{width:13,height:13,border:"2px solid #BFDBFE",borderTopColor:"#2563EB",borderRadius:"50%",animation:"spin 0.8s linear infinite",flexShrink:0},wrap:{margin:"12px 0 4px",backgroundColor:"#F0F9FF",borderRadius:14,padding:"10px 10px 8px",border:"1.5px solid #BFDBFE"},heading:{margin:"0 0 8px",fontSize:11,fontWeight:700,color:"#1E40AF",textTransform:"uppercase",letterSpacing:"0.4px"},hint:{fontWeight:400,color:"#93C5FD",textTransform:"none",fontSize:11},row:{display:"flex",gap:8,overflowX:"auto",paddingBottom:2},chip:{display:"flex",alignItems:"center",gap:6,flexShrink:0,backgroundColor:"#fff",border:"1.5px solid #E2E8F0",borderRadius:50,padding:"5px 10px 5px 5px",cursor:"pointer",transition:"all 0.15s",outline:"none"},chipSel:{backgroundColor:"#2563EB",borderColor:"#2563EB"},chipBusy:{opacity:0.55},av:{width:26,height:26,borderRadius:"50%",fontSize:11,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"},note:{margin:"8px 0 0",fontSize:11,color:"#1D4ED8",backgroundColor:"#EFF6FF",borderRadius:8,padding:"5px 10px"}};
- 

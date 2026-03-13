@@ -17,6 +17,7 @@ const STATUS_CLASS = {
   wait30:          "badge badge-amber",
   cancelled:       "badge badge-gray",
   preferred_query: "badge badge-amber",
+  scheduled:       "badge badge-teal",          // ← NEW
 };
 const STATUS_LABEL = {
   completed:       "✓ Completed",
@@ -30,9 +31,23 @@ const STATUS_LABEL = {
   wait30:          "⏱ Wait 30 min",
   cancelled:       "🚫 Cancelled",
   preferred_query: "⏳ Awaiting Customer",
+  scheduled:       "📅 Scheduled",              // ← NEW
 };
 const getStatusClass = (s) => STATUS_CLASS[s?.toLowerCase()] || "badge badge-gray";
 const getStatusLabel = (s) => STATUS_LABEL[s?.toLowerCase()] || s || "Pending";
+
+/* ── NEW: format scheduled_at into date + time strings ── */
+const fmtScheduled = (iso) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return {
+    date: d.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" }),
+    time: d.toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true }),
+    full: d.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" }) +
+          " · " +
+          d.toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true }),
+  };
+};
 
 const ASSIGN_MODES = [
   { value: "assign",  label: "🚗 Assign a Driver",       desc: "Pick a driver from the list" },
@@ -47,6 +62,7 @@ export default function Booking() {
   const [drivers,     setDrivers]     = useState([]);
   const [allDrivers,  setAllDrivers]  = useState([]);
   const [search,      setSearch]      = useState("");
+  const [filterTab,   setFilterTab]   = useState("all"); // ← NEW: "all" | "scheduled" | "immediate"
 
   // ── Assign modal ──
   const [showForm,    setShowForm]    = useState(false);
@@ -71,7 +87,6 @@ export default function Booking() {
   const ivRef = useRef(null);
   const cdRef = useRef(REFRESH_MS / 1000);
 
-  /* ───────── fetch ───────── */
   const fetchAll = async () => {
     await Promise.all([fetchBookings(), fetchDrivers()]);
     setLastUpdated(new Date());
@@ -81,10 +96,6 @@ export default function Booking() {
 
   useEffect(() => { fetchAll(); }, []);
 
-  /* ───────── Socket ─────────
-     Backend must emit  "customerAcceptedAlternate"  to the admin room
-     when the customer POSTs /preferred-response with { accept: true }
-  ─────────────────────────── */
   useEffect(() => {
     const SOCK = import.meta.env.VITE_SOCKET_URL || BASE_URL;
     if (!SOCK) return;
@@ -92,29 +103,19 @@ export default function Booking() {
     import("socket.io-client").then(({ io }) => {
       socket = io(SOCK);
       socket.emit("joinAdminRoom");
-
-      // Customer said YES → show admin the "now assign a driver" popup
       socket.on("customerAcceptedAlternate", ({ bookingId }) => {
-        // Find the booking from current list
         setBookings((prev) => {
           const b = prev.find((x) => String(x.id) === String(bookingId));
-          if (b) {
-            setAcceptedBooking(b);
-            setAcceptedDriver("");
-            setShowAcceptedPopup(true);
-          }
+          if (b) { setAcceptedBooking(b); setAcceptedDriver(""); setShowAcceptedPopup(true); }
           return prev;
         });
-        fetchBookings(); // also refresh so status updates
+        fetchBookings();
       });
-
-      // Customer said NO → just refresh (row will be cancelled in DB)
       socket.on("bookingCancelled", () => fetchBookings());
     });
     return () => { if (socket) socket.disconnect(); };
   }, []);
 
-  /* ───────── auto-refresh ───────── */
   useEffect(() => {
     if (ivRef.current) clearInterval(ivRef.current);
     if (!autoRefresh) return;
@@ -124,10 +125,7 @@ export default function Booking() {
 
   useEffect(() => {
     if (!autoRefresh) { setCountdown(0); return; }
-    const t = setInterval(() => {
-      cdRef.current = Math.max(0, cdRef.current - 1);
-      setCountdown(cdRef.current);
-    }, 1000);
+    const t = setInterval(() => { cdRef.current = Math.max(0, cdRef.current - 1); setCountdown(cdRef.current); }, 1000);
     return () => clearInterval(t);
   }, [autoRefresh]);
 
@@ -136,10 +134,7 @@ export default function Booking() {
       const res = await axios.get(`${BASE_URL}/api/drivers`);
       const all = Array.isArray(res.data) ? res.data : [];
       setAllDrivers(all);
-      setDrivers(all.filter((d) =>
-        d.status?.toLowerCase() === "online" &&
-        d.payactive?.toLowerCase() === "active"
-      ));
+      setDrivers(all.filter((d) => d.status?.toLowerCase() === "online" && d.payactive?.toLowerCase() === "active"));
     } catch {}
   };
 
@@ -150,18 +145,15 @@ export default function Booking() {
     } catch {}
   };
 
-  /* ───────── open assign modal ───────── */
   const openEdit = (b) => {
     setEditId(b.id); setEditBooking(b);
-    setAssignMode("assign"); setDriver("");
-    setShowForm(true);
+    setAssignMode("assign"); setDriver(""); setShowForm(true);
   };
   const closeForm = () => {
     setShowForm(false); setEditId(null);
     setEditBooking(null); setDriver(""); setAssignMode("assign");
   };
 
-  /* ───────── submit assign ───────── */
   const submitForm = async () => {
     if (assignMode === "assign" && !driver) { alert("Please select a driver."); return; }
     if (
@@ -183,31 +175,19 @@ export default function Booking() {
       } else {
         await axios.put(`${BASE_URL}/api/bookings/${bid}`, { driver: null, status: assignMode });
       }
-      closeForm();
-      fetchBookings();
-    } catch (e) {
-      alert("Failed: " + (e?.response?.data?.message || e.message));
-    } finally { setSaving(false); }
+      closeForm(); fetchBookings();
+    } catch (e) { alert("Failed: " + (e?.response?.data?.message || e.message)); }
+    finally { setSaving(false); }
   };
 
-  /* ───────── "Not Available" on preferred driver ─────────
-     Just call the API — backend sets status = 'preferred_query'
-     and emits socket to customer. Row disables via DB status.
-  ─────────────────────────────────────────────────────────── */
   const handleNotAvailable = async (booking) => {
     closeForm();
     try {
       await axios.post(`${BASE_URL}/api/bookings/${booking.id}/preferred-unavailable`);
-      // Optimistically update status in local state so row locks immediately
-      setBookings((prev) =>
-        prev.map((b) => b.id === booking.id ? { ...b, status: "preferred_query" } : b)
-      );
-    } catch (e) {
-      alert("Failed to notify customer: " + (e?.response?.data?.message || e.message));
-    }
+      setBookings((prev) => prev.map((b) => b.id === booking.id ? { ...b, status: "preferred_query" } : b));
+    } catch (e) { alert("Failed to notify customer: " + (e?.response?.data?.message || e.message)); }
   };
 
-  /* ───────── preferred warning handlers ───────── */
   const handlePrefWarnYes = async () => { setShowPrefWarn(false); await doSubmit(); };
   const handlePrefWarnNo  = async () => {
     setShowPrefWarn(false); setSaving(true);
@@ -218,27 +198,22 @@ export default function Booking() {
     finally { setSaving(false); }
   };
 
-  /* ───────── assign from "customer accepted" popup ───────── */
   const handleAcceptedAssign = async () => {
     if (!acceptedDriver) { alert("Please select a driver."); return; }
     setAcceptedSaving(true);
     try {
       await axios.put(`${BASE_URL}/api/bookings/${acceptedBooking.id}`, { driver: acceptedDriver, status: "assigned" });
-      setShowAcceptedPopup(false); setAcceptedBooking(null); setAcceptedDriver("");
-      fetchBookings();
-    } catch (e) {
-      alert("Failed: " + (e?.response?.data?.message || e.message));
-    } finally { setAcceptedSaving(false); }
+      setShowAcceptedPopup(false); setAcceptedBooking(null); setAcceptedDriver(""); fetchBookings();
+    } catch (e) { alert("Failed: " + (e?.response?.data?.message || e.message)); }
+    finally { setAcceptedSaving(false); }
   };
 
-  /* ───────── helpers ───────── */
   const getDriverName = (id) => {
     if (!id) return null;
     const d = allDrivers.find((d) => String(d.id) === String(id));
     return d ? (d.name || d.NAME) : `Driver #${id}`;
   };
 
-  /* ───────── completed trips per driver ───────── */
   const completedByDriver = bookings.reduce((acc, b) => {
     if (b.status?.toLowerCase() === "completed" && b.driver) {
       acc[String(b.driver)] = (acc[String(b.driver)] || 0) + 1;
@@ -246,14 +221,22 @@ export default function Booking() {
     return acc;
   }, {});
 
-  /* ───────── filter + paginate ───────── */
-  const filtered = bookings.filter((b) =>
+  /* ── NEW: tab filter counts ── */
+  const scheduledCount = bookings.filter((b) => b.is_scheduled).length;
+  const immediateCount = bookings.filter((b) => !b.is_scheduled).length;
+
+  /* ── filter: tab first, then search ── */
+  const afterTab = bookings.filter((b) => {
+    if (filterTab === "scheduled") return b.is_scheduled;
+    if (filterTab === "immediate") return !b.is_scheduled;
+    return true;
+  });
+  const filtered = afterTab.filter((b) =>
     (b.name || "").toLowerCase().includes(search.toLowerCase()) ||
     String(b.mobile || "").includes(search)
   );
   const pg = usePagination(filtered, 10);
 
-  /* ───────── stats ───────── */
   const totalB     = bookings.length;
   const assignedB  = bookings.filter((b) => b.status?.toLowerCase() === "assigned").length;
   const pendingB   = bookings.filter((b) => !b.driver).length;
@@ -315,9 +298,26 @@ export default function Booking() {
         ))}
       </div>
 
-      {/* Search */}
-      <div className="search-bar">
-        <div className="search-wrap">
+      {/* ── NEW: Filter tabs + search row ── */}
+      <div style={S.filterRow}>
+        <div style={S.tabs}>
+          {[
+            { key:"all",       label:"All Bookings",  count: bookings.length },
+            { key:"scheduled", label:"📅 Scheduled",  count: scheduledCount  },
+            { key:"immediate", label:"⚡ Immediate",  count: immediateCount  },
+          ].map((tab) => (
+            <button key={tab.key}
+              style={{ ...S.tab, ...(filterTab === tab.key ? S.tabActive : {}) }}
+              onClick={() => { setFilterTab(tab.key); pg.setPage(1); }}>
+              {tab.label}
+              <span style={{ ...S.tabCount, ...(filterTab === tab.key ? S.tabCountActive : {}) }}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="search-wrap" style={{ flex:1, maxWidth:320 }}>
           <span className="search-icon-pos">🔍</span>
           <input className="search-input" placeholder="Search by name or mobile..."
             value={search} onChange={(e) => { setSearch(e.target.value); pg.setPage(1); }} />
@@ -337,32 +337,44 @@ export default function Booking() {
           <table>
             <thead>
               <tr>
-                {["ID","Customer","Mobile","Pickup","Drop","Preferred Driver","Assigned Driver","Trip","Status","Action"].map((h) => (
+                {/* ← "Schedule" column added between Drop and Preferred Driver */}
+                {["ID","Customer","Mobile","Pickup","Drop","Schedule","Preferred Driver","Assigned Driver","Trip","Status","Action"].map((h) => (
                   <th key={h}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {pg.slice.length === 0 ? (
-                <tr><td colSpan="10">
+                <tr><td colSpan="11">
                   <div className="empty-state">
                     <span className="empty-state-icon">📭</span>
                     <p className="empty-state-title">No bookings found</p>
                   </div>
                 </td></tr>
               ) : pg.slice.map((b) => {
-                const s             = b.status?.toLowerCase();
-                const isCancelled   = s === "cancelled";
-                const isDone        = s === "completed";
-                // ─ Disabled when status is preferred_query (waiting for customer) ─
-                const isLocked      = s === "preferred_query";
+                const s           = b.status?.toLowerCase();
+                const isCancelled = s === "cancelled";
+                const isDone      = s === "completed";
+                const isLocked    = s === "preferred_query";
+                const isScheduled = !!b.is_scheduled;          // ← NEW
+                const schedFmt    = fmtScheduled(b.scheduled_at); // ← NEW
 
                 return (
                   <tr key={b.id} style={{
-                    ...(isCancelled ? { opacity:0.6, backgroundColor:"#FFF8F8" } : {}),
-                    ...(isLocked    ? { opacity:0.55, backgroundColor:"#FFFBEB" } : {}),
+                    ...(isCancelled  ? { opacity:0.6, backgroundColor:"#FFF8F8" } : {}),
+                    ...(isLocked     ? { opacity:0.55, backgroundColor:"#FFFBEB" } : {}),
+                    // ← teal tint for scheduled rows
+                    ...(isScheduled && !isCancelled && !isDone ? { backgroundColor:"#F0FDFA" } : {}),
                   }}>
-                    <td><span className="cell-id">{b.id}</span></td>
+
+                    {/* ID + scheduled badge stacked */}
+                    <td>
+                      <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+                        <span className="cell-id">{b.id}</span>
+                        {isScheduled && <span style={S.schedBadge}>📅 Sched</span>}
+                      </div>
+                    </td>
+
                     <td>
                       <div className="cell-name">
                         <div className="avatar">{(b.name||"?").charAt(0).toUpperCase()}</div>
@@ -372,6 +384,28 @@ export default function Booking() {
                     <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{b.mobile}</td>
                     <td><div className="cell-loc"><span>📍</span><span className="cell-loc-text">{b.pickup}</span></div></td>
                     <td><div className="cell-loc"><span>🎯</span><span className="cell-loc-text">{b.drop||b.drop_location}</span></div></td>
+
+                    {/* ── NEW: Schedule column ── */}
+                    <td>
+                      {isScheduled && schedFmt ? (
+                        <div style={S.schedCell}>
+                          <span style={S.schedDate}>{schedFmt.date}</span>
+                          <span style={S.schedTime}>{schedFmt.time}</span>
+                          {b.scheduled_status && (
+                            <span style={{
+                              ...S.schedStatus,
+                              ...(b.scheduled_status === "dispatched"
+                                ? { backgroundColor:"#DCFCE7", color:"#166534" }
+                                : { backgroundColor:"#FEF9C3", color:"#854D0E" }),
+                            }}>
+                              {b.scheduled_status === "dispatched" ? "✓ Dispatched" : "⏳ Pending"}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={S.schedNow}>⚡ Now</span>
+                      )}
+                    </td>
 
                     <td>
                       {b.recommended_driver_id
@@ -396,14 +430,11 @@ export default function Booking() {
                     <td>
                       {isDone ? (
                         <span className="badge badge-green">✅ Done</span>
-
                       ) : isCancelled ? (
                         <span className="badge badge-gray" style={{ backgroundColor:"#FFF1F2", color:"#9F1239", border:"1px solid #FECDD3" }}>
                           🚫 Cancelled
                         </span>
-
                       ) : isLocked ? (
-                        /* ─── ROW DISABLED — waiting for customer to respond ─── */
                         <div style={S.lockedCell}>
                           <div style={S.lockedDot} />
                           <div>
@@ -411,7 +442,6 @@ export default function Booking() {
                             <div style={S.lockedSub}>Locked until customer responds</div>
                           </div>
                         </div>
-
                       ) : (
                         <button className="action-edit" onClick={() => openEdit(b)}>
                           ✏️ {b.driver ? "Reassign" : "Assign"}
@@ -448,6 +478,28 @@ export default function Booking() {
               <div className="form-grid">
                 <div className="form-section-label">📋 Booking Details</div>
                 <div className="form-section-divider" />
+
+                {/* ── NEW: scheduled ride banner inside modal ── */}
+                {editBooking.is_scheduled && editBooking.scheduled_at && (
+                  <div className="form-field form-full">
+                    <div style={S.modalSchedBanner}>
+                      <span style={{ fontSize:22 }}>📅</span>
+                      <div style={{ flex:1 }}>
+                        <p style={S.modalSchedLabel}>Scheduled Ride</p>
+                        <p style={S.modalSchedTime}>{fmtScheduled(editBooking.scheduled_at)?.full}</p>
+                      </div>
+                      <span style={{
+                        ...S.modalSchedPill,
+                        ...(editBooking.scheduled_status === "dispatched"
+                          ? { backgroundColor:"#DCFCE7", color:"#166534" }
+                          : { backgroundColor:"#FEF9C3", color:"#854D0E" }),
+                      }}>
+                        {editBooking.scheduled_status === "dispatched" ? "✓ Dispatched" : "⏳ Pending dispatch"}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {[["Customer",editBooking.name],["Mobile",editBooking.mobile],["Pickup",editBooking.pickup],["Drop",editBooking.drop||editBooking.drop_location]].map(([lbl,val]) => (
                   <div key={lbl} className="form-field">
                     <label className="form-label">{lbl}</label>
@@ -455,7 +507,6 @@ export default function Booking() {
                   </div>
                 ))}
 
-                {/* Preferred driver banner */}
                 {editBooking.recommended_driver_id && (
                   <div className="form-field form-full">
                     <div style={S.prefBanner}>
@@ -466,7 +517,6 @@ export default function Booking() {
                           <p style={S.prefName}>{getDriverName(editBooking.recommended_driver_id)}</p>
                         </div>
                       </div>
-                      {/* Clicking this disables the row and notifies customer — no admin popup yet */}
                       <button style={S.notAvailBtn} onClick={() => handleNotAvailable(editBooking)}>
                         🚫 Not Available
                       </button>
@@ -510,7 +560,6 @@ export default function Booking() {
                             );
                           })}
                         </select>
-                        {/* Selected driver summary card */}
                         {driver && (() => {
                           const sel   = drivers.find((d) => String(d.id) === String(driver));
                           const trips = completedByDriver[String(driver)] || 0;
@@ -585,8 +634,6 @@ export default function Booking() {
 
       {/* ═══════════════════════════════════════════════════════════
           CUSTOMER ACCEPTED POPUP
-          ─ Only appears when customer clicks YES on their device ─
-          Admin now picks an alternate driver and assigns
           ═══════════════════════════════════════════════════════════ */}
       {showAcceptedPopup && acceptedBooking && (
         <div className="modal-overlay" style={{ zIndex:9999 }}>
@@ -597,9 +644,7 @@ export default function Booking() {
                 <span className="modal-title">Customer Accepted — Assign a Driver</span>
               </div>
             </div>
-
             <div className="modal-body">
-              {/* Green success banner */}
               <div style={S.acceptedBanner}>
                 <span style={{ fontSize:28 }}>🎉</span>
                 <div>
@@ -607,8 +652,6 @@ export default function Booking() {
                   <p style={S.acceptedBannerSub}>Please assign an available driver now.</p>
                 </div>
               </div>
-
-              {/* Booking card */}
               <div style={S.bookingCard}>
                 <div style={{ display:"flex", justifyContent:"space-between", marginBottom:10 }}>
                   <span style={S.cardMeta}>Booking #{acceptedBooking.id}</span>
@@ -618,33 +661,23 @@ export default function Booking() {
                 <div style={{ width:2, height:8, backgroundColor:"#CBD5E1", marginLeft:6 }} />
                 <div style={S.routeRow}><span>🎯</span><span style={S.routeTxt}>{acceptedBooking.drop||acceptedBooking.drop_location}</span></div>
                 {acceptedBooking.recommended_driver_id && (
-                  <div style={S.prefNote}>
-                    ⭐ Preferred (unavailable): {getDriverName(acceptedBooking.recommended_driver_id)}
-                  </div>
+                  <div style={S.prefNote}>⭐ Preferred (unavailable): {getDriverName(acceptedBooking.recommended_driver_id)}</div>
                 )}
               </div>
-
-              {/* Driver picker */}
               <div className="form-field" style={{ marginBottom:0 }}>
                 <label className="form-label">
                   Select Alternate Driver <span className="form-required">*</span>
                   <span className="badge badge-green" style={{ marginLeft:8 }}>{drivers.length} online</span>
                 </label>
                 {drivers.length === 0 ? (
-                  <div style={{ padding:14, background:"#fff7ed", border:"1.5px solid #fed7aa", borderRadius:10, fontSize:13, color:"#92400e" }}>
-                    ⚠️ No drivers online right now.
-                  </div>
+                  <div style={{ padding:14, background:"#fff7ed", border:"1.5px solid #fed7aa", borderRadius:10, fontSize:13, color:"#92400e" }}>⚠️ No drivers online right now.</div>
                 ) : (
                   <>
                     <select className="form-select" value={acceptedDriver} onChange={(e) => setAcceptedDriver(e.target.value)}>
                       <option value="">— Choose a driver —</option>
                       {drivers.map((d) => {
                         const trips = completedByDriver[String(d.id)] || 0;
-                        return (
-                          <option key={d.id} value={d.id}>
-                            {d.name||d.NAME} — {d.car_type||"N/A"} (ID:{d.id}) · ✅ {trips} trip{trips!==1?"s":""}
-                          </option>
-                        );
+                        return <option key={d.id} value={d.id}>{d.name||d.NAME} — {d.car_type||"N/A"} (ID:{d.id}) · ✅ {trips} trip{trips!==1?"s":""}</option>;
                       })}
                     </select>
                     {acceptedDriver && (() => {
@@ -669,12 +702,9 @@ export default function Booking() {
                 )}
               </div>
             </div>
-
             <div className="modal-footer" style={{ gap:10 }}>
               <button className="btn btn-ghost"
-                onClick={() => { setShowAcceptedPopup(false); setAcceptedBooking(null); setAcceptedDriver(""); }}>
-                Later
-              </button>
+                onClick={() => { setShowAcceptedPopup(false); setAcceptedBooking(null); setAcceptedDriver(""); }}>Later</button>
               <button className="btn btn-primary" style={{ flex:2 }}
                 onClick={handleAcceptedAssign} disabled={acceptedSaving||!acceptedDriver}>
                 {acceptedSaving ? "⏳ Assigning…" : "🚗 Assign Driver"}
@@ -684,13 +714,39 @@ export default function Booking() {
         </div>
       )}
 
-      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }`}</style>
+      <style>{`
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+        .badge-teal { background:#CCFBF1; color:#0F766E; border:1px solid #99F6E4; }
+      `}</style>
     </div>
   );
 }
 
 /* ── Inline styles ── */
 const S = {
+  /* ── filter tab row ── */
+  filterRow:      { display:"flex", alignItems:"center", gap:12, margin:"0 0 16px", flexWrap:"wrap" },
+  tabs:           { display:"flex", gap:3, backgroundColor:"#F1F5F9", borderRadius:10, padding:4 },
+  tab:            { padding:"6px 14px", borderRadius:8, border:"none", backgroundColor:"transparent", fontSize:13, fontWeight:600, color:"#64748B", cursor:"pointer", display:"flex", alignItems:"center", gap:6 },
+  tabActive:      { backgroundColor:"#fff", color:"#1E293B", boxShadow:"0 1px 4px rgba(0,0,0,0.1)" },
+  tabCount:       { fontSize:11, fontWeight:700, backgroundColor:"#E2E8F0", color:"#64748B", borderRadius:20, padding:"1px 7px" },
+  tabCountActive: { backgroundColor:"#2563EB", color:"#fff" },
+
+  /* ── schedule table cell ── */
+  schedCell:   { display:"flex", flexDirection:"column", gap:2 },
+  schedDate:   { fontSize:12, fontWeight:700, color:"#0F766E" },
+  schedTime:   { fontSize:12, fontWeight:600, color:"#0D9488" },
+  schedStatus: { fontSize:10, fontWeight:700, borderRadius:6, padding:"2px 6px", display:"inline-block", marginTop:1 },
+  schedNow:    { fontSize:11, color:"#94A3B8", fontWeight:500 },
+  schedBadge:  { fontSize:10, fontWeight:700, backgroundColor:"#CCFBF1", color:"#0F766E", borderRadius:5, padding:"2px 5px", display:"inline-block" },
+
+  /* ── scheduled banner inside assign modal ── */
+  modalSchedBanner: { display:"flex", alignItems:"center", gap:12, backgroundColor:"#F0FDFA", border:"1.5px solid #99F6E4", borderRadius:12, padding:"12px 14px", marginBottom:4 },
+  modalSchedLabel:  { margin:0, fontSize:11, fontWeight:700, color:"#0D9488", textTransform:"uppercase", letterSpacing:"0.4px" },
+  modalSchedTime:   { margin:"3px 0 0", fontSize:14, fontWeight:800, color:"#0F766E" },
+  modalSchedPill:   { fontSize:11, fontWeight:700, borderRadius:8, padding:"4px 10px", whiteSpace:"nowrap" },
+
+  /* ── existing styles unchanged ── */
   lockedCell:  { display:"flex", alignItems:"center", gap:8 },
   lockedDot:   { width:8, height:8, borderRadius:"50%", backgroundColor:"#F59E0B", flexShrink:0, animation:"pulse 1.2s ease infinite" },
   lockedTitle: { fontSize:12, fontWeight:700, color:"#92400E" },

@@ -204,18 +204,56 @@ app.post("/api/verify-otp", (req, res) => {
 // ─── TRIP BOOKING ────────────────────────────
 app.post("/api/trip-booking", async (req, res) => {
   try {
-    const { name, phone, pickup, pickupLat, pickupLng, drop, bookingphnno, triptype, recommended_driver_id } = req.body;
+    const {
+      name, phone, pickup, pickupLat, pickupLng,
+      drop, bookingphnno, triptype,
+      recommended_driver_id,
+      scheduled_at,      // ← ISO string or null
+      is_scheduled,      // ← true / false
+    } = req.body;
+
     if (!name || !phone || !pickup || !drop || !bookingphnno)
       return res.status(400).json({ success: false, error: "All fields are required" });
+
+    // Parse scheduled time safely
+    const scheduledDate = scheduled_at ? new Date(scheduled_at) : null;
+
+    // Validate: must be at least 29 min from now if scheduling
+    if (scheduledDate && scheduledDate < new Date(Date.now() + 29 * 60 * 1000)) {
+      return res.status(400).json({ success: false, message: "Scheduled time must be at least 30 minutes from now" });
+    }
+
+    const isScheduledBool = !!(is_scheduled && scheduledDate);
+    const status          = isScheduledBool ? "scheduled" : "pending";
 
     const [result] = await db.promise().query(
       `INSERT INTO bookings
          (customer_name, customer_mobile, booking_phnno,
           pickup, pickup_lat, pickup_lng,
-          drop_location, triptype, status, recommended_driver_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-      [name, phone, bookingphnno, pickup, pickupLat || null, pickupLng || null, drop, triptype || "local", recommended_driver_id || null]
+          drop_location, triptype, status,
+          recommended_driver_id,
+          is_scheduled, scheduled_at, scheduled_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name, phone, bookingphnno,
+        pickup, pickupLat || null, pickupLng || null,
+        drop, triptype || "local", status,
+        recommended_driver_id || null,
+        isScheduledBool ? 1 : 0,
+        scheduledDate,                          // MySQL accepts JS Date
+        isScheduledBool ? "pending" : null,     // scheduled_status
+      ]
     );
+
+    // Emit socket for immediate bookings only
+    if (!isScheduledBool && global.io) {
+      global.io.to("admins").emit("newBooking", {
+        bookingId: result.insertId,
+        name, phone, pickup, drop,
+        triptype: triptype || "local",
+      });
+    }
+
     res.json({ success: true, message: "Booking created successfully", bookingId: result.insertId });
   } catch (error) {
     console.error("Trip booking error:", error);
@@ -260,7 +298,8 @@ app.get("/api/bookings", (req, res) => {
   db.query(
     `SELECT id, customer_name, customer_mobile, pickup, drop_location,
             status, driver_id, pickup_lat, pickup_lng, triptype,
-            recommended_driver_id
+            recommended_driver_id,
+            is_scheduled, scheduled_at, scheduled_status
      FROM bookings ORDER BY id DESC`,
     function (error, results) {
       if (error) {
@@ -279,6 +318,9 @@ app.get("/api/bookings", (req, res) => {
         pickup_lng:            r.pickup_lng,
         triptype:              r.triptype,
         recommended_driver_id: r.recommended_driver_id,
+        is_scheduled:          r.is_scheduled === 1,
+        scheduled_at:          r.scheduled_at,          // MySQL DATETIME → JS string
+        scheduled_status:      r.scheduled_status,
       }));
       res.send(JSON.stringify(result));
     }
