@@ -5,7 +5,6 @@ import { PaginationBar, usePagination } from "../hooks/Usepagination";
 const BASE_URL   = import.meta.env.VITE_BASE_URL;
 const REFRESH_MS = 30000;
 
-/* ── How many minutes before the ride to trigger reminder ── */
 const REMINDER_WINDOW_MINS = 60;
 
 const STATUS_CLASS = {
@@ -51,7 +50,6 @@ const fmtScheduled = (iso) => {
   };
 };
 
-/* ── compute urgency colour for reminder cards ── */
 const reminderUrgency = (iso) => {
   if (!iso) return "normal";
   const mins = (new Date(iso) - new Date()) / (1000 * 60);
@@ -60,7 +58,6 @@ const reminderUrgency = (iso) => {
   return "normal";
 };
 
-/* ── NEW: compute how far away a future scheduled booking is ── */
 const getScheduleInfo = (iso) => {
   if (!iso) return null;
   const now  = new Date();
@@ -86,7 +83,6 @@ const ASSIGN_MODES = [
 
 /* ═══════════════════════════════════════════════════════
    UPCOMING FUTURE BOOKINGS PANEL
-   Shows scheduled rides that are > 60 min away
    ═══════════════════════════════════════════════════════ */
 const UpcomingPanel = ({ bookings, onAssign }) => {
   const [collapsed, setCollapsed] = useState(true);
@@ -96,7 +92,7 @@ const UpcomingPanel = ({ bookings, onAssign }) => {
     const s = b.status?.toLowerCase();
     if (["cancelled","completed","inride","accepted","assigned"].includes(s)) return false;
     const mins = (new Date(b.scheduled_at) - new Date()) / (1000 * 60);
-    return mins > REMINDER_WINDOW_MINS; // beyond reminder window = future
+    return mins > REMINDER_WINDOW_MINS;
   }).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
 
   if (!future.length) return null;
@@ -124,15 +120,12 @@ const UpcomingPanel = ({ bookings, onAssign }) => {
             const fmt  = fmtScheduled(b.scheduled_at);
             return (
               <div key={b.id} style={{ ...U.card, backgroundColor: info?.bg, borderColor: info?.color + "55" }}>
-                {/* Time badge */}
                 <div style={U.cardTop}>
                   <span style={{ ...U.timeBadge, backgroundColor: info?.color + "18", color: info?.color }}>
                     📅 {info?.label}
                   </span>
                   <span style={U.bookingId}>#{b.id}</span>
                 </div>
-
-                {/* Customer */}
                 <div style={U.customerRow}>
                   <div style={U.avatar}>{(b.name || "?")[0].toUpperCase()}</div>
                   <div style={{ flex: 1 }}>
@@ -144,15 +137,11 @@ const UpcomingPanel = ({ bookings, onAssign }) => {
                     <p style={U.rideDate}>{fmt?.date}</p>
                   </div>
                 </div>
-
-                {/* Route */}
                 <div style={U.routeBox}>
                   <div style={U.routeRow}><div style={{ ...U.dot, backgroundColor: "#10B981" }} /><span style={U.routeTxt}>{b.pickup}</span></div>
                   <div style={U.routeLine} />
                   <div style={U.routeRow}><div style={{ ...U.dot, backgroundColor: "#EF4444" }} /><span style={U.routeTxt}>{b.drop || b.drop_location}</span></div>
                 </div>
-
-                {/* Footer */}
                 <div style={U.cardFooter}>
                   <span style={U.tripTag}>{b.triptype === "outstation" ? "🗺️ Outstation" : "🏙️ Local"}</span>
                   {b.driver ? (
@@ -173,7 +162,7 @@ const UpcomingPanel = ({ bookings, onAssign }) => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   REMINDER PANEL  (rides due within 60 min)
+   REMINDER PANEL
    ═══════════════════════════════════════════════════════ */
 const ReminderPanel = ({ reminders, onAssign, onDismiss }) => {
   if (!reminders.length) return null;
@@ -290,6 +279,26 @@ export default function Booking() {
   const ivRef  = useRef(null);
   const cdRef  = useRef(REFRESH_MS / 1000);
 
+  // ── CREATE BOOKING STATE ──
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newBooking, setNewBooking] = useState({
+    customer_name: "",
+    customer_mobile: "",
+    pickup: "",
+    pickup_lat: null,
+    pickup_lng: null,
+    drop_location: "",
+    triptype: "local",
+    is_scheduled: false,
+    scheduled_at: null,
+  });
+  const [creating, setCreating] = useState(false);
+  const [pickupSugg, setPickupSugg] = useState([]);
+  const [dropSugg,   setDropSugg]   = useState([]);
+  const [locLoading, setLocLoading] = useState(false);
+  const [showBookingSuccess, setShowBookingSuccess] = useState(false);
+  const [successBookingName, setSuccessBookingName] = useState("");
+
   const computeReminders = (allBookings) => {
     const now = new Date();
     return allBookings.filter((b) => {
@@ -386,6 +395,79 @@ export default function Booking() {
 
   const dismissReminder = (bookingId) => {
     setDismissedIds((prev) => new Set([...prev, bookingId]));
+  };
+
+  // ── CREATE BOOKING: location search ──
+  const searchLocation = async (field, query) => {
+    if (!query || query.length < 2) { field === "pickup" ? setPickupSugg([]) : setDropSugg([]); return; }
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`, { headers: { "User-Agent": "JJApp/1.0" } });
+      const data = await r.json();
+      field === "pickup" ? setPickupSugg(data) : setDropSugg(data);
+    } catch {}
+  };
+
+  const selectPickupSugg = (s) => {
+    setNewBooking(p => ({ ...p, pickup: s.display_name, pickup_lat: parseFloat(s.lat), pickup_lng: parseFloat(s.lon) }));
+    setPickupSugg([]);
+  };
+  const selectDropSugg = (s) => {
+    setNewBooking(p => ({ ...p, drop_location: s.display_name }));
+    setDropSugg([]);
+  };
+
+  const getAdminCurrentLocation = () => {
+    if (!navigator.geolocation) { alert("Geolocation not supported."); return; }
+    setLocLoading(true); setPickupSugg([]);
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+      const { latitude, longitude } = coords;
+      try {
+        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`, { headers: { "User-Agent": "JJApp/1.0" } });
+        const data = await r.json();
+        setNewBooking(p => ({ ...p, pickup: data.display_name || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`, pickup_lat: latitude, pickup_lng: longitude }));
+      } catch {
+        setNewBooking(p => ({ ...p, pickup: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`, pickup_lat: latitude, pickup_lng: longitude }));
+      }
+      setLocLoading(false);
+    }, () => setLocLoading(false), { timeout: 10000, enableHighAccuracy: true });
+  };
+
+  // ── CREATE BOOKING HANDLER ──
+  const submitCreateBooking = async () => {
+    const { customer_name, customer_mobile, pickup } = newBooking;
+    if (!customer_name.trim()) { alert("Please enter customer name."); return; }
+    if (!/^[6-9]\d{9}$/.test(customer_mobile)) { alert("Enter a valid 10-digit mobile number."); return; }
+    if (!pickup.trim()) { alert("Please enter pickup location."); return; }
+    if (!newBooking.drop_location.trim()) { alert("Please enter drop location."); return; }
+    if (!newBooking.triptype) { alert("Please select trip type."); return; }
+    if (newBooking.is_scheduled && !newBooking.scheduled_at) { alert("Please select scheduled date & time."); return; }
+    setCreating(true);
+    try {
+      await axios.post(`${BASE_URL}/api/trip-booking`, {
+        name: newBooking.customer_name.trim(),
+        phone: newBooking.customer_mobile.trim(),
+        bookingphnno: newBooking.customer_mobile.trim(),
+        pickup: newBooking.pickup.trim(),
+        pickupLat: newBooking.pickup_lat ?? null,
+        pickupLng: newBooking.pickup_lng ?? null,
+        drop: newBooking.drop_location.trim(),
+        triptype: newBooking.triptype,
+        is_scheduled: newBooking.is_scheduled ? 1 : 0,
+        scheduled_at: newBooking.is_scheduled && newBooking.scheduled_at ? newBooking.scheduled_at.toISOString() : null,
+        recommended_driver_id: null,
+      });
+      setShowCreateForm(false);
+      setSuccessBookingName(newBooking.customer_name.trim());
+      setShowBookingSuccess(true);
+      setTimeout(() => setShowBookingSuccess(false), 3500);
+      setNewBooking({ customer_name:"", customer_mobile:"", pickup:"", pickup_lat:null, pickup_lng:null, drop_location:"", triptype:"local", is_scheduled:false, scheduled_at:null });
+      setPickupSugg([]); setDropSugg([]);
+      fetchBookings();
+    } catch (e) {
+      alert("Failed to create booking: " + (e?.response?.data?.message || e.message));
+    } finally {
+      setCreating(false);
+    }
   };
 
   const submitForm = async () => {
@@ -494,6 +576,14 @@ export default function Booking() {
           <p className="page-subtitle">Track and manage all customer bookings</p>
         </div>
         <div className="refresh-bar">
+          {/* ── NEW BOOKING BUTTON ── */}
+          <button
+            onClick={() => setShowCreateForm(true)}
+            style={S.createBtn}
+          >
+            ＋ New Booking
+          </button>
+
           {lastUpdated && (
             <div className="refresh-timestamp">
               <span className="refresh-live-dot" />
@@ -520,14 +610,10 @@ export default function Booking() {
         </div>
       </div>
 
-      {/* ── Urgent Reminder Panel (≤60 min) ── */}
-      <ReminderPanel
-        reminders={reminders}
-        onAssign={openEdit}
-        onDismiss={dismissReminder}
-      />
+      {/* Reminder Panel */}
+      <ReminderPanel reminders={reminders} onAssign={openEdit} onDismiss={dismissReminder} />
 
-      {/* ── NEW: Future Upcoming Panel (>60 min) ── */}
+      {/* Upcoming Panel */}
       <UpcomingPanel bookings={bookings} onAssign={openEdit} />
 
       {/* Stats */}
@@ -600,7 +686,6 @@ export default function Booking() {
                 const isScheduled = !!b.is_scheduled;
                 const schedFmt    = fmtScheduled(b.scheduled_at);
                 const isReminder  = reminders.some((r) => r.id === b.id);
-                /* NEW: future booking info for table rows */
                 const schedInfo   = isScheduled && b.scheduled_at ? getScheduleInfo(b.scheduled_at) : null;
                 const isFuture    = schedInfo && schedInfo.type === "future";
                 const isTomorrow  = schedInfo && schedInfo.type === "tomorrow";
@@ -617,13 +702,11 @@ export default function Booking() {
                     ...(isScheduled && !isCancelled && !isDone && !isReminder && !isFuture && !isTomorrow && !isToday
                       ? { backgroundColor:"#F0FDFA" } : {}),
                   }}>
-
                     <td>
                       <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
                         <span className="cell-id">{b.id}</span>
                         {isScheduled && <span style={S.schedBadge}>📅 Sched</span>}
                         {isReminder  && <span style={S.reminderBadge}>🔔 Due Soon</span>}
-                        {/* NEW: future time-away badge */}
                         {isScheduled && schedInfo && !isReminder && (
                           <span style={{ ...S.futureBadge, backgroundColor: schedInfo.color + "18", color: schedInfo.color }}>
                             {schedInfo.label}
@@ -631,7 +714,6 @@ export default function Booking() {
                         )}
                       </div>
                     </td>
-
                     <td>
                       <div className="cell-name">
                         <div className="avatar">{(b.name||"?").charAt(0).toUpperCase()}</div>
@@ -641,13 +723,11 @@ export default function Booking() {
                     <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{b.mobile}</td>
                     <td><div className="cell-loc"><span>📍</span><span className="cell-loc-text">{b.pickup}</span></div></td>
                     <td><div className="cell-loc"><span>🎯</span><span className="cell-loc-text">{b.drop||b.drop_location}</span></div></td>
-
                     <td>
                       {isScheduled && schedFmt ? (
                         <div style={S.schedCell}>
                           <span style={S.schedDate}>{schedFmt.date}</span>
                           <span style={S.schedTime}>{schedFmt.time}</span>
-                          {/* NEW: countdown label */}
                           {schedInfo && (
                             <span style={{ ...S.schedCountdown, color: schedInfo.color }}>
                               {schedInfo.label}
@@ -668,27 +748,22 @@ export default function Booking() {
                         <span style={S.schedNow}>⚡ Now</span>
                       )}
                     </td>
-
                     <td>
                       {b.recommended_driver_id
                         ? <span className="badge badge-purple" style={{ display:"inline-flex", gap:4 }}>⭐ {getDriverName(b.recommended_driver_id)}</span>
                         : <span style={{ color:"#94A3B8", fontSize:12 }}>—</span>}
                     </td>
-
                     <td>
                       {b.driver
                         ? <span className="badge badge-green">✓ {getDriverName(b.driver)}</span>
                         : <span className="badge badge-red">Not Assigned</span>}
                     </td>
-
                     <td>
                       {b.triptype
                         ? <span className={`badge ${b.triptype==="outstation"?"badge-purple":"badge-blue"}`}>{b.triptype}</span>
                         : "—"}
                     </td>
-
                     <td><span className={getStatusClass(b.status)}>{getStatusLabel(b.status)}</span></td>
-
                     <td>
                       {isDone ? (
                         <span className="badge badge-green">✅ Done</span>
@@ -722,6 +797,160 @@ export default function Booking() {
         )}
       </div>
 
+      {/* ═══════════════════ CREATE BOOKING MODAL ═══════════════════ */}
+      {showCreateForm && (
+        <div className="modal-overlay" style={{ zIndex:9999 }}>
+          <div className="modal modal-md" style={{ maxWidth:520 }}>
+            <div className="modal-header">
+              <div className="modal-header-inner">
+                <span style={{ fontSize:24 }}>🚖</span>
+                <span className="modal-title">Create New Booking</span>
+              </div>
+              <button className="modal-close" onClick={() => { setShowCreateForm(false); setPickupSugg([]); setDropSugg([]); }}>✕</button>
+            </div>
+
+            <div className="modal-body">
+              <div className="form-grid">
+                <div className="form-section-label">👤 Customer Details</div>
+                <div className="form-section-divider" />
+
+                <div className="form-field">
+                  <label className="form-label">Customer Name <span className="form-required">*</span></label>
+                  <input className="form-input" placeholder="Enter full name"
+                    value={newBooking.customer_name}
+                    onChange={(e) => setNewBooking((p) => ({ ...p, customer_name: e.target.value }))} />
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Mobile Number <span className="form-required">*</span></label>
+                  <input className="form-input" placeholder="10-digit mobile" maxLength={10}
+                    value={newBooking.customer_mobile}
+                    onChange={(e) => setNewBooking((p) => ({ ...p, customer_mobile: e.target.value.replace(/\D/g,"") }))} />
+                </div>
+
+                <div className="form-section-label" style={{ marginTop:8 }}>📍 Ride Details</div>
+                <div className="form-section-divider" />
+
+                {/* Pickup with autocomplete */}
+                <div className="form-field form-full">
+                  <label className="form-label">Pickup Location <span className="form-required">*</span></label>
+                  <div style={{ position:"relative" }}>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <input className="form-input" style={{ flex:1 }} placeholder="Search pickup area..."
+                        value={newBooking.pickup}
+                        onChange={(e) => {
+                          setNewBooking((p) => ({ ...p, pickup: e.target.value, pickup_lat: null, pickup_lng: null }));
+                          searchLocation("pickup", e.target.value);
+                        }} />
+                      <button type="button" onClick={getAdminCurrentLocation} disabled={locLoading}
+                        style={{ flexShrink:0, width:46, height:46, borderRadius:14, backgroundColor:"#EFF6FF", border:"1.5px solid #BFDBFE", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
+                        {locLoading
+                          ? <div style={{ width:18, height:18, border:"2.5px solid #bfdbfe", borderTopColor:"#2563EB", borderRadius:"50%", animation:"spin 0.8s linear infinite" }} />
+                          : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="3" fill="#2563EB" fillOpacity="0.2"/><circle cx="12" cy="12" r="7"/>
+                              <line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
+                            </svg>
+                        }
+                      </button>
+                    </div>
+                    {pickupSugg.length > 0 && (
+                      <div style={S.suggBox}>
+                        {pickupSugg.map((s, i) => (
+                          <div key={i} style={S.suggItem} onClick={() => selectPickupSugg(s)}>
+                            <span style={{ marginRight:8, fontSize:14 }}>📍</span>
+                            <span style={{ fontSize:12, color:"#1E293B", lineHeight:1.4 }}>{s.display_name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {newBooking.pickup_lat && (
+                    <div style={{ marginTop:6, display:"flex", alignItems:"center", gap:6, backgroundColor:"#EFF6FF", border:"1.5px solid #BFDBFE", borderRadius:10, padding:"6px 12px" }}>
+                      <span style={{ fontSize:12, color:"#2563EB", fontWeight:600 }}>📌 Pickup location set</span>
+                      <button onClick={() => setNewBooking(p => ({ ...p, pickup:"", pickup_lat:null, pickup_lng:null }))}
+                        style={{ marginLeft:"auto", background:"none", border:"none", fontSize:11, color:"#EF4444", fontWeight:700, cursor:"pointer" }}>✕ Clear</button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Drop with autocomplete */}
+                <div className="form-field form-full">
+                  <label className="form-label">Drop Location <span className="form-required">*</span></label>
+                  <div style={{ position:"relative" }}>
+                    <input className="form-input" placeholder="Search drop area..."
+                      value={newBooking.drop_location}
+                      onChange={(e) => {
+                        setNewBooking((p) => ({ ...p, drop_location: e.target.value }));
+                        searchLocation("drop", e.target.value);
+                      }} />
+                    {dropSugg.length > 0 && (
+                      <div style={S.suggBox}>
+                        {dropSugg.map((s, i) => (
+                          <div key={i} style={S.suggItem} onClick={() => selectDropSugg(s)}>
+                            <span style={{ marginRight:8, fontSize:14 }}>🏁</span>
+                            <span style={{ fontSize:12, color:"#1E293B", lineHeight:1.4 }}>{s.display_name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Trip type + schedule row */}
+                <div className="form-field">
+                  <label className="form-label">Trip Type</label>
+                  <div style={{ display:"flex", gap:8, marginTop:4 }}>
+                    {["local","outstation"].map((t) => (
+                      <button key={t} type="button"
+                        style={{ flex:1, padding:"10px 0", borderRadius:12, border:"1.5px solid", fontSize:13, fontWeight:600, cursor:"pointer",
+                          backgroundColor: newBooking.triptype === t ? "#2563EB" : "#F8FAFC",
+                          borderColor: newBooking.triptype === t ? "#2563EB" : "#E2E8F0",
+                          color: newBooking.triptype === t ? "#fff" : "#64748B" }}
+                        onClick={() => setNewBooking(p => ({ ...p, triptype: t }))}>
+                        {t === "local" ? "🏙️ Local" : "🗺️ Outstation"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="form-field" style={{ display:"flex", alignItems:"center", paddingTop:22 }}>
+                  <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:13, fontWeight:600, color:"#374151" }}>
+                    <input type="checkbox" checked={newBooking.is_scheduled}
+                      onChange={(e) => setNewBooking((p) => ({ ...p, is_scheduled: e.target.checked, scheduled_at: null }))}
+                      style={{ width:16, height:16, cursor:"pointer" }} />
+                    📅 Schedule for later
+                  </label>
+                </div>
+
+                {newBooking.is_scheduled && (
+                  <div className="form-field form-full">
+                    <label className="form-label">Scheduled Date & Time <span className="form-required">*</span></label>
+                    <input type="datetime-local" className="form-input"
+                      min={new Date().toISOString().slice(0,16)}
+                      onChange={(e) => setNewBooking((p) => ({ ...p, scheduled_at: e.target.value ? new Date(e.target.value) : null }))} />
+                    {newBooking.scheduled_at && (
+                      <div style={{ marginTop:6, backgroundColor:"#F0FDFA", border:"1.5px solid #99F6E4", borderRadius:10, padding:"6px 12px" }}>
+                        <span style={{ fontSize:12, fontWeight:700, color:"#0F766E" }}>
+                          📅 {fmtScheduled(newBooking.scheduled_at)?.full}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => { setShowCreateForm(false); setPickupSugg([]); setDropSugg([]); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={submitCreateBooking} disabled={creating}
+                style={{ background: creating ? "#94A3B8" : undefined }}>
+                {creating ? "⏳ Creating…" : "🚖 Create Booking"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ═══════════════════ ASSIGN MODAL ═══════════════════ */}
       {showForm && editBooking && (
         <div className="modal-overlay">
@@ -730,7 +959,6 @@ export default function Booking() {
               <div className="modal-header-inner">
                 <span style={{ fontSize:24 }}>🚗</span>
                 <span className="modal-title">
-                  {/* NEW: show pre-assign label for future bookings */}
                   {editBooking.is_scheduled && editBooking.scheduled_at && getScheduleInfo(editBooking.scheduled_at)?.type !== "imminent"
                     ? `Pre-assign — Booking #${editId}`
                     : `Assign — Booking #${editId}`}
@@ -748,7 +976,6 @@ export default function Booking() {
                   <div className="form-field form-full">
                     <div style={{
                       ...S.modalSchedBanner,
-                      /* NEW: color the banner based on how far away the ride is */
                       backgroundColor: getScheduleInfo(editBooking.scheduled_at)?.bg || "#F0FDFA",
                       borderColor: (getScheduleInfo(editBooking.scheduled_at)?.color || "#0F766E") + "66",
                     }}>
@@ -759,7 +986,6 @@ export default function Booking() {
                         </p>
                         <p style={S.modalSchedTime}>{fmtScheduled(editBooking.scheduled_at)?.full}</p>
                       </div>
-                      {/* NEW: time-away pill */}
                       <span style={{
                         ...S.modalSchedPill,
                         backgroundColor: (getScheduleInfo(editBooking.scheduled_at)?.color || "#0F766E") + "18",
@@ -768,7 +994,6 @@ export default function Booking() {
                         ⏰ {getScheduleInfo(editBooking.scheduled_at)?.label}
                       </span>
                     </div>
-                    {/* NEW: future booking notice */}
                     {["future","tomorrow"].includes(getScheduleInfo(editBooking.scheduled_at)?.type) && (
                       <div style={S.futureNotice}>
                         <span style={{ fontSize:16 }}>💡</span>
@@ -994,7 +1219,39 @@ export default function Booking() {
         </div>
       )}
 
+      {/* ═══════════════════ BOOKING SUCCESS POPUP ═══════════════════ */}
+      {showBookingSuccess && (
+        <div style={{
+          position:"fixed", bottom:32, left:"50%", transform:"translateX(-50%)",
+          zIndex:99999, animation:"slideUp 0.35s cubic-bezier(0.34,1.56,0.64,1)"
+        }}>
+          <div style={{
+            display:"flex", alignItems:"center", gap:14,
+            backgroundColor:"#fff", borderRadius:20,
+            padding:"16px 24px", minWidth:320,
+            boxShadow:"0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(37,99,235,0.12)",
+            border:"1.5px solid #BBF7D0"
+          }}>
+            <div style={{
+              width:44, height:44, borderRadius:"50%", backgroundColor:"#DCFCE7",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              fontSize:22, flexShrink:0
+            }}>✅</div>
+            <div style={{ flex:1 }}>
+              <p style={{ margin:0, fontSize:14, fontWeight:800, color:"#15803D" }}>Booking Created!</p>
+              <p style={{ margin:"2px 0 0", fontSize:12, color:"#64748B" }}>
+                Ride booked for <strong>{successBookingName}</strong> — pending driver assignment
+              </p>
+            </div>
+            <button onClick={() => setShowBookingSuccess(false)}
+              style={{ background:"none", border:"none", fontSize:16, color:"#94A3B8", cursor:"pointer", flexShrink:0 }}>✕</button>
+          </div>
+        </div>
+      )}
+
       <style>{`
+        @keyframes spin    { to { transform: rotate(360deg); } }
+        @keyframes slideUp { from { opacity:0; transform:translateX(-50%) translateY(20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
         @keyframes bellShake {
           0%,100%{transform:rotate(0)} 15%{transform:rotate(12deg)} 30%{transform:rotate(-10deg)}
@@ -1006,9 +1263,7 @@ export default function Booking() {
   );
 }
 
-/* ═══════════════════════════════════════════════════════
-   UPCOMING PANEL STYLES
-   ═══════════════════════════════════════════════════════ */
+/* ═══════════ UPCOMING PANEL STYLES ═══════════ */
 const U = {
   panel:       { backgroundColor:"#F5F3FF", border:"2px solid #DDD6FE", borderRadius:16, padding:"14px 16px", marginBottom:20 },
   header:      { width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", background:"none", border:"none", cursor:"pointer", padding:0, textAlign:"left" },
@@ -1038,9 +1293,7 @@ const U = {
   preAssignBtn:{ padding:"7px 14px", backgroundColor:"#7C3AED", color:"#fff", border:"none", borderRadius:20, fontSize:12, fontWeight:700, cursor:"pointer" },
 };
 
-/* ═══════════════════════════════════════════════════════
-   REMINDER PANEL STYLES
-   ═══════════════════════════════════════════════════════ */
+/* ═══════════ REMINDER PANEL STYLES ═══════════ */
 const R = {
   panel:       { backgroundColor:"#FFF7ED", border:"2px solid #FED7AA", borderRadius:16, padding:"14px 16px", marginBottom:20 },
   panelHeader: { display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 },
@@ -1073,10 +1326,13 @@ const R = {
   assignBtn:   { padding:"7px 14px", backgroundColor:"#2563EB", color:"#fff", border:"none", borderRadius:20, fontSize:12, fontWeight:700, cursor:"pointer" },
 };
 
-/* ═══════════════════════════════════════════════════════
-   TABLE / MODAL STYLES
-   ═══════════════════════════════════════════════════════ */
+/* ═══════════ TABLE / MODAL STYLES ═══════════ */
 const S = {
+  // ── NEW ──
+  createBtn:      { padding:"9px 18px", backgroundColor:"#2563EB", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6, boxShadow:"0 2px 8px rgba(37,99,235,0.3)", whiteSpace:"nowrap" },
+  suggBox:        { position:"absolute", top:"100%", left:0, right:0, backgroundColor:"#fff", borderRadius:14, boxShadow:"0 6px 20px rgba(0,0,0,0.12)", zIndex:9999, maxHeight:200, overflowY:"auto", marginTop:4, border:"1.5px solid #E2E8F0" },
+  suggItem:       { display:"flex", alignItems:"flex-start", padding:"10px 14px", borderBottom:"1px solid #F1F5F9", cursor:"pointer" },
+  // ── existing ──
   filterRow:      { display:"flex", alignItems:"center", gap:12, margin:"0 0 16px", flexWrap:"wrap" },
   tabs:           { display:"flex", gap:3, backgroundColor:"#F1F5F9", borderRadius:10, padding:4 },
   tab:            { padding:"6px 14px", borderRadius:8, border:"none", backgroundColor:"transparent", fontSize:13, fontWeight:600, color:"#64748B", cursor:"pointer", display:"flex", alignItems:"center", gap:6 },
@@ -1087,18 +1343,15 @@ const S = {
   schedDate:      { fontSize:12, fontWeight:700, color:"#0F766E" },
   schedTime:      { fontSize:12, fontWeight:600, color:"#0D9488" },
   schedStatus:    { fontSize:10, fontWeight:700, borderRadius:6, padding:"2px 6px", display:"inline-block", marginTop:1 },
-  /* NEW */
   schedCountdown: { fontSize:10, fontWeight:700 },
   schedNow:       { fontSize:11, color:"#94A3B8", fontWeight:500 },
   schedBadge:     { fontSize:10, fontWeight:700, backgroundColor:"#CCFBF1", color:"#0F766E", borderRadius:5, padding:"2px 5px", display:"inline-block" },
   reminderBadge:  { fontSize:10, fontWeight:700, backgroundColor:"#FEF3C7", color:"#D97706", borderRadius:5, padding:"2px 5px", display:"inline-block", animation:"pulse 1.5s ease infinite" },
-  /* NEW: future badge in table ID cell */
   futureBadge:    { fontSize:10, fontWeight:700, borderRadius:5, padding:"2px 5px", display:"inline-block" },
   modalSchedBanner: { display:"flex", alignItems:"center", gap:12, borderRadius:12, border:"1.5px solid", padding:"12px 14px", marginBottom:4 },
   modalSchedLabel:  { margin:0, fontSize:11, fontWeight:700, color:"#0D9488", textTransform:"uppercase", letterSpacing:"0.4px" },
   modalSchedTime:   { margin:"3px 0 0", fontSize:14, fontWeight:800, color:"#0F766E" },
   modalSchedPill:   { fontSize:11, fontWeight:700, borderRadius:8, padding:"4px 10px", whiteSpace:"nowrap" },
-  /* NEW: future booking notice in modal */
   futureNotice:   { display:"flex", alignItems:"flex-start", gap:8, backgroundColor:"#EFF6FF", border:"1.5px solid #BFDBFE", borderRadius:10, padding:"10px 12px", marginTop:8 },
   futureNoticeText:{ margin:0, fontSize:12, color:"#1E40AF", lineHeight:1.5 },
   lockedCell:     { display:"flex", alignItems:"center", gap:8 },
