@@ -155,7 +155,6 @@ const SchedulePicker = ({ scheduledAt, onChange }) => {
 
   return (
     <div style={sc.wrap}>
-      {/* Toggle row */}
       <div style={sc.toggleRow}>
         <button type="button"
           style={{ ...sc.btn, ...(mode === "now" ? sc.btnNow : {}) }}
@@ -169,7 +168,6 @@ const SchedulePicker = ({ scheduledAt, onChange }) => {
         </button>
       </div>
 
-      {/* Ride Now badge */}
       {mode === "now" && (
         <div style={sc.nowBadge}>
           <span>✅</span>
@@ -177,10 +175,18 @@ const SchedulePicker = ({ scheduledAt, onChange }) => {
         </div>
       )}
 
-      {/* Schedule picker */}
       {mode === "later" && (
         <div style={sc.laterWrap}>
-          {/* Summary pill */}
+          {/* Cancellation Policy Notice */}
+          <div style={sc.policyBox}>
+            <span style={{ fontSize: 16 }}>ℹ️</span>
+            <div style={{ flex: 1 }}>
+              <p style={sc.policyTitle}>Cancellation Policy</p>
+              <p style={sc.policyLine}>✅ <strong>Free cancellation</strong> if cancelled <strong>more than 1 hour</strong> before ride</p>
+              <p style={sc.policyLine}>💸 <strong>₹200 cancellation fee</strong> if cancelled <strong>within 1 hour</strong> of ride time</p>
+            </div>
+          </div>
+
           {scheduledAt && (
             <div style={sc.pill}>
               <span style={{ fontSize: 20 }}>🗓️</span>
@@ -196,7 +202,6 @@ const SchedulePicker = ({ scheduledAt, onChange }) => {
             </div>
           )}
 
-          {/* Calendar + Time side-by-side */}
           <div style={sc.pickerBox}>
             <MiniCalendar selectedDate={scheduledAt} onChange={handleDateChange} minDate={minDate} />
             <div style={sc.divider} />
@@ -204,6 +209,112 @@ const SchedulePicker = ({ scheduledAt, onChange }) => {
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════
+   CANCELLATION PENALTY MODAL
+   ═══════════════════════════════════════════════════════ */
+const CancelConfirmModal = ({ booking, onConfirm, onClose, cancelling }) => {
+  const scheduledTime = booking?.scheduled_at ? new Date(booking.scheduled_at) : null;
+  const now = new Date();
+  const minsUntilRide = scheduledTime ? (scheduledTime - now) / (1000 * 60) : Infinity;
+  const isWithinOneHour = minsUntilRide < 60 && minsUntilRide > 0;
+  const isPastRide = minsUntilRide <= 0;
+  const PENALTY_AMOUNT = 200;
+
+  return (
+    <div style={cm.overlay}>
+      <div style={cm.box}>
+        {/* Icon */}
+        <div style={{ textAlign: "center", marginBottom: 16 }}>
+          <div style={cm.iconWrap}>
+            {isWithinOneHour ? "💸" : "🗑️"}
+          </div>
+          <h3 style={cm.title}>
+            {isWithinOneHour ? "Late Cancellation Fee Applies" : "Cancel Booking?"}
+          </h3>
+        </div>
+
+        {/* Policy Block */}
+        {booking?.is_scheduled && scheduledTime && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={cm.schedInfo}>
+              <span>🗓️</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#0F766E" }}>
+                {scheduledTime.toLocaleDateString("en-IN", { weekday:"short", day:"numeric", month:"short" })}
+                {" · "}
+                {scheduledTime.toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true })}
+              </span>
+            </div>
+
+            {isWithinOneHour && !isPastRide && (
+              <div style={cm.penaltyBox}>
+                <div style={cm.penaltyRow}>
+                  <span style={{ fontSize: 28 }}>💸</span>
+                  <div>
+                    <p style={cm.penaltyTitle}>₹{PENALTY_AMOUNT} Cancellation Fee</p>
+                    <p style={cm.penaltySub}>
+                      You're cancelling within <strong>1 hour</strong> of your scheduled ride.
+                      A fee of <strong>₹{PENALTY_AMOUNT}</strong> will be charged to your account.
+                    </p>
+                  </div>
+                </div>
+                <div style={cm.penaltyBreakdown}>
+                  <div style={cm.breakdownRow}>
+                    <span style={cm.breakdownLabel}>⏰ Time until ride</span>
+                    <span style={cm.breakdownValue}>{Math.max(0, Math.floor(minsUntilRide))} min left</span>
+                  </div>
+                  <div style={cm.breakdownRow}>
+                    <span style={cm.breakdownLabel}>💳 Cancellation charge</span>
+                    <span style={{ ...cm.breakdownValue, color: "#DC2626", fontWeight: 800 }}>₹{PENALTY_AMOUNT}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!isWithinOneHour && !isPastRide && (
+              <div style={cm.freeBox}>
+                <span style={{ fontSize: 20 }}>✅</span>
+                <div>
+                  <p style={cm.freeTitle}>Free Cancellation</p>
+                  <p style={cm.freeSub}>
+                    More than 1 hour before your ride — no charge applies.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!booking?.is_scheduled && (
+          <p style={cm.plainMsg}>Are you sure you want to cancel this booking?</p>
+        )}
+
+        {/* Buttons */}
+        <div style={cm.btnRow}>
+          <button style={cm.keepBtn} onClick={onClose} disabled={cancelling}>
+            Keep Booking
+          </button>
+          <button
+            style={{ ...cm.cancelBtn, ...(isWithinOneHour ? cm.cancelBtnPenalty : {}) }}
+            onClick={() => onConfirm(isWithinOneHour, PENALTY_AMOUNT)}
+            disabled={cancelling}>
+            {cancelling
+              ? "⏳ Cancelling…"
+              : isWithinOneHour
+                ? `Cancel & Pay ₹${PENALTY_AMOUNT}`
+                : "Yes, Cancel Ride"}
+          </button>
+        </div>
+
+        {isWithinOneHour && (
+          <p style={cm.disclaimerTxt}>
+            By proceeding, you agree to pay ₹{PENALTY_AMOUNT} as per our cancellation policy.
+          </p>
+        )}
+      </div>
     </div>
   );
 };
@@ -224,6 +335,11 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
   const [ratingComment,    setRatingComment]    = useState("");
   const [ratingSubmitted,  setRatingSubmitted]  = useState(false);
   const [ratingSubmitting, setRatingSubmitting] = useState(false);
+
+  // ── NEW: cancel confirmation modal ──
+  const [showCancelModal,  setShowCancelModal]  = useState(false);
+  const [cancelling,       setCancelling]       = useState(false);
+  const [cancelResult,     setCancelResult]     = useState(null); // { penalised, amount }
 
   const timerRef        = useRef(null);
   const countRef        = useRef(null);
@@ -307,6 +423,31 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
     finally { setRatingSubmitting(false); }
   };
 
+  /* ── NEW: handle cancel with penalty ── */
+  const handleCancelConfirm = async (hasPenalty, penaltyAmount) => {
+    setCancelling(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/bookings/${bookingId}/cancel-scheduled`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hasPenalty, penaltyAmount }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowCancelModal(false);
+        setCancelResult({ penalised: hasPenalty, amount: penaltyAmount });
+        // brief delay then close
+        setTimeout(() => onClose("cancelled"), hasPenalty ? 3500 : 1500);
+      } else {
+        alert(data.message || "Cancellation failed.");
+      }
+    } catch {
+      alert("Network error. Please try again.");
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   if (loading) return <div style={tr.center}><div style={tr.spinner}/><p style={tr.spinnerTxt}>Loading…</p></div>;
   if (!booking) return null;
 
@@ -327,6 +468,40 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
   const activeIdx  = steps.findIndex((s) => s.key === status);
   const showDriver = ["accepted","inride","completed"].includes(status) && booking.driver_name;
 
+  /* Penalty result screen */
+  if (cancelResult) {
+    return (
+      <div style={tr.wrap}>
+        <div style={{ textAlign: "center", padding: "24px 16px" }}>
+          <div style={{ fontSize: 56, marginBottom: 12 }}>
+            {cancelResult.penalised ? "💸" : "✅"}
+          </div>
+          <h3 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 800, color: "#1E293B" }}>
+            {cancelResult.penalised ? "Booking Cancelled" : "Booking Cancelled"}
+          </h3>
+          {cancelResult.penalised ? (
+            <>
+              <p style={{ margin: "0 0 16px", fontSize: 14, color: "#64748B", lineHeight: 1.6 }}>
+                Your booking has been cancelled. A cancellation fee of
+              </p>
+              <div style={{ display: "inline-block", backgroundColor: "#FEE2E2", border: "2px solid #FECDD3", borderRadius: 16, padding: "12px 28px", marginBottom: 16 }}>
+                <span style={{ fontSize: 28, fontWeight: 900, color: "#DC2626" }}>₹{cancelResult.amount}</span>
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9F1239", fontWeight: 600 }}>will be charged</p>
+              </div>
+              <p style={{ margin: 0, fontSize: 12, color: "#94A3B8" }}>
+                The amount will be deducted as per our cancellation policy.
+              </p>
+            </>
+          ) : (
+            <p style={{ margin: 0, fontSize: 14, color: "#64748B" }}>
+              Your booking has been cancelled successfully. No charge applies.
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={tr.wrap}>
       {/* header */}
@@ -342,7 +517,8 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {status==="completed" && <button style={tr.doneBtn} onClick={()=>onClose(status)}>Done ✓</button>}
-          {(isWaiting||isAllBusy) && <button style={tr.cancelBtn} onClick={()=>onClose(status)}>✕ Cancel</button>}
+          {isWaiting && <button style={tr.cancelBtn} onClick={()=>onClose(status)}>✕ Cancel</button>}
+          {isAllBusy && <button style={tr.cancelBtn} onClick={()=>onClose(status)}>✕ Cancel</button>}
           <button style={tr.closeIcon} onClick={()=>onClose(status)} title="Close">✕</button>
         </div>
       </div>
@@ -367,7 +543,24 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
               </span>
             </div>
           )}
-          <button style={tr.cancelScheduledBtn} onClick={()=>onClose(status)}>✕ Cancel Booking</button>
+
+          {/* ── NEW: Cancellation Policy in scheduled view ── */}
+          <div style={tr.policyMiniBox}>
+            <p style={tr.policyMiniTitle}>📋 Cancellation Policy</p>
+            {(() => {
+              const rideTime = booking.scheduled_at ? new Date(booking.scheduled_at) : null;
+              const minsLeft = rideTime ? (rideTime - new Date()) / (1000 * 60) : Infinity;
+              return minsLeft > 60
+                ? <p style={tr.policyMiniLine}>✅ Free cancellation available (more than 1 hr to go)</p>
+                : minsLeft > 0
+                  ? <p style={{ ...tr.policyMiniLine, color: "#DC2626" }}>💸 ₹200 fee applies (within 1 hr of ride)</p>
+                  : <p style={{ ...tr.policyMiniLine, color: "#DC2626" }}>🚫 Ride time has passed</p>;
+            })()}
+          </div>
+
+          <button style={tr.cancelScheduledBtn} onClick={() => setShowCancelModal(true)}>
+            ✕ Cancel Booking
+          </button>
         </div>
       )}
 
@@ -538,6 +731,16 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
         </div>
       )}
 
+      {/* ── NEW: Cancel confirmation modal ── */}
+      {showCancelModal && (
+        <CancelConfirmModal
+          booking={booking}
+          onConfirm={handleCancelConfirm}
+          onClose={() => setShowCancelModal(false)}
+          cancelling={cancelling}
+        />
+      )}
+
       <style>{`
         @keyframes spin   { to { transform: rotate(360deg); } }
         @keyframes bounce { 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }
@@ -602,7 +805,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
   const [darea,setDArea]=useState(initialDrop||"");
   const [triptype,setTriptype]=useState(initialTriptype||"");
   const [preferredDriver,setPreferredDriver]=useState(null);
-  const [scheduledAt,setScheduledAt]=useState(null);           // ← NEW
+  const [scheduledAt,setScheduledAt]=useState(null);
   const [suggestions,setSuggestions]=useState([]);
   const [dropSuggestions,setDropSuggestions]=useState([]);
   const [errors,setErrors]=useState({});
@@ -681,8 +884,8 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
         pickup:area,pickupLat:pickupCoords?.lat??null,pickupLng:pickupCoords?.lng??null,
         drop:darea,triptype,bookingphnno,
         recommended_driver_id:preferredDriver?.id??null,
-        scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,   // ← NEW
-        is_scheduled: !!scheduledAt,                                     // ← NEW
+        scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,
+        is_scheduled: !!scheduledAt,
       });
       if(res.data.success){
         if(miniMap.current){miniMap.current.remove();miniMap.current=null;}
@@ -714,7 +917,6 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
     </div>
   );
 
-  /* Dynamic submit label */
   const submitLabel = submitting
     ? (scheduledAt ? "⏳ Scheduling…" : "⏳ Booking…")
     : scheduledAt
@@ -781,24 +983,14 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
         </div>
         {errors.triptype&&<p style={st.err}>{errors.triptype}</p>}
 
-        {/* ─── SCHEDULE PICKER ─── */}
         <label style={st.label}>When do you need the ride?</label>
         <SchedulePicker scheduledAt={scheduledAt} onChange={setScheduledAt}/>
         {errors.schedule&&<p style={st.err}>{errors.schedule}</p>}
 
         <RecommendedDrivers phone={phone} selectedId={preferredDriver?.id??null} onSelect={setPreferredDriver}/>
 
-        {/* <button
-          style={{
-            ...st.submitBtn,
-            opacity: submitting ? 0.7 : 1,
-            backgroundColor: scheduledAt ? "#0F766E" : "#2563EB",
-            boxShadow: scheduledAt ? "0 4px 14px rgba(15,118,110,0.35)" : "0 4px 14px rgba(37,99,235,0.3)",
-          }}
-          onClick={handleSubmit} disabled={submitting}>
-          {submitLabel} */}
-        <button style={{...st.submitBtn,opacity:submitting?0.7:1}} onClick={handleSubmit} disabled={submitting}>
-          {submitting?(preferredDriver?` Sending to ${preferredDriver.name.split(" ")[0]}…`:"⏳ Booking..."):(preferredDriver?`Book with ${preferredDriver.name.split(" ")[0]}`:"Book Ride")}
+        <button style={{...st.submitBtn,opacity:submitting?0.7:1,backgroundColor:scheduledAt?"#0F766E":"#2563EB"}} onClick={handleSubmit} disabled={submitting}>
+          {submitLabel}
         </button>
       </div>
     </div>
@@ -811,7 +1003,6 @@ export default BookingForm;
    STYLES
    ═══════════════════════════════════════════════════════ */
 
-/* Calendar */
 const cal = {
   wrap:  { flex:"1 1 0", minWidth:0 },
   nav:   { display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 },
@@ -826,7 +1017,6 @@ const cal = {
   empty: { cursor:"default", pointerEvents:"none" },
 };
 
-/* Time picker */
 const tp = {
   wrap:   { flex:"0 0 82px", display:"flex", flexDirection:"column" },
   hd:     { margin:"0 0 6px", fontSize:9, fontWeight:700, color:"#94A3B8", textTransform:"uppercase", letterSpacing:"0.5px" },
@@ -836,33 +1026,133 @@ const tp = {
   dis:    { color:"#CBD5E1", cursor:"not-allowed", backgroundColor:"#FAFAFA", borderColor:"#F1F5F9" },
 };
 
-/* Schedule picker */
 const sc = {
-  wrap:      { margin:"6px 0 4px" },
-  toggleRow: { display:"flex", gap:8, marginBottom:10 },
-  btn:       { flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"12px 0", borderRadius:14, border:"1.5px solid #E2E8F0", backgroundColor:"#F8FAFC", fontSize:13, fontWeight:600, color:"#64748B", cursor:"pointer" },
-  btnNow:    { backgroundColor:"#2563EB", borderColor:"#2563EB", color:"#fff", boxShadow:"0 3px 10px rgba(37,99,235,0.25)" },
-  btnSched:  { backgroundColor:"#0F766E", borderColor:"#0F766E", color:"#fff", boxShadow:"0 3px 10px rgba(15,118,110,0.25)" },
-  nowBadge:  { display:"flex", alignItems:"center", gap:8, backgroundColor:"#F0FDF4", border:"1.5px solid #BBF7D0", borderRadius:12, padding:"10px 14px" },
-  nowTxt:    { fontSize:12, fontWeight:600, color:"#16A34A" },
-  laterWrap: { display:"flex", flexDirection:"column", gap:10 },
-  pill:      { display:"flex", alignItems:"center", gap:10, backgroundColor:"#F0FDFA", border:"1.5px solid #99F6E4", borderRadius:14, padding:"10px 14px" },
-  pillDate:  { margin:0, fontSize:13, fontWeight:700, color:"#0F766E" },
-  pillTime:  { margin:"2px 0 0", fontSize:12, color:"#0D9488", fontWeight:600 },
-  pillCheck: { marginLeft:"auto", fontSize:11, color:"#0F766E", fontWeight:700, backgroundColor:"#CCFBF1", borderRadius:6, padding:"3px 8px", whiteSpace:"nowrap" },
-  pickerBox: { display:"flex", gap:10, backgroundColor:"#F8FAFC", borderRadius:16, padding:"12px 10px", border:"1.5px solid #E2E8F0" },
-  divider:   { width:1, backgroundColor:"#E2E8F0", flexShrink:0 },
+  wrap:       { margin:"6px 0 4px" },
+  toggleRow:  { display:"flex", gap:8, marginBottom:10 },
+  btn:        { flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"12px 0", borderRadius:14, border:"1.5px solid #E2E8F0", backgroundColor:"#F8FAFC", fontSize:13, fontWeight:600, color:"#64748B", cursor:"pointer" },
+  btnNow:     { backgroundColor:"#2563EB", borderColor:"#2563EB", color:"#fff", boxShadow:"0 3px 10px rgba(37,99,235,0.25)" },
+  btnSched:   { backgroundColor:"#0F766E", borderColor:"#0F766E", color:"#fff", boxShadow:"0 3px 10px rgba(15,118,110,0.25)" },
+  nowBadge:   { display:"flex", alignItems:"center", gap:8, backgroundColor:"#F0FDF4", border:"1.5px solid #BBF7D0", borderRadius:12, padding:"10px 14px" },
+  nowTxt:     { fontSize:12, fontWeight:600, color:"#16A34A" },
+  laterWrap:  { display:"flex", flexDirection:"column", gap:10 },
+
+  /* ── NEW: policy notice ── */
+  policyBox:      { display:"flex", gap:10, backgroundColor:"#FFF7ED", border:"1.5px solid #FED7AA", borderRadius:12, padding:"10px 12px" },
+  policyTitle:    { margin:"0 0 4px", fontSize:11, fontWeight:800, color:"#92400E", textTransform:"uppercase", letterSpacing:"0.3px" },
+  policyLine:     { margin:"2px 0 0", fontSize:11, color:"#92400E", lineHeight:1.5 },
+
+  pill:       { display:"flex", alignItems:"center", gap:10, backgroundColor:"#F0FDFA", border:"1.5px solid #99F6E4", borderRadius:14, padding:"10px 14px" },
+  pillDate:   { margin:0, fontSize:13, fontWeight:700, color:"#0F766E" },
+  pillTime:   { margin:"2px 0 0", fontSize:12, color:"#0D9488", fontWeight:600 },
+  pillCheck:  { marginLeft:"auto", fontSize:11, color:"#0F766E", fontWeight:700, backgroundColor:"#CCFBF1", borderRadius:6, padding:"3px 8px", whiteSpace:"nowrap" },
+  pickerBox:  { display:"flex", gap:10, backgroundColor:"#F8FAFC", borderRadius:16, padding:"12px 10px", border:"1.5px solid #E2E8F0" },
+  divider:    { width:1, backgroundColor:"#E2E8F0", flexShrink:0 },
+};
+
+/* Cancel confirm modal */
+const cm = {
+  overlay:       { position:"fixed", inset:0, backgroundColor:"rgba(0,0,0,0.65)", zIndex:10000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 },
+  box:           { backgroundColor:"#fff", borderRadius:24, padding:24, maxWidth:360, width:"100%", boxShadow:"0 8px 40px rgba(0,0,0,0.25)" },
+  iconWrap:      { fontSize:48, marginBottom:8 },
+  title:         { margin:0, fontSize:18, fontWeight:800, color:"#1E293B" },
+  schedInfo:     { display:"flex", alignItems:"center", gap:8, backgroundColor:"#F0FDFA", border:"1.5px solid #99F6E4", borderRadius:10, padding:"8px 12px", marginBottom:10 },
+  penaltyBox:    { backgroundColor:"#FEF2F2", border:"1.5px solid #FECACA", borderRadius:14, padding:"12px 14px" },
+  penaltyRow:    { display:"flex", alignItems:"flex-start", gap:10, marginBottom:10 },
+  penaltyTitle:  { margin:"0 0 4px", fontSize:15, fontWeight:800, color:"#DC2626" },
+  penaltySub:    { margin:0, fontSize:13, color:"#9F1239", lineHeight:1.5 },
+  penaltyBreakdown: { backgroundColor:"#fff", borderRadius:10, padding:"10px 12px", display:"flex", flexDirection:"column", gap:6 },
+  breakdownRow:  { display:"flex", justifyContent:"space-between", alignItems:"center" },
+  breakdownLabel:{ fontSize:12, color:"#64748B", fontWeight:600 },
+  breakdownValue:{ fontSize:13, color:"#1E293B", fontWeight:700 },
+  freeBox:       { display:"flex", alignItems:"flex-start", gap:10, backgroundColor:"#F0FDF4", border:"1.5px solid #BBF7D0", borderRadius:12, padding:"12px 14px" },
+  freeTitle:     { margin:"0 0 2px", fontSize:14, fontWeight:700, color:"#15803D" },
+  freeSub:       { margin:0, fontSize:12, color:"#166534" },
+  plainMsg:      { textAlign:"center", fontSize:14, color:"#475569", margin:"0 0 8px" },
+  btnRow:        { display:"flex", gap:10, marginTop:16 },
+  keepBtn:       { flex:1, padding:"13px 0", backgroundColor:"#F1F5F9", color:"#475569", border:"1.5px solid #E2E8F0", borderRadius:12, fontWeight:700, fontSize:14, cursor:"pointer" },
+  cancelBtn:     { flex:1.4, padding:"13px 0", backgroundColor:"#EF4444", color:"#fff", border:"none", borderRadius:12, fontWeight:700, fontSize:14, cursor:"pointer" },
+  cancelBtnPenalty: { backgroundColor:"#DC2626", fontSize:13 },
+  disclaimerTxt: { margin:"12px 0 0", textAlign:"center", fontSize:11, color:"#94A3B8", lineHeight:1.5 },
 };
 
 /* Tracker */
-const tr={wrap:{padding:"4px 0 8px"},center:{display:"flex",flexDirection:"column",alignItems:"center",padding:"24px 0"},spinner:{width:28,height:28,border:"3px solid #E2E8F0",borderTopColor:"#2563EB",borderRadius:"50%",animation:"spin 0.8s linear infinite"},spinnerTxt:{marginTop:10,fontSize:12,color:"#94A3B8"},header:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16},headerSub:{margin:0,fontSize:11,color:"#94A3B8",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.4px"},headerTitle:{margin:"3px 0 0",fontSize:18,fontWeight:800,color:"#1E293B"},doneBtn:{backgroundColor:"#2563EB",color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",fontSize:13,fontWeight:700,cursor:"pointer"},cancelBtn:{backgroundColor:"#FFF1F2",color:"#9F1239",border:"1.5px solid #FECDD3",borderRadius:10,padding:"8px 14px",fontSize:13,fontWeight:700,cursor:"pointer"},closeIcon:{width:32,height:32,borderRadius:"50%",backgroundColor:"#F1F5F9",border:"1.5px solid #E2E8F0",fontSize:15,fontWeight:700,color:"#64748B",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0},
-scheduledBox:{backgroundColor:"#F0FDFA",border:"1.5px solid #99F6E4",borderRadius:14,padding:"14px",marginBottom:14},
-schedTimeBox:{display:"flex",alignItems:"center",gap:8,backgroundColor:"#CCFBF1",borderRadius:10,padding:"8px 12px",marginBottom:10},
-cancelScheduledBtn:{width:"100%",padding:"10px 0",backgroundColor:"#FEE2E2",color:"#9F1239",border:"1.5px solid #FECDD3",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer"},
-waitBox:{backgroundColor:"#FFFBEB",border:"1.5px solid #FDE68A",borderRadius:14,padding:"14px",marginBottom:14},countdownBox:{backgroundColor:"#FEF3C7",borderRadius:12,padding:"14px 16px",textAlign:"center",border:"1px solid #FDE68A"},countdownLabel:{margin:"0 0 4px",fontSize:10,fontWeight:700,color:"#92400E",textTransform:"uppercase",letterSpacing:"0.8px"},countdownTime:{margin:"0 0 10px",fontSize:38,fontWeight:900,color:"#D97706",fontFamily:"monospace",letterSpacing:2},progressBg:{height:8,backgroundColor:"#FDE68A",borderRadius:999,overflow:"hidden",marginBottom:6},progressFill:{height:"100%",borderRadius:999,transition:"width 1s linear, background-color 0.5s"},countdownSub:{margin:0,fontSize:11,color:"#B45309",fontWeight:600},expiredBox:{backgroundColor:"#FFF1F2",border:"1.5px solid #FECDD3",borderRadius:12,padding:"16px",textAlign:"center",marginTop:10},rebookBtn:{width:"100%",padding:"13px 0",backgroundColor:"#2563EB",border:"none",borderRadius:12,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer"},busyBox:{backgroundColor:"#FFF1F2",border:"1.5px solid #FECDD3",borderRadius:14,padding:"14px",marginBottom:14},bannerTitle:{margin:0,fontSize:13,fontWeight:700},bannerSub:{margin:"3px 0 0",fontSize:12},stepSub:{margin:"2px 0 0",fontSize:11,color:"#64748B"},driverCard:{display:"flex",alignItems:"center",gap:12,backgroundColor:"#F0FDF4",border:"1.5px solid #BBF7D0",borderRadius:14,padding:"12px 14px",marginBottom:12},driverAvatar:{width:42,height:42,borderRadius:"50%",backgroundColor:"#16A34A",color:"#fff",fontSize:16,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0},driverName:{margin:0,fontSize:14,fontWeight:700,color:"#1E293B"},driverPhone:{display:"block",margin:"2px 0",fontSize:13,color:"#2563EB",textDecoration:"none",fontWeight:600},driverLabel:{margin:0,fontSize:11,color:"#64748B"},statusPill:{borderRadius:20,padding:"4px 10px",fontSize:11,fontWeight:700},searchingBox:{display:"flex",flexDirection:"column",alignItems:"center",padding:"10px 0 12px"},searchingTxt:{margin:0,fontSize:12,color:"#64748B"},routeBox:{backgroundColor:"#F8FAFC",borderRadius:10,padding:"10px 12px",marginBottom:10},routeDot:{width:7,height:7,borderRadius:"50%",flexShrink:0},routeTxt:{margin:0,fontSize:12,color:"#1E293B",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"},pollNote:{margin:0,textAlign:"center",fontSize:11,color:"#CBD5E1"}};
+const tr={
+  wrap:{padding:"4px 0 8px"},center:{display:"flex",flexDirection:"column",alignItems:"center",padding:"24px 0"},
+  spinner:{width:28,height:28,border:"3px solid #E2E8F0",borderTopColor:"#2563EB",borderRadius:"50%",animation:"spin 0.8s linear infinite"},
+  spinnerTxt:{marginTop:10,fontSize:12,color:"#94A3B8"},
+  header:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16},
+  headerSub:{margin:0,fontSize:11,color:"#94A3B8",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.4px"},
+  headerTitle:{margin:"3px 0 0",fontSize:18,fontWeight:800,color:"#1E293B"},
+  doneBtn:{backgroundColor:"#2563EB",color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",fontSize:13,fontWeight:700,cursor:"pointer"},
+  cancelBtn:{backgroundColor:"#FFF1F2",color:"#9F1239",border:"1.5px solid #FECDD3",borderRadius:10,padding:"8px 14px",fontSize:13,fontWeight:700,cursor:"pointer"},
+  closeIcon:{width:32,height:32,borderRadius:"50%",backgroundColor:"#F1F5F9",border:"1.5px solid #E2E8F0",fontSize:15,fontWeight:700,color:"#64748B",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0},
+  scheduledBox:{backgroundColor:"#F0FDFA",border:"1.5px solid #99F6E4",borderRadius:14,padding:"14px",marginBottom:14},
+  schedTimeBox:{display:"flex",alignItems:"center",gap:8,backgroundColor:"#CCFBF1",borderRadius:10,padding:"8px 12px",marginBottom:10},
+  /* ── NEW ── */
+  policyMiniBox:{backgroundColor:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:10,padding:"8px 12px",marginBottom:10},
+  policyMiniTitle:{margin:"0 0 4px",fontSize:10,fontWeight:800,color:"#92400E",textTransform:"uppercase",letterSpacing:"0.4px"},
+  policyMiniLine:{margin:0,fontSize:11,color:"#92400E",fontWeight:600},
+  cancelScheduledBtn:{width:"100%",padding:"10px 0",backgroundColor:"#FEE2E2",color:"#9F1239",border:"1.5px solid #FECDD3",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer"},
+  waitBox:{backgroundColor:"#FFFBEB",border:"1.5px solid #FDE68A",borderRadius:14,padding:"14px",marginBottom:14},
+  countdownBox:{backgroundColor:"#FEF3C7",borderRadius:12,padding:"14px 16px",textAlign:"center",border:"1px solid #FDE68A"},
+  countdownLabel:{margin:"0 0 4px",fontSize:10,fontWeight:700,color:"#92400E",textTransform:"uppercase",letterSpacing:"0.8px"},
+  countdownTime:{margin:"0 0 10px",fontSize:38,fontWeight:900,color:"#D97706",fontFamily:"monospace",letterSpacing:2},
+  progressBg:{height:8,backgroundColor:"#FDE68A",borderRadius:999,overflow:"hidden",marginBottom:6},
+  progressFill:{height:"100%",borderRadius:999,transition:"width 1s linear, background-color 0.5s"},
+  countdownSub:{margin:0,fontSize:11,color:"#B45309",fontWeight:600},
+  expiredBox:{backgroundColor:"#FFF1F2",border:"1.5px solid #FECDD3",borderRadius:12,padding:"16px",textAlign:"center",marginTop:10},
+  rebookBtn:{width:"100%",padding:"13px 0",backgroundColor:"#2563EB",border:"none",borderRadius:12,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer"},
+  busyBox:{backgroundColor:"#FFF1F2",border:"1.5px solid #FECDD3",borderRadius:14,padding:"14px",marginBottom:14},
+  bannerTitle:{margin:0,fontSize:13,fontWeight:700},bannerSub:{margin:"3px 0 0",fontSize:12},
+  stepSub:{margin:"2px 0 0",fontSize:11,color:"#64748B"},
+  driverCard:{display:"flex",alignItems:"center",gap:12,backgroundColor:"#F0FDF4",border:"1.5px solid #BBF7D0",borderRadius:14,padding:"12px 14px",marginBottom:12},
+  driverAvatar:{width:42,height:42,borderRadius:"50%",backgroundColor:"#16A34A",color:"#fff",fontSize:16,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0},
+  driverName:{margin:0,fontSize:14,fontWeight:700,color:"#1E293B"},
+  driverPhone:{display:"block",margin:"2px 0",fontSize:13,color:"#2563EB",textDecoration:"none",fontWeight:600},
+  driverLabel:{margin:0,fontSize:11,color:"#64748B"},
+  statusPill:{borderRadius:20,padding:"4px 10px",fontSize:11,fontWeight:700},
+  searchingBox:{display:"flex",flexDirection:"column",alignItems:"center",padding:"10px 0 12px"},
+  searchingTxt:{margin:0,fontSize:12,color:"#64748B"},
+  routeBox:{backgroundColor:"#F8FAFC",borderRadius:10,padding:"10px 12px",marginBottom:10},
+  routeDot:{width:7,height:7,borderRadius:"50%",flexShrink:0},
+  routeTxt:{margin:0,fontSize:12,color:"#1E293B",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"},
+  pollNote:{margin:0,textAlign:"center",fontSize:11,color:"#CBD5E1"},
+};
 
-/* Form */
-const st={overlay:{position:"fixed",inset:0,backgroundColor:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16},sheet:{position:"relative",width:"100%",maxWidth:420,backgroundColor:"#fff",borderRadius:28,padding:"48px 20px 24px",maxHeight:"92vh",overflowY:"auto"},closeBtn:{position:"absolute",top:14,right:14,width:36,height:36,borderRadius:"50%",backgroundColor:"#F8FAFC",border:"none",fontSize:18,fontWeight:700,cursor:"pointer"},sheetTitle:{margin:"0 0 16px",fontSize:20,fontWeight:700,color:"#1E293B",textAlign:"center"},label:{display:"block",fontSize:13,fontWeight:600,color:"#64748B",margin:"10px 0 4px"},input:{width:"100%",boxSizing:"border-box",backgroundColor:"#F8FAFC",border:"1.5px solid #E2E8F0",borderRadius:14,padding:"12px 14px",fontSize:14,color:"#1E293B",outline:"none"},inputErr:{borderColor:"#EF4444"},err:{margin:"4px 0 0",fontSize:12,color:"#EF4444"},inputRow:{display:"flex",alignItems:"center",gap:8},inputInner:{flex:1,boxSizing:"border-box",backgroundColor:"#F8FAFC",border:"1.5px solid #E2E8F0",borderRadius:14,padding:"12px 14px",fontSize:14,color:"#1E293B",outline:"none"},locBtn:{flexShrink:0,width:46,height:46,borderRadius:14,backgroundColor:"#EFF6FF",border:"1.5px solid #BFDBFE",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"},spinner:{width:18,height:18,border:"2.5px solid #bfdbfe",borderTopColor:"#2563EB",borderRadius:"50%",animation:"spin 0.8s linear infinite"},suggBox:{position:"absolute",top:"100%",left:0,right:0,backgroundColor:"#fff",borderRadius:14,boxShadow:"0 6px 20px rgba(0,0,0,0.12)",zIndex:20,maxHeight:200,overflowY:"auto",marginTop:4},suggItem:{display:"flex",alignItems:"flex-start",padding:"10px 14px",borderBottom:"1px solid #F1F5F9",cursor:"pointer"},miniMapWrap:{margin:"8px 0 4px",borderRadius:14,overflow:"hidden",border:"1.5px solid #BFDBFE"},miniMap:{width:"100%",height:110},miniMapFooter:{display:"flex",alignItems:"center",gap:6,backgroundColor:"#EFF6FF",padding:"6px 12px"},clearLocBtn:{marginLeft:"auto",background:"none",border:"none",fontSize:11,color:"#EF4444",fontWeight:700,cursor:"pointer"},tripBtn:{flex:1,padding:"12px 0",borderRadius:14,border:"1.5px solid #E2E8F0",backgroundColor:"#F8FAFC",fontSize:14,fontWeight:600,color:"#64748B",cursor:"pointer"},tripActive:{backgroundColor:"#2563EB",borderColor:"#2563EB",color:"#fff"},submitBtn:{width:"100%",padding:"16px 0",border:"none",borderRadius:18,fontSize:16,fontWeight:800,color:"#fff",cursor:"pointer",marginTop:12,transition:"background-color 0.3s, opacity 0.2s"}};
+const st={
+  overlay:{position:"fixed",inset:0,backgroundColor:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16},
+  sheet:{position:"relative",width:"100%",maxWidth:420,backgroundColor:"#fff",borderRadius:28,padding:"48px 20px 24px",maxHeight:"92vh",overflowY:"auto"},
+  closeBtn:{position:"absolute",top:14,right:14,width:36,height:36,borderRadius:"50%",backgroundColor:"#F8FAFC",border:"none",fontSize:18,fontWeight:700,cursor:"pointer"},
+  sheetTitle:{margin:"0 0 16px",fontSize:20,fontWeight:700,color:"#1E293B",textAlign:"center"},
+  label:{display:"block",fontSize:13,fontWeight:600,color:"#64748B",margin:"10px 0 4px"},
+  input:{width:"100%",boxSizing:"border-box",backgroundColor:"#F8FAFC",border:"1.5px solid #E2E8F0",borderRadius:14,padding:"12px 14px",fontSize:14,color:"#1E293B",outline:"none"},
+  inputErr:{borderColor:"#EF4444"},
+  err:{margin:"4px 0 0",fontSize:12,color:"#EF4444"},
+  inputRow:{display:"flex",alignItems:"center",gap:8},
+  inputInner:{flex:1,boxSizing:"border-box",backgroundColor:"#F8FAFC",border:"1.5px solid #E2E8F0",borderRadius:14,padding:"12px 14px",fontSize:14,color:"#1E293B",outline:"none"},
+  locBtn:{flexShrink:0,width:46,height:46,borderRadius:14,backgroundColor:"#EFF6FF",border:"1.5px solid #BFDBFE",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"},
+  spinner:{width:18,height:18,border:"2.5px solid #bfdbfe",borderTopColor:"#2563EB",borderRadius:"50%",animation:"spin 0.8s linear infinite"},
+  suggBox:{position:"absolute",top:"100%",left:0,right:0,backgroundColor:"#fff",borderRadius:14,boxShadow:"0 6px 20px rgba(0,0,0,0.12)",zIndex:20,maxHeight:200,overflowY:"auto",marginTop:4},
+  suggItem:{display:"flex",alignItems:"flex-start",padding:"10px 14px",borderBottom:"1px solid #F1F5F9",cursor:"pointer"},
+  miniMapWrap:{margin:"8px 0 4px",borderRadius:14,overflow:"hidden",border:"1.5px solid #BFDBFE"},
+  miniMap:{width:"100%",height:110},
+  miniMapFooter:{display:"flex",alignItems:"center",gap:6,backgroundColor:"#EFF6FF",padding:"6px 12px"},
+  clearLocBtn:{marginLeft:"auto",background:"none",border:"none",fontSize:11,color:"#EF4444",fontWeight:700,cursor:"pointer"},
+  tripBtn:{flex:1,padding:"12px 0",borderRadius:14,border:"1.5px solid #E2E8F0",backgroundColor:"#F8FAFC",fontSize:14,fontWeight:600,color:"#64748B",cursor:"pointer"},
+  tripActive:{backgroundColor:"#2563EB",borderColor:"#2563EB",color:"#fff"},
+  submitBtn:{width:"100%",padding:"16px 0",border:"none",borderRadius:18,fontSize:16,fontWeight:800,color:"#fff",cursor:"pointer",marginTop:12,transition:"background-color 0.3s, opacity 0.2s"},
+};
 
-/* Recommended drivers */
-const rec={row2:{display:"flex",alignItems:"center",gap:8,margin:"12px 0 4px",padding:"9px 12px",backgroundColor:"#F8FAFC",borderRadius:12},spinSm:{width:13,height:13,border:"2px solid #BFDBFE",borderTopColor:"#2563EB",borderRadius:"50%",animation:"spin 0.8s linear infinite",flexShrink:0},wrap:{margin:"12px 0 4px",backgroundColor:"#F0F9FF",borderRadius:14,padding:"10px 10px 8px",border:"1.5px solid #BFDBFE"},heading:{margin:"0 0 8px",fontSize:11,fontWeight:700,color:"#1E40AF",textTransform:"uppercase",letterSpacing:"0.4px"},hint:{fontWeight:400,color:"#93C5FD",textTransform:"none",fontSize:11},row:{display:"flex",gap:8,overflowX:"auto",paddingBottom:2},chip:{display:"flex",alignItems:"center",gap:6,flexShrink:0,backgroundColor:"#fff",border:"1.5px solid #E2E8F0",borderRadius:50,padding:"5px 10px 5px 5px",cursor:"pointer",transition:"all 0.15s",outline:"none"},chipSel:{backgroundColor:"#2563EB",borderColor:"#2563EB"},chipBusy:{opacity:0.55},av:{width:26,height:26,borderRadius:"50%",fontSize:11,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"},note:{margin:"8px 0 0",fontSize:11,color:"#1D4ED8",backgroundColor:"#EFF6FF",borderRadius:8,padding:"5px 10px"}};
+const rec={
+  row2:{display:"flex",alignItems:"center",gap:8,margin:"12px 0 4px",padding:"9px 12px",backgroundColor:"#F8FAFC",borderRadius:12},
+  spinSm:{width:13,height:13,border:"2px solid #BFDBFE",borderTopColor:"#2563EB",borderRadius:"50%",animation:"spin 0.8s linear infinite",flexShrink:0},
+  wrap:{margin:"12px 0 4px",backgroundColor:"#F0F9FF",borderRadius:14,padding:"10px 10px 8px",border:"1.5px solid #BFDBFE"},
+  heading:{margin:"0 0 8px",fontSize:11,fontWeight:700,color:"#1E40AF",textTransform:"uppercase",letterSpacing:"0.4px"},
+  hint:{fontWeight:400,color:"#93C5FD",textTransform:"none",fontSize:11},
+  row:{display:"flex",gap:8,overflowX:"auto",paddingBottom:2},
+  chip:{display:"flex",alignItems:"center",gap:6,flexShrink:0,backgroundColor:"#fff",border:"1.5px solid #E2E8F0",borderRadius:50,padding:"5px 10px 5px 5px",cursor:"pointer",transition:"all 0.15s",outline:"none"},
+  chipSel:{backgroundColor:"#2563EB",borderColor:"#2563EB"},
+  chipBusy:{opacity:0.55},
+  av:{width:26,height:26,borderRadius:"50%",fontSize:11,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"},
+  note:{margin:"8px 0 0",fontSize:11,color:"#1D4ED8",backgroundColor:"#EFF6FF",borderRadius:8,padding:"5px 10px"},
+};

@@ -675,7 +675,7 @@ export default function DriverDashboard() {
                   {editId ? (
                     <select className="form-select" value={status} onChange={(e) => setStatus(e.target.value)}>
                       <option value="offline">⚫ Offline</option>
-                      <option value="active">🟢 Active</option>
+                      <option value="online">🟢 online</option>
                       <option value="inactive">🟡 Inactive</option>
                       <option value="on Duty">🔵 On Duty</option>
                       <option value="suspend">⛔ Suspended</option>

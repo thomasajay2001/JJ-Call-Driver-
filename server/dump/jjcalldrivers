@@ -4,6 +4,7 @@
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS accept_booking;
+DROP TABLE IF EXISTS cancellation_penalties;
 DROP TABLE IF EXISTS bookings;
 DROP TABLE IF EXISTS DRIVERS;
 DROP TABLE IF EXISTS SUPPORTTEAM;
@@ -86,76 +87,94 @@ CREATE TABLE DRIVERS (
   PRIMARY KEY (ID)
 );
 
-
 -- ========================================
--- BOOKINGS
+-- BOOKINGS  (all columns + full ENUM in one shot)
 -- ========================================
 CREATE TABLE bookings (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  customer_name VARCHAR(100) NOT NULL,
-  customer_mobile VARCHAR(15) NOT NULL,
-  booking_phnno VARCHAR(15) NOT NULL,
+  id                   INT AUTO_INCREMENT PRIMARY KEY,
+  customer_name        VARCHAR(100)  NOT NULL,
+  customer_mobile      VARCHAR(15)   NOT NULL,
+  booking_phnno        VARCHAR(15)   NOT NULL,
 
-  pickup VARCHAR(255) NOT NULL,
-  pickup_lat DECIMAL(10,7),
-  pickup_lng DECIMAL(10,7),
+  pickup               VARCHAR(255)  NOT NULL,
+  pickup_lat           DECIMAL(10,7),
+  pickup_lng           DECIMAL(10,7),
 
-  drop_location VARCHAR(255),
+  drop_location        VARCHAR(255),
 
-  driver_id INT NULL,
+  driver_id            INT NULL,
+  recommended_driver_id INT NULL DEFAULT NULL,
 
-  triptype ENUM('local','outstation') DEFAULT 'local',
+  triptype             ENUM('local','outstation') DEFAULT 'local',
 
-  status ENUM(
-    'pending',
-    'accepted',
-    'assigned',
-    'inride',
-    'completed'
-  ) DEFAULT 'pending',
+  -- ── ALL status values in one place ──────────────────────────
+  status               ENUM(
+                         'pending',
+                         'assigned',
+                         'accepted',
+                         'inride',
+                         'completed',
+                         'cancelled',
+                         'wait5',
+                         'wait10',
+                         'wait30',
+                         'allbusy',
+                         'scheduled',
+                         'preferred_query'          -- ← was missing
+                       ) NOT NULL DEFAULT 'pending',
 
-  rating INT,
-  feedback TEXT,
+  -- scheduling
+  is_scheduled         TINYINT(1)   NOT NULL DEFAULT 0,
+  scheduled_at         DATETIME     NULL DEFAULT NULL,
+  scheduled_status     ENUM('pending','dispatched','cancelled') NULL DEFAULT NULL,
 
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  -- cancellation
+  cancellation_penalty INT          DEFAULT 0,
+  cancelled_at         DATETIME     NULL DEFAULT NULL,
+
+  -- rating
+  rating               INT,
+  feedback             TEXT,
+
+  created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
   CONSTRAINT fk_booking_driver
     FOREIGN KEY (driver_id)
     REFERENCES DRIVERS(ID)
     ON DELETE SET NULL
-    ON UPDATE CASCADE
-);
+    ON UPDATE CASCADE,
 
-ALTER TABLE bookings
-  ADD COLUMN recommended_driver_id INT NULL DEFAULT NULL,
-  ADD CONSTRAINT fk_recommended_driver
+  CONSTRAINT fk_recommended_driver
     FOREIGN KEY (recommended_driver_id)
     REFERENCES DRIVERS(ID)
     ON DELETE SET NULL
-    ON UPDATE CASCADE;
--- Add scheduling columns (skip if already done)
-ALTER TABLE bookings
-  ADD COLUMN IF NOT EXISTS is_scheduled     TINYINT(1)   NOT NULL DEFAULT 0   AFTER feedback,
-  ADD COLUMN IF NOT EXISTS scheduled_at     DATETIME     NULL DEFAULT NULL     AFTER is_scheduled,
-  ADD COLUMN IF NOT EXISTS scheduled_status ENUM('pending','dispatched','cancelled') NULL DEFAULT NULL AFTER scheduled_at;
+    ON UPDATE CASCADE
+);
 
--- Expand status ENUM to include 'scheduled'
-ALTER TABLE bookings MODIFY COLUMN status ENUM(
-  'pending','assigned','accepted','inride','completed',
-  'cancelled','wait5','wait10','wait30','allbusy','scheduled'
-) NOT NULL DEFAULT 'pending';
+-- ========================================
+-- CANCELLATION PENALTIES
+-- ========================================
+CREATE TABLE cancellation_penalties (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  booking_id      INT NOT NULL,
+  customer_mobile VARCHAR(20),
+  customer_name   VARCHAR(100),
+  amount          INT NOT NULL DEFAULT 200,
+  penalty_reason  TEXT,
+  created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_booking (booking_id),
+  INDEX idx_mobile  (customer_mobile)
+);
 
+-- ========================================
 -- ACCEPT BOOKING (Driver Accept History)
 -- ========================================
 CREATE TABLE accept_booking (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-
-  booking_id INT NOT NULL,
-  driver_id INT NOT NULL,
-
-  driver_name VARCHAR(100) NOT NULL,
-  driver_mobile VARCHAR(15) NOT NULL,
-
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  booking_id     INT NOT NULL,
+  driver_id      INT NOT NULL,
+  driver_name    VARCHAR(100) NOT NULL,
+  driver_mobile  VARCHAR(15)  NOT NULL,
   accepting_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
   FOREIGN KEY (booking_id)
@@ -167,4 +186,4 @@ CREATE TABLE accept_booking (
     REFERENCES DRIVERS(ID)
     ON DELETE CASCADE
     ON UPDATE CASCADE
-); 
+);

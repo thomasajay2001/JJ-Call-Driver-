@@ -27,7 +27,7 @@ const mysql = require("mysql2");
 const db = mysql.createConnection({
   host: "localhost",
   user: "root",
-  password: "Gomathi@123",
+  password: "Q2M@123",
   database: "jjdrivers",
 });
 
@@ -292,7 +292,107 @@ app.post("/api/bookings/:id/cancel", async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
+app.post("/api/bookings/:id/cancel-scheduled", async (req, res) => {
+  const { id } = req.params;
+  const PENALTY_AMOUNT = 200; // ₹ — single source of truth on server
+ 
+  try {
+    // 1. Fetch booking
+    const [rows] = await db.promise().query(
+      `SELECT id, status, is_scheduled, scheduled_at, customer_mobile, customer_name
+       FROM bookings WHERE id = ? LIMIT 1`,
+      [id]
+    );
+    if (!rows.length)
+      return res.status(404).json({ success: false, message: "Booking not found" });
+ 
+    const booking = rows[0];
+ 
+    // 2. Only allow cancellation of scheduled/pending/wait* bookings
+    const cancelable = ["scheduled", "pending", "wait5", "wait10", "wait30", "allbusy"];
+    if (!cancelable.includes(booking.status?.toLowerCase()))
+      return res.status(400).json({
+        success: false,
+        message: `Cannot cancel booking with status: ${booking.status}`,
+      });
+ 
+    // 3. Server-side penalty check (don't trust client)
+    let hasPenalty = false;
+    let newStatus  = "cancelled";
+ 
+    if (booking.is_scheduled && booking.scheduled_at) {
+      const rideTime  = new Date(booking.scheduled_at);
+      const minsUntil = (rideTime - new Date()) / (1000 * 60);
+ 
+      if (minsUntil < 60 && minsUntil > 0) {
+        // Within 1 hour — penalty applies
+        hasPenalty = true;
+        newStatus  = "cancelled_with_penalty";
+      }
+    }
+ 
+    // 4. Update booking status
+    await db.promise().query(
+      `UPDATE bookings
+       SET status = ?, driver_id = NULL,
+           cancellation_penalty = ?,
+           cancelled_at = NOW()
+       WHERE id = ?`,
+      [newStatus, hasPenalty ? PENALTY_AMOUNT : 0, id]
+    );
+ 
+    // 5. If penalty → record it in a separate penalty/payments table (optional)
+    if (hasPenalty) {
+      try {
+        await db.promise().query(
+          `INSERT INTO cancellation_penalties
+             (booking_id, customer_mobile, customer_name, amount, penalty_reason, created_at)
+           VALUES (?, ?, ?, ?, ?, NOW())`,
+          [
+            id,
+            booking.customer_mobile,
+            booking.customer_name,
+            PENALTY_AMOUNT,
+            "Cancelled within 1 hour of scheduled ride",
+          ]
+        );
+      } catch (penaltyErr) {
+        // Table might not exist yet — log but don't fail the cancellation
+        console.warn("Could not record penalty (table may not exist):", penaltyErr.message);
+      }
+    }
+ 
+    // 6. Notify admin panel in real time
+    if (global.io) {
+      global.io.to("admins").emit("bookingCancelled", {
+        bookingId: id,
+        message: hasPenalty
+          ? `Customer cancelled within 1 hour — ₹${PENALTY_AMOUNT} penalty applied`
+          : "Customer cancelled their scheduled booking (free)",
+        hasPenalty,
+        penaltyAmount: hasPenalty ? PENALTY_AMOUNT : 0,
+      });
+    }
+ 
+    console.log(
+      `✅ Booking ${id} cancelled by customer.`,
+      hasPenalty ? `Penalty: ₹${PENALTY_AMOUNT}` : "No penalty."
+    );
+ 
+    return res.json({
+      success:       true,
+      hasPenalty,
+      penaltyAmount: hasPenalty ? PENALTY_AMOUNT : 0,
+      message:       hasPenalty
+        ? `Booking cancelled. A ₹${PENALTY_AMOUNT} fee will be charged.`
+        : "Booking cancelled successfully. No charge.",
+    });
+ 
+  } catch (err) {
+    console.error("Cancel scheduled booking error:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
 // ─── GET ALL BOOKINGS (admin) ─────────────────
 app.get("/api/bookings", (req, res) => {
   db.query(
