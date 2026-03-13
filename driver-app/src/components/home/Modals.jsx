@@ -169,7 +169,7 @@ export const HelpModal = ({ visible, onClose }) => {
             style={{ width: "100%", padding: "14px 0", backgroundColor: "#2563EB", border: "none", borderRadius: 16, fontSize: 16, fontWeight: 800, color: "#fff", cursor: "pointer" }}
             onClick={callSupport}
           >
-            📱 Call Now
+             Call Now
           </button>
         </div>
         <p style={{ marginTop: 20, fontSize: 12, color: "#64748B" }}>Available 24/7 for your assistance</p>

@@ -40,3 +40,13 @@
 .read-the-docs {
   color: #888;
 }
+.action-view {
+  padding: 5px 10px;
+  background: #EFF6FF;
+  color: #2563EB;
+  border: 1.5px solid #BFDBFE;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}

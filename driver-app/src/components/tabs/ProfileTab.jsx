@@ -110,7 +110,7 @@ const ProfileTab = () => {
               <span style={styles.avatarText}>{profile.NAME?.charAt(0) || "D"}</span>
             </div>
             <h2 style={styles.name}>{profile.NAME}</h2>
-            <span style={styles.roleBadge}>🚗 Driver</span>
+            <span style={styles.roleBadge}>Driver</span>
             {/* Star rating */}
             <div style={styles.starRow}>
               {[1,2,3,4,5].map((s) => (
@@ -125,8 +125,8 @@ const ProfileTab = () => {
           </div>
 
           {/* Info cards */}
-          <InfoCard label="📞 Mobile"      value={profile.MOBILE} />
-          <InfoCard label="🩸 Blood Group" value={profile.BLOODGRP || "—"} />
+          <InfoCard label="Mobile"      value={profile.MOBILE} />
+          <InfoCard label="Blood Group" value={profile.BLOODGRP || "—"} />
           <InfoCard label="🪪 Licence No"  value={profile.LICENCENO || "—"} />
 
           {/* Rides */}
@@ -158,11 +158,11 @@ const ProfileTab = () => {
             </button>
 
             <span style={{ ...styles.roleBadge, backgroundColor: "#D1FAE5", color: "#065F46" }}>
-              👤 Customer
+              Customer
             </span>
           </div>
 
-          <InfoCard label="📞 Mobile" value={cust?.PHONE} />
+          <InfoCard label="Mobile" value={cust?.PHONE} />
         </>
       )}
 

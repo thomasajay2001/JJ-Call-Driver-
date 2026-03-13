@@ -59,7 +59,7 @@ export const IncomingRideCard = ({ ride, onAccept, onDecline }) => {
       {/* Header */}
       <div style={s.requestHeader}>
         <div style={s.requestBadge}>
-          <span style={s.requestBadgeText}>🔔 Ride Assigned To You</span>
+          <span style={s.requestBadgeText}> Ride Assigned To You</span>
         </div>
         <div style={{ ...s.timerCircle, borderColor: isUrgent ? "#FCA5A5" : "#E2E8F0" }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: timerColor }}>{timer}s</span>
@@ -72,7 +72,7 @@ export const IncomingRideCard = ({ ride, onAccept, onDecline }) => {
         <div style={{ flex: 1 }}>
           <p style={s.passengerName}>{ride.customer_name || ride.name || "Customer"}</p>
           <div style={s.metaRow}>
-            <span style={s.metaTag}>{ride.triptype === "outstation" ? "🛣️ Outstation" : "🏙️ Local"}</span>
+            <span style={s.metaTag}>{ride.triptype === "outstation" ? "Outstation" : "Local"}</span>
             <span style={s.metaTag}>📞 {ride.customer_mobile || ride.mobile || "—"}</span>
           </div>
         </div>
