@@ -250,8 +250,10 @@ const ReminderPanel = ({ reminders, onAssign, onDismiss }) => {
    ═══════════════════════════════════════════════════════ */
 export default function Booking() {
   const [bookings,    setBookings]    = useState([]);
-  const [drivers,     setDrivers]     = useState([]);
-  const [allDrivers,  setAllDrivers]  = useState([]);
+  const [drivers,         setDrivers]         = useState([]);
+  const [offlineDrivers,  setOfflineDrivers]  = useState([]);
+  const [allDrivers,      setAllDrivers]      = useState([]);
+  const [driverMode,      setDriverMode]      = useState("online"); // "online" | "offline"
   const [search,      setSearch]      = useState("");
   const [filterTab,   setFilterTab]   = useState("all");
 
@@ -374,6 +376,7 @@ export default function Booking() {
       const all = Array.isArray(res.data) ? res.data : [];
       setAllDrivers(all);
       setDrivers(all.filter((d) => d.status?.toLowerCase() === "online" && d.payactive?.toLowerCase() === "active"));
+      setOfflineDrivers(all.filter((d) => d.status?.toLowerCase() === "offline" && d.payactive?.toLowerCase() === "active"));
     } catch {}
   };
 
@@ -386,11 +389,11 @@ export default function Booking() {
 
   const openEdit = (b) => {
     setEditId(b.id); setEditBooking(b);
-    setAssignMode("assign"); setDriver(""); setShowForm(true);
+    setAssignMode("assign"); setDriver(""); setDriverMode("online"); setShowForm(true);
   };
   const closeForm = () => {
     setShowForm(false); setEditId(null);
-    setEditBooking(null); setDriver(""); setAssignMode("assign");
+    setEditBooking(null); setDriver(""); setAssignMode("assign"); setDriverMode("online");
   };
 
   const dismissReminder = (bookingId) => {
@@ -485,7 +488,11 @@ export default function Booking() {
     const bid = overrideId || editId;
     try {
       if (assignMode === "assign" || overrideDriver) {
-        await axios.put(`${BASE_URL}/api/bookings/${bid}`, { driver: overrideDriver || driver, status: "assigned" });
+        const assignedDriver = overrideDriver || driver;
+        // If offline driver, jump straight to "accepted" so customer sees driver details immediately
+        const isOffline = offlineDrivers.some((d) => String(d.id) === String(assignedDriver));
+        const newStatus = isOffline ? "accepted" : "assigned";
+        await axios.put(`${BASE_URL}/api/bookings/${bid}`, { driver: assignedDriver, status: newStatus });
       } else if (assignMode === "allbusy") {
         await axios.put(`${BASE_URL}/api/bookings/${bid}`, { driver: null, status: "allbusy" });
       } else {
@@ -779,6 +786,24 @@ export default function Booking() {
                             <div style={S.lockedSub}>Locked until customer responds</div>
                           </div>
                         </div>
+                      ) : (s === "accepted" || s === "assigned" || s === "inride") && b.driver ? (
+                        <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                          <button
+                            className="action-edit"
+                            style={{ backgroundColor:"#10B981", border:"none", color:"#fff", fontWeight:700 }}
+                            onClick={async () => {
+                              if (!window.confirm(`Mark booking #${b.id} as completed?`)) return;
+                              try {
+                                await axios.put(`${BASE_URL}/api/bookings/${b.id}`, { status: "completed" });
+                                fetchBookings();
+                              } catch (e) { alert("Failed: " + e.message); }
+                            }}>
+                            ✅ Complete
+                          </button>
+                          <button className="action-edit" style={{ fontSize:11, padding:"4px 8px" }} onClick={() => openEdit(b)}>
+                            ✏️ Reassign
+                          </button>
+                        </div>
                       ) : (
                         <button className="action-edit" onClick={() => openEdit(b)}>
                           ✏️ {b.driver ? "Reassign" : isFuture || isTomorrow ? "Pre-assign" : "Assign"}
@@ -1046,46 +1071,91 @@ export default function Booking() {
                   <div className="form-field form-full">
                     <label className="form-label">
                       Select Driver <span className="form-required">*</span>
-                      <span className="badge badge-green" style={{ marginLeft:8 }}>{drivers.length} online</span>
                     </label>
-                    {drivers.length === 0 ? (
-                      <div style={{ padding:14, background:"#fff7ed", border:"1.5px solid #fed7aa", borderRadius:10, fontSize:13, color:"#92400e" }}>
-                        ⚠️ No drivers online right now.
-                      </div>
-                    ) : (
-                      <>
-                        <select className="form-select" value={driver} onChange={(e) => setDriver(e.target.value)}>
-                          <option value="">— Choose a driver —</option>
-                          {drivers.map((d) => {
-                            const isPref = String(d.id) === String(editBooking.recommended_driver_id);
-                            const trips  = completedByDriver[String(d.id)] || 0;
+
+                    {/* Online / Offline toggle */}
+                    <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+                      <button type="button"
+                        style={{ flex:1, padding:"8px 0", borderRadius:10, border:"1.5px solid", fontSize:12, fontWeight:700, cursor:"pointer",
+                          backgroundColor: driverMode === "online" ? "#2563EB" : "#F8FAFC",
+                          borderColor:     driverMode === "online" ? "#2563EB" : "#E2E8F0",
+                          color:           driverMode === "online" ? "#fff"    : "#64748B" }}
+                        onClick={() => { setDriverMode("online"); setDriver(""); }}>
+                        🟢 Online
+                        <span style={{ marginLeft:6, backgroundColor: driverMode==="online" ? "rgba(255,255,255,0.25)" : "#E2E8F0", color: driverMode==="online"?"#fff":"#64748B", borderRadius:20, fontSize:10, fontWeight:800, padding:"1px 7px" }}>
+                          {drivers.length}
+                        </span>
+                      </button>
+                      <button type="button"
+                        style={{ flex:1, padding:"8px 0", borderRadius:10, border:"1.5px solid", fontSize:12, fontWeight:700, cursor:"pointer",
+                          backgroundColor: driverMode === "offline" ? "#64748B" : "#F8FAFC",
+                          borderColor:     driverMode === "offline" ? "#64748B" : "#E2E8F0",
+                          color:           driverMode === "offline" ? "#fff"    : "#64748B" }}
+                        onClick={() => { setDriverMode("offline"); setDriver(""); }}>
+                        ⚫ Offline
+                        <span style={{ marginLeft:6, backgroundColor: driverMode==="offline" ? "rgba(255,255,255,0.25)" : "#E2E8F0", color: driverMode==="offline"?"#fff":"#64748B", borderRadius:20, fontSize:10, fontWeight:800, padding:"1px 7px" }}>
+                          {offlineDrivers.length}
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Driver list */}
+                    {(() => {
+                      const list = driverMode === "online" ? drivers : offlineDrivers;
+                      if (list.length === 0) return (
+                        <div style={{ padding:14, background: driverMode==="online"?"#fff7ed":"#F8FAFC", border:`1.5px solid ${driverMode==="online"?"#fed7aa":"#E2E8F0"}`, borderRadius:10, fontSize:13, color: driverMode==="online"?"#92400e":"#64748B" }}>
+                          {driverMode==="online" ? "⚠️ No drivers online right now." : "ℹ️ No offline active drivers."}
+                        </div>
+                      );
+                      return (
+                        <>
+                          <select className="form-select" value={driver} onChange={(e) => setDriver(e.target.value)}>
+                            <option value="">— Choose a {driverMode} driver —</option>
+                            {list.map((d) => {
+                              const isPref = String(d.id) === String(editBooking.recommended_driver_id);
+                              const trips  = completedByDriver[String(d.id)] || 0;
+                              return (
+                                <option key={d.id} value={d.id}>
+                                  {isPref?"⭐ ":""}{d.name||d.NAME} — {d.car_type||"N/A"} (ID:{d.id}) · {trips} trip{trips!==1?"s completed":""}
+                                </option>
+                              );
+                            })}
+                          </select>
+                          {driver && (() => {
+                            const sel   = list.find((d) => String(d.id) === String(driver));
+                            const trips = completedByDriver[String(driver)] || 0;
+                            if (!sel) return null;
                             return (
-                              <option key={d.id} value={d.id}>
-                                {isPref?"⭐ ":""}{d.name||d.NAME} — {d.car_type||"N/A"} (ID:{d.id}) · {trips} trip{trips!==1?"s completed":""}
-                              </option>
+                              <div style={{ ...S.driverCard, ...(driverMode==="offline" ? { backgroundColor:"#F8FAFC", borderColor:"#E2E8F0" } : {}) }}>
+                                <div style={{ ...S.driverAvatar, backgroundColor: driverMode==="offline"?"#64748B":"#16A34A" }}>
+                                  {(sel.name||sel.NAME||"?")[0].toUpperCase()}
+                                </div>
+                                <div style={{ flex:1 }}>
+                                  <p style={S.driverCardName}>{sel.name||sel.NAME}</p>
+                                  <p style={S.driverCardSub}>{sel.car_type||"N/A"} · ID: {sel.id}
+                                    <span style={{ marginLeft:8, fontSize:10, fontWeight:700, color: driverMode==="offline"?"#64748B":"#16A34A" }}>
+                                      ● {driverMode === "offline" ? "Offline" : "Online"}
+                                    </span>
+                                  </p>
+                                </div>
+                                <div style={{ ...S.tripBadge, ...(driverMode==="offline" ? { backgroundColor:"#F1F5F9", borderColor:"#E2E8F0" } : {}) }}>
+                                  <span style={{ ...S.tripBadgeNum, color: driverMode==="offline"?"#475569":"#15803D" }}>{trips}</span>
+                                  <span style={{ ...S.tripBadgeLbl, color: driverMode==="offline"?"#64748B":"#16A34A" }}>trips done</span>
+                                </div>
+                              </div>
                             );
-                          })}
-                        </select>
-                        {driver && (() => {
-                          const sel   = drivers.find((d) => String(d.id) === String(driver));
-                          const trips = completedByDriver[String(driver)] || 0;
-                          if (!sel) return null;
-                          return (
-                            <div style={S.driverCard}>
-                              <div style={S.driverAvatar}>{(sel.name||sel.NAME||"?")[0].toUpperCase()}</div>
-                              <div style={{ flex:1 }}>
-                                <p style={S.driverCardName}>{sel.name||sel.NAME}</p>
-                                <p style={S.driverCardSub}>{sel.car_type||"N/A"} · ID: {sel.id}</p>
-                              </div>
-                              <div style={S.tripBadge}>
-                                <span style={S.tripBadgeNum}>{trips}</span>
-                                <span style={S.tripBadgeLbl}>trips done</span>
-                              </div>
+                          })()}
+                          {driverMode === "offline" && (
+                            <div style={{ marginTop:8, display:"flex", alignItems:"flex-start", gap:8, backgroundColor:"#FFF7ED", border:"1.5px solid #FED7AA", borderRadius:10, padding:"8px 12px" }}>
+                              <span style={{ fontSize:14 }}>⚠️</span>
+                              <p style={{ margin:0, fontSize:11, color:"#92400E", lineHeight:1.5 }}>
+                                Assigning an <strong>offline driver</strong> will immediately show their details to the customer and mark the ride as <strong>Accepted</strong>. You can complete the trip manually from the bookings table.
+                              </p>
                             </div>
-                          );
-                        })()}
-                      </>
-                    )}
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
 
