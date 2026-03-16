@@ -6,6 +6,8 @@ const multer = require("multer");
 const upload = multer();
 const axios = require("axios");
 const http = require("http");
+const path = require("path");
+const fs   = require("fs");
 require("dotenv").config();
 const otpStore = {};
 const OTP_EXPIRY_MS = 5 * 60 * 1000;
@@ -22,12 +24,15 @@ const io = new Server(server, {
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// ─── Serve uploaded logos as static files ─────
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 const mysql = require("mysql2");
 
 const db = mysql.createConnection({
   host: "localhost",
   user: "root",
-  password: "Q2M@123",
+  password: "Gomathi@123",
   database: "jjdrivers",
 });
 
@@ -37,6 +42,28 @@ db.connect((err) => {
   } else {
     console.log("Connected to MySQL Database");
   }
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  MULTER — logo upload (separate from upload.none())
+// ═══════════════════════════════════════════════════════════════
+const logoDir = path.join(__dirname, "uploads/logos");
+if (!fs.existsSync(logoDir)) fs.mkdirSync(logoDir, { recursive: true });
+
+const logoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, logoDir),
+  filename:    (_req,  file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `app_logo${ext}`);
+  },
+});
+const logoUpload = multer({
+  storage:    logoStorage,
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/png","image/jpeg","image/jpg","image/svg+xml","image/webp"];
+    allowed.includes(file.mimetype) ? cb(null, true) : cb(new Error("Only PNG/JPG/SVG/WEBP allowed"));
+  },
+  limits: { fileSize: 2 * 1024 * 1024 },
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -90,33 +117,13 @@ app.get("/test", (req, res) => res.json({ message: "API working" }));
 
 io.on("connection", (socket) => {
   console.log("✅ Socket connected:", socket.id);
-
-  socket.on("joinAdminRoom", () => {
-    socket.join("admins");
-    console.log("👑 Admin joined admins room");
-  });
-
-  socket.on("joinBookingRoom", ({ bookingId }) => {
-    socket.join(`booking_${bookingId}`);
-    console.log("Customer joined booking room:", bookingId);
-  });
-
-  socket.on("joinDriverRoom", ({ driverId }) => {
-    socket.join(`driver_${driverId}`);
-    socket.driverId = driverId;
-    console.log("Driver joined:", driverId);
-  });
-
-  socket.on("joinCustomer", (customerId) => {
-    socket.join(`customer_${customerId}`);
-    console.log("Customer joined:", customerId);
-  });
-
+  socket.on("joinAdminRoom",    () => { socket.join("admins"); });
+  socket.on("joinBookingRoom",  ({ bookingId }) => { socket.join(`booking_${bookingId}`); });
+  socket.on("joinDriverRoom",   ({ driverId  }) => { socket.join(`driver_${driverId}`); socket.driverId = driverId; });
+  socket.on("joinCustomer",     (customerId)   => { socket.join(`customer_${customerId}`); });
   socket.on("disconnect", async () => {
-    console.log("❌ Socket disconnected:", socket.id);
     if (socket.driverId) {
       await db.promise().query("UPDATE DRIVERS SET STATUS='offline' WHERE ID=?", [socket.driverId]);
-      console.log("Driver offline:", socket.driverId);
     }
   });
 });
@@ -163,7 +170,6 @@ app.post("/api/send-otp", (req, res) => {
 
   db.query("INSERT IGNORE INTO CUSTOMERS (PHONE) VALUES (?)", [phone], async (err) => {
     if (err) return res.status(500).json({ success: false, message: "Database error" });
-
     const apiKey = process.env.FAST2SMS_API_KEY;
     if (!apiKey) {
       console.log(`[TEST MODE] OTP for ${phone}: ${otp}`);
@@ -177,7 +183,7 @@ app.post("/api/send-otp", (req, res) => {
       );
       if (!smsRes.data.return) return res.json({ success: true, message: `SMS unavailable. OTP: ${otp}`, otp });
       return res.json({ success: true, message: "OTP sent to your mobile number" });
-    } catch (smsErr) {
+    } catch {
       return res.json({ success: true, message: `SMS unavailable. OTP: ${otp}`, otp });
     }
   });
@@ -204,24 +210,15 @@ app.post("/api/verify-otp", (req, res) => {
 // ─── TRIP BOOKING ────────────────────────────
 app.post("/api/trip-booking", async (req, res) => {
   try {
-    const {
-      name, phone, pickup, pickupLat, pickupLng,
-      drop, bookingphnno, triptype,
-      recommended_driver_id,
-      scheduled_at,      // ← ISO string or null
-      is_scheduled,      // ← true / false
-    } = req.body;
+    const { name, phone, pickup, pickupLat, pickupLng, drop, bookingphnno, triptype,
+            recommended_driver_id, scheduled_at, is_scheduled } = req.body;
 
     if (!name || !phone || !pickup || !drop || !bookingphnno)
       return res.status(400).json({ success: false, error: "All fields are required" });
 
-    // Parse scheduled time safely
     const scheduledDate = scheduled_at ? new Date(scheduled_at) : null;
-
-    // Validate: must be at least 29 min from now if scheduling
-    if (scheduledDate && scheduledDate < new Date(Date.now() + 29 * 60 * 1000)) {
+    if (scheduledDate && scheduledDate < new Date(Date.now() + 29 * 60 * 1000))
       return res.status(400).json({ success: false, message: "Scheduled time must be at least 30 minutes from now" });
-    }
 
     const isScheduledBool = !!(is_scheduled && scheduledDate);
     const status          = isScheduledBool ? "scheduled" : "pending";
@@ -229,30 +226,16 @@ app.post("/api/trip-booking", async (req, res) => {
     const [result] = await db.promise().query(
       `INSERT INTO bookings
          (customer_name, customer_mobile, booking_phnno,
-          pickup, pickup_lat, pickup_lng,
-          drop_location, triptype, status,
-          recommended_driver_id,
-          is_scheduled, scheduled_at, scheduled_status)
+          pickup, pickup_lat, pickup_lng, drop_location, triptype, status,
+          recommended_driver_id, is_scheduled, scheduled_at, scheduled_status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        name, phone, bookingphnno,
-        pickup, pickupLat || null, pickupLng || null,
-        drop, triptype || "local", status,
-        recommended_driver_id || null,
-        isScheduledBool ? 1 : 0,
-        scheduledDate,                          // MySQL accepts JS Date
-        isScheduledBool ? "pending" : null,     // scheduled_status
-      ]
+      [name, phone, bookingphnno, pickup, pickupLat || null, pickupLng || null,
+       drop, triptype || "local", status, recommended_driver_id || null,
+       isScheduledBool ? 1 : 0, scheduledDate, isScheduledBool ? "pending" : null]
     );
 
-    // Emit socket for immediate bookings only
-    if (!isScheduledBool && global.io) {
-      global.io.to("admins").emit("newBooking", {
-        bookingId: result.insertId,
-        name, phone, pickup, drop,
-        triptype: triptype || "local",
-      });
-    }
+    if (!isScheduledBool && global.io)
+      global.io.to("admins").emit("newBooking", { bookingId: result.insertId, name, phone, pickup, drop, triptype: triptype || "local" });
 
     res.json({ success: true, message: "Booking created successfully", bookingId: result.insertId });
   } catch (error) {
@@ -261,173 +244,88 @@ app.post("/api/trip-booking", async (req, res) => {
   }
 });
 
-// ─── CANCEL BOOKING (customer aborts during wait/allbusy) ────
+// ─── CANCEL BOOKING ──────────────────────────
 app.post("/api/bookings/:id/cancel", async (req, res) => {
   const { id } = req.params;
   try {
-    const [rows] = await db.promise().query(
-      "SELECT status FROM bookings WHERE id = ?", [id]
-    );
+    const [rows] = await db.promise().query("SELECT status FROM bookings WHERE id = ?", [id]);
     if (!rows.length) return res.status(404).json({ success: false, message: "Booking not found" });
-
-    const cancelableStatuses = ["pending", "wait5", "wait10", "wait30", "allbusy"];
-    if (!cancelableStatuses.includes(rows[0].status)) {
+    const cancelable = ["pending", "wait5", "wait10", "wait30", "allbusy"];
+    if (!cancelable.includes(rows[0].status))
       return res.json({ success: false, message: "Cannot cancel booking at this stage" });
-    }
-
-    await db.promise().query(
-      "UPDATE bookings SET status = 'cancelled', driver_id = NULL WHERE id = ?", [id]
-    );
-
-    // Notify admin panel in real time
-    io.to("admins").emit("bookingCancelled", {
-      bookingId: id,
-      message: "Customer cancelled the booking",
-    });
-
-    console.log(`✅ Booking ${id} cancelled by customer`);
+    await db.promise().query("UPDATE bookings SET status = 'cancelled', driver_id = NULL WHERE id = ?", [id]);
+    io.to("admins").emit("bookingCancelled", { bookingId: id, message: "Customer cancelled the booking" });
     res.json({ success: true, message: "Booking cancelled" });
   } catch (err) {
-    console.error("Cancel booking error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 app.post("/api/bookings/:id/cancel-scheduled", async (req, res) => {
   const { id } = req.params;
-  const PENALTY_AMOUNT = 200; // ₹ — single source of truth on server
- 
+  const PENALTY_AMOUNT = 200;
   try {
-    // 1. Fetch booking
     const [rows] = await db.promise().query(
-      `SELECT id, status, is_scheduled, scheduled_at, customer_mobile, customer_name
-       FROM bookings WHERE id = ? LIMIT 1`,
-      [id]
+      `SELECT id, status, is_scheduled, scheduled_at, customer_mobile, customer_name FROM bookings WHERE id = ? LIMIT 1`, [id]
     );
-    if (!rows.length)
-      return res.status(404).json({ success: false, message: "Booking not found" });
- 
-    const booking = rows[0];
- 
-    // 2. Only allow cancellation of scheduled/pending/wait* bookings
+    if (!rows.length) return res.status(404).json({ success: false, message: "Booking not found" });
+
+    const booking  = rows[0];
     const cancelable = ["scheduled", "pending", "wait5", "wait10", "wait30", "allbusy"];
     if (!cancelable.includes(booking.status?.toLowerCase()))
-      return res.status(400).json({
-        success: false,
-        message: `Cannot cancel booking with status: ${booking.status}`,
-      });
- 
-    // 3. Server-side penalty check (don't trust client)
+      return res.status(400).json({ success: false, message: `Cannot cancel booking with status: ${booking.status}` });
+
     let hasPenalty = false;
     let newStatus  = "cancelled";
- 
     if (booking.is_scheduled && booking.scheduled_at) {
-      const rideTime  = new Date(booking.scheduled_at);
-      const minsUntil = (rideTime - new Date()) / (1000 * 60);
- 
-      if (minsUntil < 60 && minsUntil > 0) {
-        // Within 1 hour — penalty applies
-        hasPenalty = true;
-        newStatus  = "cancelled_with_penalty";
-      }
+      const minsUntil = (new Date(booking.scheduled_at) - new Date()) / (1000 * 60);
+      if (minsUntil < 60 && minsUntil > 0) { hasPenalty = true; newStatus = "cancelled_with_penalty"; }
     }
- 
-    // 4. Update booking status
+
     await db.promise().query(
-      `UPDATE bookings
-       SET status = ?, driver_id = NULL,
-           cancellation_penalty = ?,
-           cancelled_at = NOW()
-       WHERE id = ?`,
+      `UPDATE bookings SET status = ?, driver_id = NULL, cancellation_penalty = ?, cancelled_at = NOW() WHERE id = ?`,
       [newStatus, hasPenalty ? PENALTY_AMOUNT : 0, id]
     );
- 
-    // 5. If penalty → record it in a separate penalty/payments table (optional)
     if (hasPenalty) {
       try {
         await db.promise().query(
-          `INSERT INTO cancellation_penalties
-             (booking_id, customer_mobile, customer_name, amount, penalty_reason, created_at)
-           VALUES (?, ?, ?, ?, ?, NOW())`,
-          [
-            id,
-            booking.customer_mobile,
-            booking.customer_name,
-            PENALTY_AMOUNT,
-            "Cancelled within 1 hour of scheduled ride",
-          ]
+          `INSERT INTO cancellation_penalties (booking_id, customer_mobile, customer_name, amount, penalty_reason, created_at) VALUES (?, ?, ?, ?, ?, NOW())`,
+          [id, booking.customer_mobile, booking.customer_name, PENALTY_AMOUNT, "Cancelled within 1 hour of scheduled ride"]
         );
-      } catch (penaltyErr) {
-        // Table might not exist yet — log but don't fail the cancellation
-        console.warn("Could not record penalty (table may not exist):", penaltyErr.message);
-      }
+      } catch (e) { console.warn("Penalty insert warn:", e.message); }
     }
- 
-    // 6. Notify admin panel in real time
-    if (global.io) {
-      global.io.to("admins").emit("bookingCancelled", {
-        bookingId: id,
-        message: hasPenalty
-          ? `Customer cancelled within 1 hour — ₹${PENALTY_AMOUNT} penalty applied`
-          : "Customer cancelled their scheduled booking (free)",
-        hasPenalty,
-        penaltyAmount: hasPenalty ? PENALTY_AMOUNT : 0,
-      });
-    }
- 
-    console.log(
-      `✅ Booking ${id} cancelled by customer.`,
-      hasPenalty ? `Penalty: ₹${PENALTY_AMOUNT}` : "No penalty."
-    );
- 
-    return res.json({
-      success:       true,
-      hasPenalty,
-      penaltyAmount: hasPenalty ? PENALTY_AMOUNT : 0,
-      message:       hasPenalty
-        ? `Booking cancelled. A ₹${PENALTY_AMOUNT} fee will be charged.`
-        : "Booking cancelled successfully. No charge.",
-    });
- 
+    if (global.io) global.io.to("admins").emit("bookingCancelled", { bookingId: id, hasPenalty, penaltyAmount: hasPenalty ? PENALTY_AMOUNT : 0 });
+    return res.json({ success: true, hasPenalty, penaltyAmount: hasPenalty ? PENALTY_AMOUNT : 0,
+      message: hasPenalty ? `Booking cancelled. A ₹${PENALTY_AMOUNT} fee will be charged.` : "Booking cancelled successfully. No charge." });
   } catch (err) {
-    console.error("Cancel scheduled booking error:", err);
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 });
-// ─── GET ALL BOOKINGS (admin) ─────────────────
+
+// ─── GET ALL BOOKINGS ─────────────────────────
 app.get("/api/bookings", (req, res) => {
   db.query(
     `SELECT id, customer_name, customer_mobile, pickup, drop_location,
             status, driver_id, pickup_lat, pickup_lng, triptype,
-            recommended_driver_id,
-            is_scheduled, scheduled_at, scheduled_status
+            recommended_driver_id, is_scheduled, scheduled_at, scheduled_status
      FROM bookings ORDER BY id DESC`,
-    function (error, results) {
-      if (error) {
-        console.error("error fetching bookings:", error);
-        return res.status(500).send({ message: "Database error" });
-      }
-      const result = results.map((r) => ({
-        id:                    r.id,
-        name:                  r.customer_name,
-        mobile:                r.customer_mobile,
-        pickup:                r.pickup,
-        drop:                  r.drop_location,
-        status:                r.status,
-        driver:                r.driver_id,
-        pickup_lat:            r.pickup_lat,
-        pickup_lng:            r.pickup_lng,
-        triptype:              r.triptype,
-        recommended_driver_id: r.recommended_driver_id,
-        is_scheduled:          r.is_scheduled === 1,
-        scheduled_at:          r.scheduled_at,          // MySQL DATETIME → JS string
-        scheduled_status:      r.scheduled_status,
-      }));
-      res.send(JSON.stringify(result));
+    (error, results) => {
+      if (error) return res.status(500).send({ message: "Database error" });
+      res.send(JSON.stringify(results.map((r) => ({
+        id: r.id, name: r.customer_name, mobile: r.customer_mobile,
+        pickup: r.pickup, drop: r.drop_location, status: r.status,
+        driver: r.driver_id, pickup_lat: r.pickup_lat, pickup_lng: r.pickup_lng,
+        triptype: r.triptype, recommended_driver_id: r.recommended_driver_id,
+        is_scheduled: r.is_scheduled === 1, scheduled_at: r.scheduled_at,
+        scheduled_status: r.scheduled_status,
+      }))));
     }
   );
 });
 
-// ─── BOOKING STATUS (customer polling) ───────
+// ─── BOOKING STATUS ─────────────────────────────────────────────
+// Returns payment fields so customer app can show PaymentReceipt
+// ────────────────────────────────────────────────────────────────
 app.get("/api/bookings/status/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -440,14 +338,19 @@ app.get("/api/bookings/status/:id", async (req, res) => {
          b.triptype,
          b.status,
          b.driver_id,
-         CASE
-           WHEN b.status IN ('accepted','inride','completed') THEN d.NAME
-           ELSE NULL
-         END AS driver_name,
-         CASE
-           WHEN b.status IN ('accepted','inride','completed') THEN d.MOBILE
-           ELSE NULL
-         END AS driver_phone
+         b.scheduled_at,
+         b.is_scheduled,
+         -- ── payment columns ──────────────────────────────────
+         b.ride_hours,
+         b.ride_minutes,
+         b.base_hours_used,
+         b.base_fare_used,
+         b.extra_per_hr_used,
+         b.amount,
+         b.payment_status,
+         -- ── driver info (only after accepted/inride/completed) ──
+         CASE WHEN b.status IN ('accepted','inride','completed') THEN d.NAME  ELSE NULL END AS driver_name,
+         CASE WHEN b.status IN ('accepted','inride','completed') THEN d.MOBILE ELSE NULL END AS driver_phone
        FROM bookings b
        LEFT JOIN DRIVERS d ON b.driver_id = d.ID
        WHERE b.id = ?
@@ -462,7 +365,7 @@ app.get("/api/bookings/status/:id", async (req, res) => {
   }
 });
 
-// ─── UPDATE BOOKING (admin assigns driver) ───
+// ─── UPDATE BOOKING ───────────────────────────
 app.put("/api/bookings/:id", async (req, res) => {
   const { id } = req.params;
   const { driver, status } = req.body;
@@ -476,139 +379,99 @@ app.put("/api/bookings/:id", async (req, res) => {
     io.to("admins").emit("bookingUpdated", { bookingId: id, status });
     res.json({ success: true });
   } catch (error) {
-    console.error("Booking update error:", error);
     res.status(500).json({ error: "Failed to update booking" });
   }
 });
 
-// ─── ACCEPT BOOKING ──────────────────────────
+// ─── ACCEPT BOOKING ───────────────────────────
 app.post("/api/accept-booking", async (req, res) => {
   const { bookingId, driverId } = req.body;
   try {
-    const [bookings] = await db.promise().query(
-      "SELECT * FROM bookings WHERE id=? AND status='assigned'", [bookingId]
-    );
-    if (!bookings.length)
-      return res.json({ success: false, message: "Booking not available or already accepted" });
-
+    const [bookings] = await db.promise().query("SELECT * FROM bookings WHERE id=? AND status='assigned'", [bookingId]);
+    if (!bookings.length) return res.json({ success: false, message: "Booking not available or already accepted" });
     const [drivers] = await db.promise().query("SELECT NAME, MOBILE FROM DRIVERS WHERE ID=?", [driverId]);
     const driver = drivers[0];
     if (!driver) return res.json({ success: false, message: "Driver not found" });
-
     await db.promise().query("UPDATE bookings SET status='accepted', driver_id=? WHERE id=?", [driverId, bookingId]);
-
-    try {
-      await db.promise().query(
-        `INSERT IGNORE INTO accept_booking (booking_id, driver_id, driver_name, driver_mobile) VALUES (?,?,?,?)`,
-        [bookingId, driverId, driver.NAME, driver.MOBILE]
-      );
-    } catch {}
-
+    try { await db.promise().query(`INSERT IGNORE INTO accept_booking (booking_id,driver_id,driver_name,driver_mobile) VALUES (?,?,?,?)`, [bookingId, driverId, driver.NAME, driver.MOBILE]); } catch {}
     await db.promise().query("UPDATE DRIVERS SET STATUS='inride' WHERE ID=?", [driverId]);
-
     io.to(`booking_${bookingId}`).emit("driverAssigned", { bookingId, driverName: driver.NAME, driverMobile: driver.MOBILE });
     io.to(`driver_${driverId}`).emit("bookingConfirmed", { bookingId });
-
     res.json({ success: true });
   } catch (err) {
-    console.error("Accept booking error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// ─── DECLINE BOOKING ─────────────────────────
+// ─── DECLINE BOOKING ──────────────────────────
 app.post("/api/decline-booking", async (req, res) => {
   const { bookingId, driverId } = req.body;
   if (!bookingId) return res.status(400).json({ success: false, message: "bookingId required" });
-
   try {
     const [rows] = await db.promise().query("SELECT id, driver_id, status FROM bookings WHERE id=?", [bookingId]);
     if (!rows.length) return res.status(404).json({ success: false, message: "Booking not found" });
-
     const booking = rows[0];
-    if (booking.status !== "assigned")
-      return res.json({ success: false, message: `Cannot decline booking with status: ${booking.status}` });
-    if (driverId && String(booking.driver_id) !== String(driverId))
-      return res.status(403).json({ success: false, message: "This booking is not assigned to you" });
-
+    if (booking.status !== "assigned") return res.json({ success: false, message: `Cannot decline: ${booking.status}` });
+    if (driverId && String(booking.driver_id) !== String(driverId)) return res.status(403).json({ success: false, message: "Not assigned to you" });
     await db.promise().query("UPDATE bookings SET driver_id = NULL, status = 'pending' WHERE id = ?", [bookingId]);
-    if (driverId)
-      await db.promise().query("UPDATE DRIVERS SET STATUS = 'online' WHERE ID = ? AND STATUS != 'offline'", [driverId]);
-
+    if (driverId) await db.promise().query("UPDATE DRIVERS SET STATUS = 'online' WHERE ID = ? AND STATUS != 'offline'", [driverId]);
     io.to("admins").emit("bookingDeclined", { bookingId, message: "Driver declined — needs reassignment" });
-    res.json({ success: true, message: "Booking returned to pending for reassignment" });
+    res.json({ success: true, message: "Booking returned to pending" });
   } catch (err) {
-    console.error("Decline booking error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// ─── RECOMMENDED DRIVERS ─────────────────────
+// ─── RECOMMENDED DRIVERS ──────────────────────
 app.get("/recommended-drivers/:phone", async (req, res) => {
   const { phone } = req.params;
   if (!phone) return res.status(400).json({ success: false, message: "Phone number required" });
-
   try {
-    const [activeBooking] = await db.promise().query(
-      `SELECT id FROM bookings WHERE booking_phnno = ? AND status IN ('pending','accepted','assigned','inride') LIMIT 1`,
-      [phone]
+    const [active] = await db.promise().query(
+      `SELECT id FROM bookings WHERE booking_phnno = ? AND status IN ('pending','accepted','assigned','inride') LIMIT 1`, [phone]
     );
-    if (activeBooking.length > 0) return res.json({ success: true, drivers: [] });
-
+    if (active.length > 0) return res.json({ success: true, drivers: [] });
     const [drivers] = await db.promise().query(
       `SELECT d.ID as id, d.NAME as name, d.STATUS as status, COUNT(b.id) AS total_rides
-       FROM bookings b
-       JOIN DRIVERS d ON b.driver_id = d.ID
+       FROM bookings b JOIN DRIVERS d ON b.driver_id = d.ID
        WHERE b.booking_phnno = ? AND b.status = 'completed' AND b.driver_id IS NOT NULL
-       GROUP BY d.ID, d.NAME, d.STATUS
-       HAVING COUNT(b.id) >= 1
-       ORDER BY total_rides DESC`,
-      [phone]
+       GROUP BY d.ID, d.NAME, d.STATUS HAVING COUNT(b.id) >= 1 ORDER BY total_rides DESC`, [phone]
     );
     return res.json({ success: true, drivers });
   } catch (error) {
-    console.error("Recommended drivers error:", error);
     return res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
-// ─── CUSTOMER BOOKINGS ───────────────────────
+// ─── CUSTOMER BOOKINGS ────────────────────────
 app.get("/api/bookings/customer", async (req, res) => {
   try {
     const { phone } = req.query;
     if (!phone) return res.status(400).json({ success: false, error: "Phone number is required" });
-
     const [bookings] = await db.promise().query(
       `SELECT b.id, b.customer_name, b.customer_mobile, b.booking_phnno,
               b.pickup, b.pickup_lat, b.pickup_lng, b.drop_location,
-              b.driver_id, b.status, b.created_at,
+              b.driver_id, b.status, b.created_at, b.amount,
               d.NAME AS driver_name, d.MOBILE AS driver_phone
-       FROM bookings b
-       LEFT JOIN DRIVERS d ON b.driver_id = d.ID
-       WHERE b.booking_phnno = ?
-       ORDER BY b.created_at DESC`,
-      [phone]
+       FROM bookings b LEFT JOIN DRIVERS d ON b.driver_id = d.ID
+       WHERE b.booking_phnno = ? ORDER BY b.created_at DESC`, [phone]
     );
     res.json(bookings);
   } catch (error) {
-    console.error("Fetch bookings error:", error);
     res.status(500).json({ success: false, error: "Failed to fetch bookings", message: error.message });
   }
 });
 
-// ─── DRIVER BOOKINGS (active) ────────────────
+// ─── DRIVER BOOKINGS (active) ─────────────────
 app.get("/api/bookings/driver", (req, res) => {
   const { driverId } = req.query;
   db.query(
-    `SELECT * FROM bookings WHERE driver_id = ? AND status IN ('assigned','accepted','inride') ORDER BY id DESC`,
-    [driverId], (err, result) => {
-      if (err) return res.status(500).send(err);
-      res.json(result);
-    }
+    `SELECT * FROM bookings WHERE driver_id = ? AND status IN ('assigned','accepted','inride') ORDER BY id DESC`, [driverId],
+    (err, result) => { if (err) return res.status(500).send(err); res.json(result); }
   );
 });
 
-// ─── DRIVER BOOKINGS (assigned only) ─────────
+// ─── DRIVER BOOKINGS (assigned only) ──────────
 app.get("/api/bookings/driver/assigned", async (req, res) => {
   const { driverId } = req.query;
   if (!driverId) return res.status(400).json([]);
@@ -617,23 +480,16 @@ app.get("/api/bookings/driver/assigned", async (req, res) => {
       `SELECT b.id, b.customer_name AS name, b.customer_mobile AS mobile,
               b.pickup, b.drop_location AS drop, b.triptype, b.status,
               b.driver_id AS driver, b.pickup_lat, b.pickup_lng
-       FROM bookings b
-       WHERE b.driver_id = ? AND b.status = 'assigned'
-       ORDER BY b.created_at DESC`,
-      [driverId]
+       FROM bookings b WHERE b.driver_id = ? AND b.status = 'assigned' ORDER BY b.created_at DESC`, [driverId]
     );
     res.json(rows);
-  } catch (err) {
-    console.error("Assigned bookings error:", err);
-    res.status(500).json([]);
-  }
+  } catch (err) { res.status(500).json([]); }
 });
 
-// ─── DRIVER BOOKINGS (all history) ───────────
+// ─── DRIVER BOOKINGS (all history) ────────────
 app.get("/api/bookings/driver/all", async (req, res) => {
   const { driverId, filter } = req.query;
   if (!driverId) return res.status(400).json({ success: false, error: "driverId is required" });
-
   let dateClause = "";
   switch (filter) {
     case "today":     dateClause = "AND DATE(b.created_at) = CURDATE()"; break;
@@ -643,44 +499,37 @@ app.get("/api/bookings/driver/all", async (req, res) => {
   }
   try {
     const [results] = await db.promise().query(
-      `SELECT b.id, b.customer_name, b.customer_mobile, b.pickup, b.drop_location, b.triptype, b.status, b.created_at
-       FROM bookings b WHERE b.driver_id = ? ${dateClause} ORDER BY b.created_at DESC`,
-      [driverId]
+      `SELECT b.id, b.customer_name, b.customer_mobile, b.pickup, b.drop_location,
+              b.triptype, b.status, b.amount, b.created_at
+       FROM bookings b WHERE b.driver_id = ? ${dateClause} ORDER BY b.created_at DESC`, [driverId]
     );
     res.json({ success: true, data: results });
   } catch (err) {
-    console.error("Driver all bookings error:", err);
     res.status(500).json({ success: false, error: "Failed to fetch bookings" });
   }
 });
 
-// ─── SUBMIT RATING ───────────────────────────
+// ─── SUBMIT RATING ────────────────────────────
 app.post("/api/submit-rating", async (req, res) => {
   try {
     const { bookingId, rating, comment } = req.body;
     await db.promise().query(`UPDATE bookings SET rating = ?, feedback = ? WHERE id = ?`, [rating, comment, bookingId]);
     res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ success: false });
-  }
+  } catch { res.status(500).json({ success: false }); }
 });
 
-// ─── DRIVER RATING ───────────────────────────
+// ─── DRIVER RATING ────────────────────────────
 app.get("/api/driver-rating/:driverId", async (req, res) => {
   try {
-    const { driverId } = req.params;
     const [result] = await db.promise().query(
       `SELECT ROUND(AVG(rating),1) AS avg_rating, COUNT(rating) AS total_ratings
-       FROM bookings WHERE driver_id = ? AND rating IS NOT NULL`,
-      [driverId]
+       FROM bookings WHERE driver_id = ? AND rating IS NOT NULL`, [req.params.driverId]
     );
     res.json(result[0]);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch rating" });
-  }
+  } catch { res.status(500).json({ error: "Failed to fetch rating" }); }
 });
 
-// ─── START RIDE ──────────────────────────────
+// ─── START RIDE ───────────────────────────────
 app.post("/api/bookings/start", (req, res) => {
   const { bookingId, driverId } = req.body;
   db.query("UPDATE bookings SET status='inride' WHERE id=?", [bookingId], (err) => {
@@ -692,31 +541,65 @@ app.post("/api/bookings/start", (req, res) => {
   });
 });
 
-// ─── COMPLETE RIDE ───────────────────────────
+// ─── COMPLETE RIDE ──────────────────────────────────────────────
+// Saves ride duration + fare + snapshots master_settings rates used
+// ────────────────────────────────────────────────────────────────
 app.post("/api/complete-ride", async (req, res) => {
-  const { bookingId, driverId } = req.body;
+  const { bookingId, driverId, amount, ride_hours, ride_minutes } = req.body;
   try {
-    await db.promise().query("UPDATE bookings SET status='completed' WHERE id=?", [bookingId]);
+    // fetch current master_settings to snapshot rates at time of ride
+    const [settings] = await db.promise().query(
+      "SELECT base_hours, base_fare, extra_per_hr FROM master_settings WHERE id = 1"
+    );
+    const cfg = settings[0] || {};
+
+    if (amount != null) {
+      await db.promise().query(
+        `UPDATE bookings
+            SET status            = 'completed',
+                ride_hours        = ?,
+                ride_minutes      = ?,
+                amount            = ?,
+                base_hours_used   = ?,
+                base_fare_used    = ?,
+                extra_per_hr_used = ?,
+                payment_status    = 'pending'
+          WHERE id = ?`,
+        [
+          ride_hours   ?? 0,
+          ride_minutes ?? 0,
+          amount,
+          cfg.base_hours   ?? null,
+          cfg.base_fare    ?? null,
+          cfg.extra_per_hr ?? null,
+          bookingId,
+        ]
+      );
+    } else {
+      // no fare passed — just mark completed
+      await db.promise().query("UPDATE bookings SET status='completed' WHERE id=?", [bookingId]);
+    }
+
     await db.promise().query("UPDATE DRIVERS SET STATUS='online' WHERE ID=?", [driverId]);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false });
+    console.error("Complete ride error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// ─── DRIVER PROFILE ──────────────────────────
+// ─── DRIVER PROFILE ───────────────────────────
 app.get("/api/drivers/profile", (req, res) => {
   const { driverId } = req.query;
-  const sql = `SELECT d.ID, d.NAME, d.MOBILE, d.BLOODGRP, d.LICENCENO, COUNT(b.id) AS total_rides
-               FROM DRIVERS d LEFT JOIN bookings b ON d.ID = b.driver_id AND b.status = 'completed'
-               WHERE d.ID = ? GROUP BY d.ID`;
-  db.query(sql, [driverId], (err, result) => {
-    if (err) return res.status(500).send(err);
-    res.json(result);
-  });
+  db.query(
+    `SELECT d.ID, d.NAME, d.MOBILE, d.BLOODGRP, d.LICENCENO, COUNT(b.id) AS total_rides
+     FROM DRIVERS d LEFT JOIN bookings b ON d.ID = b.driver_id AND b.status = 'completed'
+     WHERE d.ID = ? GROUP BY d.ID`, [driverId],
+    (err, result) => { if (err) return res.status(500).send(err); res.json(result); }
+  );
 });
 
-// ─── GET CUSTOMERS ───────────────────────────
+// ─── GET CUSTOMERS ────────────────────────────
 app.get("/api/customer", (req, res) => {
   db.query("SELECT ID, NAME, PHONE FROM CUSTOMERS ORDER BY ID DESC", (error, results) => {
     if (error) { res.send(JSON.stringify({ status: false })); return; }
@@ -724,10 +607,14 @@ app.get("/api/customer", (req, res) => {
   });
 });
 
-// ─── ADD DRIVER ──────────────────────────────
+// ─── ADD DRIVER ───────────────────────────────
 app.post("/api/adddrivers", upload.none(), (req, res) => {
-  const { name, status, paymentmode, location, experience, feeDetails, age, licenceNo, gender, car_type, lat, lng, payactive, driver_no, father_name, qualification, badge_no, alt_no, cur_address, per_address, region, bike_status, driver_status, remarks, engaged } = req.body;
-  const mobile = safeMobile(req.body.mobile), dob = safeDate(req.body.dob), joinDate = safeDate(req.body.join_date), licExpiry = safeDate(req.body.license_expiry_date), blood = normalizeBlood(req.body.bloodgrp);
+  const { name, status, paymentmode, location, experience, feeDetails, age, licenceNo, gender,
+          car_type, lat, lng, payactive, driver_no, father_name, qualification, badge_no,
+          alt_no, cur_address, per_address, region, bike_status, driver_status, remarks, engaged } = req.body;
+  const mobile = safeMobile(req.body.mobile), dob = safeDate(req.body.dob),
+        joinDate = safeDate(req.body.join_date), licExpiry = safeDate(req.body.license_expiry_date),
+        blood = normalizeBlood(req.body.bloodgrp);
 
   db.query(
     `INSERT INTO DRIVERS (NAME,MOBILE,LOCATION,EXPERIENCE,FEES_DETAILS,DOB,BLOODGRP,AGE,GENDER,CAR_TYPE,LICENCENO,LAT,LNG,PAYMENT_METHOD,STATUS,PAYACTIVE,DRIVER_NO,FATHER_NAME,QUALIFICATION,BADGE_NO,JOIN_DATE,ALT_NO,CUR_ADDRESS,PER_ADDRESS,REGION,BIKE_STATUS,DRIVER_STATUS,REMARKS,ENGAGED,LICENSE_EXPIRY_DATE) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -739,22 +626,36 @@ app.post("/api/adddrivers", upload.none(), (req, res) => {
   );
 });
 
-// ─── GET DRIVERS ─────────────────────────────
+// ─── GET DRIVERS ──────────────────────────────
 app.get("/api/drivers", (req, res) => {
   db.query(
     `SELECT ID,NAME,MOBILE,LOCATION,STATUS,CAR_TYPE,EXPERIENCE,FEES_DETAILS,DOB,BLOODGRP,AGE,GENDER,LICENCENO,LAT,LNG,PAYMENT_METHOD,PAYACTIVE,DRIVER_NO,FATHER_NAME,QUALIFICATION,BADGE_NO,JOIN_DATE,ALT_NO,CUR_ADDRESS,PER_ADDRESS,REGION,BIKE_STATUS,DRIVER_STATUS,REMARKS,ENGAGED,LICENSE_EXPIRY_DATE FROM DRIVERS ORDER BY ID DESC`,
     (error, results) => {
       if (error) return res.send(JSON.stringify({ status: false }));
-      res.send(JSON.stringify(results.map((r) => ({ id:r.ID,name:r.NAME,mobile:r.MOBILE,location:r.LOCATION,car_type:r.CAR_TYPE,experience:r.EXPERIENCE,feeDetails:r.FEES_DETAILS,dob:r.DOB,bloodgrp:r.BLOODGRP,age:r.AGE,gender:r.GENDER,licenceNo:r.LICENCENO,paymentmode:r.PAYMENT_METHOD,status:r.STATUS,lat:parseFloat(r.LAT),lng:parseFloat(r.LNG),payactive:r.PAYACTIVE,driver_no:r.DRIVER_NO,father_name:r.FATHER_NAME,qualification:r.QUALIFICATION,badge_no:r.BADGE_NO,join_date:r.JOIN_DATE,alt_no:r.ALT_NO,cur_address:r.CUR_ADDRESS,per_address:r.PER_ADDRESS,region:r.REGION,bike_status:r.BIKE_STATUS,driver_status:r.DRIVER_STATUS,remarks:r.REMARKS,engaged:r.ENGAGED,license_expiry_date:r.LICENSE_EXPIRY_DATE }))));
+      res.send(JSON.stringify(results.map((r) => ({
+        id:r.ID,name:r.NAME,mobile:r.MOBILE,location:r.LOCATION,car_type:r.CAR_TYPE,
+        experience:r.EXPERIENCE,feeDetails:r.FEES_DETAILS,dob:r.DOB,bloodgrp:r.BLOODGRP,
+        age:r.AGE,gender:r.GENDER,licenceNo:r.LICENCENO,paymentmode:r.PAYMENT_METHOD,
+        status:r.STATUS,lat:parseFloat(r.LAT),lng:parseFloat(r.LNG),payactive:r.PAYACTIVE,
+        driver_no:r.DRIVER_NO,father_name:r.FATHER_NAME,qualification:r.QUALIFICATION,
+        badge_no:r.BADGE_NO,join_date:r.JOIN_DATE,alt_no:r.ALT_NO,cur_address:r.CUR_ADDRESS,
+        per_address:r.PER_ADDRESS,region:r.REGION,bike_status:r.BIKE_STATUS,
+        driver_status:r.DRIVER_STATUS,remarks:r.REMARKS,engaged:r.ENGAGED,
+        license_expiry_date:r.LICENSE_EXPIRY_DATE
+      }))));
     }
   );
 });
 
-// ─── UPDATE DRIVER ───────────────────────────
+// ─── UPDATE DRIVER ────────────────────────────
 app.put("/api/updatedriver/:id", upload.none(), (req, res) => {
   const driverId = req.params.id;
-  const { name, location, paymentmode, experience, feeDetails, age, licenceNo, gender, car_type, lat, lng, status, payactive, driver_no, father_name, qualification, badge_no, alt_no, cur_address, per_address, region, bike_status, driver_status, remarks, engaged } = req.body;
-  const mobile = safeMobile(req.body.mobile), dob = safeDate(req.body.dob), joinDate = safeDate(req.body.join_date), licExpiry = safeDate(req.body.license_expiry_date), blood = normalizeBlood(req.body.bloodgrp);
+  const { name, location, paymentmode, experience, feeDetails, age, licenceNo, gender, car_type,
+          lat, lng, status, payactive, driver_no, father_name, qualification, badge_no,
+          alt_no, cur_address, per_address, region, bike_status, driver_status, remarks, engaged } = req.body;
+  const mobile = safeMobile(req.body.mobile), dob = safeDate(req.body.dob),
+        joinDate = safeDate(req.body.join_date), licExpiry = safeDate(req.body.license_expiry_date),
+        blood = normalizeBlood(req.body.bloodgrp);
 
   db.query(
     `UPDATE DRIVERS SET NAME=?,MOBILE=?,LOCATION=?,EXPERIENCE=?,FEES_DETAILS=?,DOB=?,BLOODGRP=?,AGE=?,GENDER=?,CAR_TYPE=?,LICENCENO=?,PAYMENT_METHOD=?,LAT=?,LNG=?,STATUS=?,PAYACTIVE=?,DRIVER_NO=?,FATHER_NAME=?,QUALIFICATION=?,BADGE_NO=?,JOIN_DATE=?,ALT_NO=?,CUR_ADDRESS=?,PER_ADDRESS=?,REGION=?,BIKE_STATUS=?,DRIVER_STATUS=?,REMARKS=?,ENGAGED=?,LICENSE_EXPIRY_DATE=? WHERE ID=?`,
@@ -767,7 +668,7 @@ app.put("/api/updatedriver/:id", upload.none(), (req, res) => {
   );
 });
 
-// ─── DELETE DRIVER ───────────────────────────
+// ─── DELETE DRIVER ────────────────────────────
 app.delete("/api/deletedriver/:id", (req, res) => {
   db.query("DELETE FROM DRIVERS WHERE ID = ?", [req.params.id], (err, result) => {
     if (err) return res.status(500).send({ message: "Database Error" });
@@ -776,7 +677,7 @@ app.delete("/api/deletedriver/:id", (req, res) => {
   });
 });
 
-// ─── UPDATE DRIVER LOCATION ──────────────────
+// ─── UPDATE DRIVER LOCATION ───────────────────
 app.post("/api/driver/updateLocation", (req, res) => {
   const { driverId, lat, lng } = req.body;
   db.query("UPDATE DRIVERS SET LAT = ?, LNG = ? WHERE ID = ?", [lat, lng, driverId], (err) => {
@@ -785,7 +686,7 @@ app.post("/api/driver/updateLocation", (req, res) => {
   });
 });
 
-// ─── UPDATE DRIVER STATUS ────────────────────
+// ─── UPDATE DRIVER STATUS ─────────────────────
 app.post("/api/driver/updateStatus", (req, res) => {
   const { driverId, status } = req.body;
   db.query("UPDATE DRIVERS SET STATUS = ? WHERE ID = ?", [status, driverId], (err) => {
@@ -800,7 +701,6 @@ const INCOME_PER_RIDE = 350;
 app.get("/api/driver-stats/:driverId", async (req, res) => {
   const { driverId } = req.params;
   const { filter = "all", from, to } = req.query;
-
   let dateClause = "";
   switch (filter) {
     case "today":     dateClause = "AND DATE(created_at) = CURDATE()"; break;
@@ -808,57 +708,37 @@ app.get("/api/driver-stats/:driverId", async (req, res) => {
     case "thisweek":  dateClause = "AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1)"; break;
     case "thismonth": dateClause = "AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())"; break;
     case "custom":    if (from && to) dateClause = `AND DATE(created_at) BETWEEN '${from}' AND '${to}'`; break;
-    default:          dateClause = "";
   }
-
   try {
     const [summary] = await db.promise().query(
-      `SELECT
-         COUNT(*)                                          AS totalRides,
-         ROUND(AVG(rating), 1)                            AS avgRating,
-         COUNT(rating)                                    AS ratingCount,
-         SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END)     AS r5,
-         SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END)     AS r4,
-         SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END)     AS r3,
-         SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END)     AS r2,
-         SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END)     AS r1
-       FROM bookings
-       WHERE driver_id = ? AND status = 'completed'
-       ${dateClause}`,
-      [driverId]
+      `SELECT COUNT(*) AS totalRides, ROUND(AVG(rating),1) AS avgRating, COUNT(rating) AS ratingCount,
+              SUM(CASE WHEN rating=5 THEN 1 ELSE 0 END) AS r5, SUM(CASE WHEN rating=4 THEN 1 ELSE 0 END) AS r4,
+              SUM(CASE WHEN rating=3 THEN 1 ELSE 0 END) AS r3, SUM(CASE WHEN rating=2 THEN 1 ELSE 0 END) AS r2,
+              SUM(CASE WHEN rating=1 THEN 1 ELSE 0 END) AS r1,
+              SUM(COALESCE(amount, 0)) AS totalEarnings
+       FROM bookings WHERE driver_id = ? AND status = 'completed' ${dateClause}`, [driverId]
     );
-
-    const row         = summary[0];
-    const totalRides  = Number(row.totalRides) || 0;
-    const totalIncome = totalRides * INCOME_PER_RIDE;
-
+    const row        = summary[0];
+    const totalRides = Number(row.totalRides) || 0;
     const [comments] = await db.promise().query(
-      `SELECT b.id, b.customer_name, b.pickup, b.drop_location,
-              b.rating, b.feedback, b.created_at
-       FROM bookings b
-       WHERE b.driver_id = ? AND b.status = 'completed' AND b.rating IS NOT NULL
-       ${dateClause}
-       ORDER BY b.created_at DESC LIMIT 50`,
-      [driverId]
+      `SELECT b.id, b.customer_name, b.pickup, b.drop_location, b.rating, b.feedback, b.amount, b.created_at
+       FROM bookings b WHERE b.driver_id = ? AND b.status = 'completed' AND b.rating IS NOT NULL
+       ${dateClause} ORDER BY b.created_at DESC LIMIT 50`, [driverId]
     );
-
     return res.json({
-      success: true, totalRides, totalIncome,
+      success: true, totalRides,
+      totalIncome: Number(row.totalEarnings) || totalRides * INCOME_PER_RIDE,
       avgRating:   row.avgRating           || 0,
       ratingCount: Number(row.ratingCount) || 0,
-      ratingBreakdown: {
-        5: Number(row.r5) || 0, 4: Number(row.r4) || 0,
-        3: Number(row.r3) || 0, 2: Number(row.r2) || 0, 1: Number(row.r1) || 0,
-      },
+      ratingBreakdown: { 5:Number(row.r5)||0, 4:Number(row.r4)||0, 3:Number(row.r3)||0, 2:Number(row.r2)||0, 1:Number(row.r1)||0 },
       comments,
     });
   } catch (err) {
-    console.error("Driver stats error:", err);
     return res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// ─── CUSTOMER PROFILE ────────────────────────
+// ─── CUSTOMER PROFILE ─────────────────────────
 app.get("/api/customers/profile", (req, res) => {
   db.query("SELECT * FROM CUSTOMERS WHERE PHONE = ?", [req.query.phone], (err, results) => {
     if (err) return res.status(500).send({ message: "Database error" });
@@ -867,67 +747,133 @@ app.get("/api/customers/profile", (req, res) => {
   });
 });
 
-// ─── UPDATE CUSTOMER NAME ────────────────────
+// ─── UPDATE CUSTOMER NAME ─────────────────────
 app.put("/api/customers/update-name", async (req, res) => {
   try {
     const { phone, name } = req.body;
     await db.execute("UPDATE CUSTOMERS SET NAME = ? WHERE PHONE = ?", [name, phone]);
     res.json({ success: true, message: "Name updated successfully" });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to update name" });
-  }
+  } catch { res.status(500).json({ error: "Failed to update name" }); }
 });
 
-// ─── NOTIFY CUSTOMER: preferred driver unavailable ───
+// ─── PREFERRED DRIVER UNAVAILABLE ────────────
 app.post("/api/bookings/:id/preferred-unavailable", async (req, res) => {
   const { id } = req.params;
   try {
-    const [rows] = await db.promise().query(
-      "SELECT status, booking_phnno FROM bookings WHERE id = ?", [id]
-    );
+    const [rows] = await db.promise().query("SELECT status, booking_phnno FROM bookings WHERE id = ?", [id]);
     if (!rows.length) return res.status(404).json({ success: false, message: "Booking not found" });
-
-    // Mark as waiting for customer response
-    await db.promise().query(
-      "UPDATE bookings SET status = 'preferred_query' WHERE id = ?", [id]
-    );
-
-    // Notify customer via socket
-    io.to(`customer_${rows[0].booking_phnno}`).emit("preferredUnavailable", {
-      bookingId: id,
-    });
-
+    await db.promise().query("UPDATE bookings SET status = 'preferred_query' WHERE id = ?", [id]);
+    io.to(`customer_${rows[0].booking_phnno}`).emit("preferredUnavailable", { bookingId: id });
     res.json({ success: true });
-  } catch (err) {
-    console.error("Preferred unavailable error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// ─── CUSTOMER RESPONDS to preferred unavailable ───
+// ─── CUSTOMER RESPONDS TO PREFERRED QUERY ─────
 app.post("/api/bookings/:id/preferred-response", async (req, res) => {
   const { id } = req.params;
-  const { accept } = req.body; // true = yes assign another, false = cancel
+  const { accept } = req.body;
   try {
     if (accept) {
-      await db.promise().query(
-        "UPDATE bookings SET status = 'pending' WHERE id = ?", [id]
-      );
+      await db.promise().query("UPDATE bookings SET status = 'pending' WHERE id = ?", [id]);
       io.to("admins").emit("customerAcceptedAlternate", { bookingId: id });
     } else {
-      await db.promise().query(
-        "UPDATE bookings SET status = 'cancelled', driver_id = NULL WHERE id = ?", [id]
-      );
-      io.to("admins").emit("bookingCancelled", {
-        bookingId: id,
-        message: "Customer declined alternate driver",
-      });
+      await db.promise().query("UPDATE bookings SET status = 'cancelled', driver_id = NULL WHERE id = ?", [id]);
+      io.to("admins").emit("bookingCancelled", { bookingId: id, message: "Customer declined alternate driver" });
     }
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  MASTER SETTINGS — Logo + Payment (single table: master_settings)
+// ═══════════════════════════════════════════════════════════════
+
+app.get("/api/admin/master-settings", async (req, res) => {
+  try {
+    const [rows] = await db.promise().query(
+      "SELECT id, logo_url, logo_name, base_hours, base_fare, extra_per_hr, updated_at FROM master_settings WHERE id = 1"
+    );
+    if (!rows.length) return res.json({ logo_url:null, logo_name:null, base_hours:null, base_fare:null, extra_per_hr:null, updated_at:null });
+    const row = rows[0];
+    res.json({
+      logo_url:     row.logo_url     || null,
+      logo_name:    row.logo_name    || null,
+      base_hours:   row.base_hours   ?? null,
+      base_fare:    row.base_fare    != null ? parseFloat(row.base_fare)    : null,
+      extra_per_hr: row.extra_per_hr != null ? parseFloat(row.extra_per_hr) : null,
+      updated_at:   row.updated_at   || null,
+    });
+  } catch (err) { res.status(500).json({ message: "Failed to load settings" }); }
+});
+
+app.post("/api/admin/master-settings", logoUpload.single("logo"), async (req, res) => {
+  try {
+    const base_hours   = req.body.base_hours   !== "" ? parseInt(req.body.base_hours,   10) : null;
+    const base_fare    = req.body.base_fare    !== "" ? parseFloat(req.body.base_fare)       : null;
+    const extra_per_hr = req.body.extra_per_hr !== "" ? parseFloat(req.body.extra_per_hr)    : null;
+
+    if (base_hours   != null && (isNaN(base_hours)   || base_hours < 1))   return res.status(400).json({ message: "base_hours must be ≥ 1" });
+    if (base_fare    != null && (isNaN(base_fare)    || base_fare < 0))     return res.status(400).json({ message: "base_fare must be ≥ 0" });
+    if (extra_per_hr != null && (isNaN(extra_per_hr) || extra_per_hr < 0))  return res.status(400).json({ message: "extra_per_hr must be ≥ 0" });
+
+    let logo_url = undefined, logo_name = undefined;
+    if (req.file) {
+      const serverBase = process.env.EXPO_PUBLIC_BASE_URL || "http://localhost:3000";
+      logo_url  = `${serverBase}/uploads/logos/${req.file.filename}`;
+      logo_name = req.file.originalname;
+    }
+
+    const fields = [], values = [];
+    if (base_hours   != null)    { fields.push("base_hours = ?");   values.push(base_hours); }
+    if (base_fare    != null)    { fields.push("base_fare = ?");    values.push(base_fare); }
+    if (extra_per_hr != null)    { fields.push("extra_per_hr = ?"); values.push(extra_per_hr); }
+    if (logo_url  !== undefined) { fields.push("logo_url = ?");     values.push(logo_url); }
+    if (logo_name !== undefined) { fields.push("logo_name = ?");    values.push(logo_name); }
+
+    if (fields.length === 0) return res.status(400).json({ message: "Nothing to save" });
+    values.push(1);
+    await db.promise().query(`UPDATE master_settings SET ${fields.join(", ")} WHERE id = 1`, values);
+
+    const [rows] = await db.promise().query("SELECT id, logo_url, logo_name, base_hours, base_fare, extra_per_hr, updated_at FROM master_settings WHERE id = 1");
+    const row = rows[0];
+    res.json({
+      message: "Settings saved successfully",
+      logo_url:     row.logo_url     || null,
+      logo_name:    row.logo_name    || null,
+      base_hours:   row.base_hours   ?? null,
+      base_fare:    row.base_fare    != null ? parseFloat(row.base_fare)    : null,
+      extra_per_hr: row.extra_per_hr != null ? parseFloat(row.extra_per_hr) : null,
+      updated_at:   row.updated_at   || null,
+    });
+  } catch (err) { res.status(500).json({ message: "Failed to save settings" }); }
+});
+
+app.delete("/api/admin/master-settings/logo", async (req, res) => {
+  try {
+    const [rows] = await db.promise().query("SELECT logo_url FROM master_settings WHERE id = 1");
+    if (rows.length && rows[0].logo_url) {
+      const filePath = path.join(__dirname, "uploads/logos", path.basename(rows[0].logo_url));
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
+    await db.promise().query("UPDATE master_settings SET logo_url = NULL, logo_name = NULL WHERE id = 1");
+    res.json({ success: true, message: "Logo removed successfully" });
+  } catch (err) { res.status(500).json({ message: "Failed to remove logo" }); }
+});
+
+// ─── MARK PAYMENT AS PAID ─────────────────────
+app.post("/api/bookings/:id/mark-paid", async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.promise().query(
+      "UPDATE bookings SET payment_status = 'paid' WHERE id = ?", [id]
+    );
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+// ═══════════════════════════════════════════════════════════════
 
 const PORT = 3000;
 server.listen(PORT, "0.0.0.0", () => {

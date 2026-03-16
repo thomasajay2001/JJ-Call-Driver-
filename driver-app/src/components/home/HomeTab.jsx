@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { BASE_URL } from "../../utils/constants";
+import RideCompletionModal from "./Ridecompletionmodel";
 
 import CustomerHero    from "./CustomerHero";
 import QuickActions    from "./QuickActions";
@@ -19,19 +20,12 @@ import {
   SuccessModal,
 } from "./Modals";
 
-/* ═══════════════════════════════════════════════════════
-   HomeTab
-   FIX 1: role read SYNCHRONOUSLY from localStorage (no async gap)
-   FIX 2: poll runs ALWAYS when driver logged in (not gated on isOnline)
-           isOnline only controls UI visibility + server status sync
-   FIX 3: isOnline fully persisted in localStorage — survives tab switches
-   ═══════════════════════════════════════════════════════ */
-
-// Read synchronously inside component call — fresh on every mount/re-login
 const HomeTab = () => {
   const role      = localStorage.getItem("role")         || "";
   const DRIVER_ID = localStorage.getItem("driverId")     || "";
-  const IS_ONLINE = localStorage.getItem("driverOnline") === "true";
+
+  /* ── Completion modal ── */
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   /* ── Customer modals ── */
   const [showBookingForm,     setShowBookingForm]     = useState(false);
@@ -72,19 +66,16 @@ const HomeTab = () => {
     };
   }, []);
 
-  /* ── POLL — always runs when driver logged in, regardless of isOnline ──
-     isOnline is just a UI/server preference.
-     Admin can assign a booking anytime — driver must always see it.       */
+  /* ── POLL ── */
   useEffect(() => {
     if (role !== "driver" || !DRIVER_ID) return;
 
-  const poll = async () => {
-      if (acceptedRide) return; // already in a ride, skip
+    const poll = async () => {
+      if (acceptedRide) return;
       try {
         const res  = await axios.get(`${BASE_URL}/api/bookings`);
         const list = Array.isArray(res.data) ? res.data : [];
 
-        // Restore accepted/inride ride after page refresh
         const activeRide = list.find(
           (b) => String(b.driver) === String(DRIVER_ID) &&
                  (b.status === "accepted" || b.status === "inride")
@@ -105,7 +96,6 @@ const HomeTab = () => {
           return;
         }
 
-        // Check for newly assigned ride
         const found = list.find(
           (b) => String(b.driver) === String(DRIVER_ID) && b.status === "assigned"
         );
@@ -113,11 +103,11 @@ const HomeTab = () => {
       } catch {}
     };
 
-    poll(); // run immediately on mount
+    poll();
     clearInterval(pollRef.current);
-    pollRef.current = setInterval(poll, 4000); // poll every 4s
+    pollRef.current = setInterval(poll, 4000);
     return () => clearInterval(pollRef.current);
-  }, [acceptedRide]); // only re-setup when acceptedRide changes
+  }, [acceptedRide]);
 
   /* ── API helpers ── */
   const fetchDriverProfile = async (driverId) => {
@@ -152,32 +142,21 @@ const HomeTab = () => {
     } catch { setBookingHistory([]); }
   };
 
-  /* ── GO ONLINE / OFFLINE ──
-     UI updates instantly. localStorage persists across tab switches.
-     Server sync is fire-and-forget (no blocking, no alerts).           */
+  /* ── GO ONLINE / OFFLINE ── */
   const handleToggleOnline = async () => {
     if (togglingOnline) return;
     const newStatus = !isOnline;
-
     setIsOnline(newStatus);
     localStorage.setItem("driverOnline", String(newStatus));
     setTogglingOnline(true);
-
-    if (!newStatus) {
-      // Going offline — clear pending ride display
-      setPendingRide(null);
-    }
-
+    if (!newStatus) setPendingRide(null);
     try {
       await axios.post(`${BASE_URL}/api/driver/updateStatus`, {
         driverId: DRIVER_ID,
         status: newStatus ? "online" : "offline",
       });
-    } catch {
-      // silent — localStorage already updated, UI is correct
-    } finally {
-      setTogglingOnline(false);
-    }
+    } catch {}
+    finally { setTogglingOnline(false); }
   };
 
   /* ── ACCEPT ── */
@@ -213,26 +192,32 @@ const HomeTab = () => {
   const handleDeclineRide = async () => {
     if (!pendingRide) return;
     const bookingId = pendingRide.id;
-    setPendingRide(null); // hide instantly
+    setPendingRide(null);
     try {
-      await axios.post(`${BASE_URL}/api/decline-booking`, {
-        bookingId,
-        driverId: DRIVER_ID,
-      });
+      await axios.post(`${BASE_URL}/api/decline-booking`, { bookingId, driverId: DRIVER_ID });
     } catch (e) {
       console.warn("Decline API error:", e.message);
     }
   };
 
-  /* ── COMPLETE ── */
-  const handleCompleteRide = async () => {
+  /* ── COMPLETE — now opens duration modal first ── */
+  const handleOpenCompletionModal = () => {
+    setShowCompletionModal(true);
+  };
+
+  /* ── Called after driver confirms duration + fare in modal ── */
+  const handleCompleteRide = async ({ hours, minutes, totalAmount }) => {
+    setShowCompletionModal(false);
     const ride = acceptedRide;
     setAcceptedRide(null);
-    if (ride?.amount) setTodayEarnings((p) => p + (ride.amount || 0));
+    if (totalAmount) setTodayEarnings((p) => p + totalAmount);
     try {
       await axios.post(`${BASE_URL}/api/complete-ride`, {
-        bookingId: ride?.id,
-        driverId:  DRIVER_ID,
+        bookingId:    ride?.id,
+        driverId:     DRIVER_ID,
+        amount:       totalAmount,
+        ride_hours:   hours,
+        ride_minutes: minutes,
       });
       fetchDriverProfile(DRIVER_ID);
       fetchDriverBookings(DRIVER_ID);
@@ -268,7 +253,6 @@ const HomeTab = () => {
           onHelpClick={() => setShowHelp(true)}
         />
 
-        {/* Online / Offline toggle — always visible */}
         <DriverToggle
           isOnline={isOnline}
           onToggle={handleToggleOnline}
@@ -282,7 +266,6 @@ const HomeTab = () => {
           loading={profileLoading}
         />
 
-        {/* ── Incoming ride — shows even if offline (admin assigned) ── */}
         {pendingRide && !acceptedRide && (
           <section style={st.section}>
             <h2 style={st.sectionHeading}>🔔 New Ride Assigned</h2>
@@ -294,19 +277,17 @@ const HomeTab = () => {
           </section>
         )}
 
-        {/* ── Active trip ── */}
         {acceptedRide && (
           <section style={st.section}>
             <h2 style={st.sectionHeading}>🚕 Active Trip</h2>
             <ActiveTripCard
               ride={acceptedRide}
-              onComplete={handleCompleteRide}
+              onComplete={handleOpenCompletionModal}  
               role="driver"
             />
           </section>
         )}
 
-        {/* ── Status info box (only when no ride activity) ── */}
         {!pendingRide && !acceptedRide && (
           isOnline ? (
             <div style={st.waitingBox}>
@@ -329,9 +310,18 @@ const HomeTab = () => {
         />
 
         <HelpModal visible={showHelp} onClose={() => setShowHelp(false)} />
+
         <DriverHistoryModal
           visible={showDriverHistory}
           onClose={() => setShowDriverHistory(false)}
+        />
+
+        {/* ── Ride Completion Modal ── */}
+        <RideCompletionModal
+          visible={showCompletionModal}
+          ride={acceptedRide}
+          onClose={() => setShowCompletionModal(false)}
+          onConfirm={handleCompleteRide}
         />
       </div>
     );

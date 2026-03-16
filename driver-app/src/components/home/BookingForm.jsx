@@ -335,11 +335,12 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
   const [ratingComment,    setRatingComment]    = useState("");
   const [ratingSubmitted,  setRatingSubmitted]  = useState(false);
   const [ratingSubmitting, setRatingSubmitting] = useState(false);
-
-  // ── NEW: cancel confirmation modal ──
   const [showCancelModal,  setShowCancelModal]  = useState(false);
   const [cancelling,       setCancelling]       = useState(false);
-  const [cancelResult,     setCancelResult]     = useState(null); // { penalised, amount }
+  const [cancelResult,     setCancelResult]     = useState(null);
+
+  // ── NEW: payment state ──
+  const [markingPaid,      setMarkingPaid]      = useState(false);
 
   const timerRef        = useRef(null);
   const countRef        = useRef(null);
@@ -360,10 +361,11 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
     return () => clearInterval(timerRef.current);
   }, [bookingId]);
 
+  // ── NEW: stop polling once completed, wait for payment before rating ──
   useEffect(() => {
     if (booking?.status === "completed") {
       clearInterval(timerRef.current);
-      if (!ratingSubmitted) setTimeout(() => setShowRating(true), 800);
+      // Rating only shown AFTER payment is marked paid
     }
   }, [booking?.status]);
 
@@ -423,7 +425,6 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
     finally { setRatingSubmitting(false); }
   };
 
-  /* ── NEW: handle cancel with penalty ── */
   const handleCancelConfirm = async (hasPenalty, penaltyAmount) => {
     setCancelling(true);
     try {
@@ -436,7 +437,6 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
       if (data.success) {
         setShowCancelModal(false);
         setCancelResult({ penalised: hasPenalty, amount: penaltyAmount });
-        // brief delay then close
         setTimeout(() => onClose("cancelled"), hasPenalty ? 3500 : 1500);
       } else {
         alert(data.message || "Cancellation failed.");
@@ -445,6 +445,23 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
       alert("Network error. Please try again.");
     } finally {
       setCancelling(false);
+    }
+  };
+
+  // ── NEW: mark payment as paid then show rating ──
+  const handleMarkPaid = async () => {
+    setMarkingPaid(true);
+    try {
+      await fetch(`${BASE_URL}/api/bookings/${bookingId}/mark-paid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      await fetchStatus(); // refresh booking to get payment_status = 'paid'
+      if (!ratingSubmitted) setShowRating(true);
+    } catch {
+      alert("Failed to update payment. Please try again.");
+    } finally {
+      setMarkingPaid(false);
     }
   };
 
@@ -458,6 +475,21 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
   const waitMins  = status==="wait5"?5 : status==="wait10"?10 : 30;
   const pct       = waitCountdown!==null && waitTotalSecs ? (waitCountdown/waitTotalSecs)*100 : 0;
 
+  // ── NEW: fare helpers ──
+  const fareAmount     = booking.amount      ? parseFloat(booking.amount) : null;
+  const paymentStatus  = booking.payment_status; // 'pending' | 'paid' | null
+  const rideHours      = booking.ride_hours  ?? null;
+  const rideMinutes    = booking.ride_minutes ?? null;
+  const baseHrsUsed    = booking.base_hours_used   ?? null;
+  const baseFareUsed   = booking.base_fare_used    ?? null;
+  const extraPerHrUsed = booking.extra_per_hr_used ?? null;
+
+  const isCompleted    = status === "completed";
+  // Show payment screen: ride done, fare set, not yet paid
+  const showPayScreen  = isCompleted && fareAmount && paymentStatus === "pending";
+  // Show post-payment rating prompt inline (if rating popup not open)
+  const showPaidBanner = isCompleted && paymentStatus === "paid" && ratingSubmitted;
+
   const steps = [
     { key:"pending",   icon:"📋", label:"Booking Received", sub:"Waiting for admin to assign a driver…" },
     { key:"assigned",  icon:"🔍", label:"Finding Driver",    sub:"Driver notified, waiting for confirmation…" },
@@ -468,7 +500,6 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
   const activeIdx  = steps.findIndex((s) => s.key === status);
   const showDriver = ["accepted","inride","completed"].includes(status) && booking.driver_name;
 
-  /* Penalty result screen */
   if (cancelResult) {
     return (
       <div style={tr.wrap}>
@@ -477,7 +508,7 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
             {cancelResult.penalised ? "💸" : "✅"}
           </div>
           <h3 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 800, color: "#1E293B" }}>
-            {cancelResult.penalised ? "Booking Cancelled" : "Booking Cancelled"}
+            Booking Cancelled
           </h3>
           {cancelResult.penalised ? (
             <>
@@ -512,174 +543,306 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
             {isScheduled ? "📅 Ride Scheduled"
               : isWaiting  ? "⏱ Please Wait"
               : isAllBusy  ? "🚫 All Drivers Busy"
+              : isCompleted ? "✅ Trip Completed"
               : "Tracking Your Ride"}
           </h3>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          {status==="completed" && <button style={tr.doneBtn} onClick={()=>onClose(status)}>Done ✓</button>}
+          {isCompleted && paymentStatus === "paid" && <button style={tr.doneBtn} onClick={()=>onClose(status)}>Done ✓</button>}
           {isWaiting && <button style={tr.cancelBtn} onClick={()=>onClose(status)}>✕ Cancel</button>}
           {isAllBusy && <button style={tr.cancelBtn} onClick={()=>onClose(status)}>✕ Cancel</button>}
           <button style={tr.closeIcon} onClick={()=>onClose(status)} title="Close">✕</button>
         </div>
       </div>
 
-      {/* scheduled ride banner */}
-      {isScheduled && (
-        <div style={tr.scheduledBox}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-            <span style={{fontSize:28}}>📅</span>
-            <div>
-              <p style={{margin:"0 0 2px",fontSize:14,fontWeight:800,color:"#0F766E"}}>Ride Scheduled!</p>
-              <p style={{margin:0,fontSize:12,color:"#0D9488"}}>Your ride is confirmed and will be dispatched on time.</p>
+      {/* ── NEW: PAYMENT RECEIPT SCREEN ── */}
+      {showPayScreen && (
+        <div style={pay.wrap}>
+          {/* receipt card */}
+          <div style={pay.receipt}>
+            <div style={pay.receiptHeader}>
+              <span style={{fontSize:32}}>🧾</span>
+              <div>
+                <p style={pay.receiptTitle}>Trip Receipt</p>
+                <p style={pay.receiptSub}>Your ride has been completed</p>
+              </div>
             </div>
-          </div>
-          {booking.scheduled_at && (
-            <div style={tr.schedTimeBox}>
-              <span style={{fontSize:13}}>🗓️</span>
-              <span style={{fontSize:13,fontWeight:700,color:"#0F766E"}}>
-                {new Date(booking.scheduled_at).toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"})}
-                {" · "}
-                {new Date(booking.scheduled_at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true})}
-              </span>
-            </div>
-          )}
 
-          {/* ── NEW: Cancellation Policy in scheduled view ── */}
-          <div style={tr.policyMiniBox}>
-            <p style={tr.policyMiniTitle}>📋 Cancellation Policy</p>
-            {(() => {
-              const rideTime = booking.scheduled_at ? new Date(booking.scheduled_at) : null;
-              const minsLeft = rideTime ? (rideTime - new Date()) / (1000 * 60) : Infinity;
-              return minsLeft > 60
-                ? <p style={tr.policyMiniLine}>✅ Free cancellation available (more than 1 hr to go)</p>
-                : minsLeft > 0
-                  ? <p style={{ ...tr.policyMiniLine, color: "#DC2626" }}>💸 ₹200 fee applies (within 1 hr of ride)</p>
-                  : <p style={{ ...tr.policyMiniLine, color: "#DC2626" }}>🚫 Ride time has passed</p>;
-            })()}
-          </div>
-
-          <button style={tr.cancelScheduledBtn} onClick={() => setShowCancelModal(true)}>
-            ✕ Cancel Booking
-          </button>
-        </div>
-      )}
-
-      {/* wait countdown */}
-      {isWaiting && (
-        <div style={tr.waitBox}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-            <span style={{fontSize:22}}>⏱</span>
-            <div>
-              <p style={{...tr.bannerTitle,color:"#92400E",margin:"0 0 2px"}}>Please Wait ~{waitMins} Minutes</p>
-              <p style={{...tr.bannerSub,color:"#B45309",margin:0}}>Admin is finding a driver for you.</p>
+            {/* route summary */}
+            <div style={pay.routeBox}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{...pay.dot, backgroundColor:"#10B981"}}/>
+                <p style={pay.routeTxt}>{booking.pickup}</p>
+              </div>
+              <div style={{width:2,height:10,backgroundColor:"#CBD5E1",marginLeft:5}}/>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{...pay.dot, backgroundColor:"#EF4444"}}/>
+                <p style={pay.routeTxt}>{booking.drop_location}</p>
+              </div>
             </div>
-          </div>
-          {!waitExpired && waitCountdown!==null && (
-            <div style={tr.countdownBox}>
-              <p style={tr.countdownLabel}>Time Remaining</p>
-              <p style={tr.countdownTime}>
-                {String(Math.floor(waitCountdown/60)).padStart(2,"0")}
-                <span style={{fontSize:22,color:"#D97706"}}>:</span>
-                {String(waitCountdown%60).padStart(2,"0")}
-              </p>
-              <div style={tr.progressBg}><div style={{...tr.progressFill,width:`${pct}%`,backgroundColor:pct>30?"#F59E0B":"#EF4444"}}/></div>
-              <p style={tr.countdownSub}>{waitCountdown>60?`About ${Math.ceil(waitCountdown/60)} min left`:"Less than a minute left"}</p>
-            </div>
-          )}
-          {waitExpired && (
-            <div style={tr.expiredBox}>
-              <span style={{fontSize:28,marginBottom:6}}>⏰</span>
-              <p style={{margin:"0 0 4px",fontSize:15,fontWeight:800,color:"#9F1239"}}>Wait time is up!</p>
-              <p style={{margin:"0 0 14px",fontSize:13,color:"#BE123C",textAlign:"center"}}>No driver assigned. Book again?</p>
-              <button onClick={onRebook} style={tr.rebookBtn}>🚖 Book Again</button>
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* all busy */}
-      {isAllBusy && (
-        <div style={tr.busyBox}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-            <span style={{fontSize:22}}>🚫</span>
-            <div>
-              <p style={{...tr.bannerTitle,color:"#9F1239",margin:"0 0 2px"}}>All drivers are currently busy</p>
-              <p style={{...tr.bannerSub,color:"#BE123C",margin:0}}>Please try again shortly.</p>
+            {/* fare breakdown */}
+            <div style={pay.breakdown}>
+              {/* duration row */}
+              {(rideHours != null || rideMinutes != null) && (
+                <div style={pay.row}>
+                  <span style={pay.rowKey}>⏱ Duration</span>
+                  <span style={pay.rowVal}>
+                    {rideHours > 0 ? `${rideHours}h ` : ""}
+                    {rideMinutes > 0 ? `${rideMinutes}m` : ""}
+                  </span>
+                </div>
+              )}
+              {/* base package */}
+              {baseFareUsed != null && (
+                <div style={pay.row}>
+                  <span style={pay.rowKey}>📦 Base Package ({baseHrsUsed}h)</span>
+                  <span style={pay.rowVal}>₹{baseFareUsed}</span>
+                </div>
+              )}
+              {/* extra hours */}
+              {extraPerHrUsed != null && rideHours != null && baseHrsUsed != null && rideHours > baseHrsUsed && (
+                <div style={pay.row}>
+                  <span style={pay.rowKey}>
+                    ⏰ Extra {Math.ceil(rideHours - baseHrsUsed)}h × ₹{extraPerHrUsed}
+                  </span>
+                  <span style={pay.rowVal}>
+                    ₹{Math.ceil(rideHours - baseHrsUsed) * extraPerHrUsed}
+                  </span>
+                </div>
+              )}
+              <div style={pay.divider}/>
+              {/* total */}
+              <div style={pay.totalRow}>
+                <span style={pay.totalKey}>Total Fare</span>
+                <span style={pay.totalAmt}>₹{fareAmount}</span>
+              </div>
             </div>
-          </div>
-          <button onClick={onRebook} style={tr.rebookBtn}>🚖 Try Again</button>
-        </div>
-      )}
 
-      {/* step tracker */}
-      {!isWaiting && !isAllBusy && !isScheduled && (
-        <div style={{marginBottom:14}}>
-          {steps.map((step, i) => {
-            const done=activeIdx>i, current=activeIdx===i;
-            return (
-              <div key={step.key}>
-                {i>0 && <div style={{width:2,height:16,marginLeft:18,backgroundColor:done?"#2563EB":"#E2E8F0"}}/>}
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <div style={{width:36,height:36,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",backgroundColor:done||current?"#2563EB":"#F1F5F9",border:`2px solid ${done||current?"#2563EB":"#CBD5E1"}`}}>
-                    {done?<span style={{color:"#fff",fontSize:12}}>✓</span>:<span style={{fontSize:14}}>{step.icon}</span>}
-                  </div>
-                  <div>
-                    <p style={{margin:0,fontSize:13,fontWeight:current?700:500,color:current?"#2563EB":done?"#1E293B":"#94A3B8"}}>{step.label}</p>
-                    {current && <p style={tr.stepSub}>{step.sub}</p>}
-                  </div>
+            {/* driver info */}
+            {booking.driver_name && (
+              <div style={pay.driverRow}>
+                <div style={pay.driverAvatar}>{booking.driver_name?.[0]?.toUpperCase()}</div>
+                <div style={{flex:1}}>
+                  <p style={{margin:0,fontSize:13,fontWeight:700,color:"#1E293B"}}>{booking.driver_name}</p>
+                  <p style={{margin:"2px 0 0",fontSize:11,color:"#64748B"}}>Your Driver</p>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* driver card */}
-      {showDriver && (
-        <div style={tr.driverCard}>
-          <div style={tr.driverAvatar}>{booking.driver_name?.[0]?.toUpperCase()}</div>
-          <div style={{flex:1}}>
-            <p style={tr.driverName}>{booking.driver_name}</p>
-            {booking.driver_phone && <a href={`tel:${booking.driver_phone}`} style={tr.driverPhone}>📞 {booking.driver_phone}</a>}
-            <p style={tr.driverLabel}>Your Driver</p>
+            )}
           </div>
-          <div style={{...tr.statusPill,backgroundColor:status==="inride"?"#D1FAE5":"#EFF6FF",color:status==="inride"?"#065F46":"#1D4ED8"}}>
-            {status==="inride"?"🚗 In Ride":"🟢 On the Way"}
+
+          {/* pay button */}
+          <button
+            style={{...pay.payBtn, opacity: markingPaid ? 0.7 : 1}}
+            onClick={handleMarkPaid}
+            disabled={markingPaid}>
+            {markingPaid ? "⏳ Processing…" : "💵 Mark as Paid & Rate Driver"}
+          </button>
+          <p style={pay.payNote}>Tap to confirm payment and share your experience</p>
+        </div>
+      )}
+
+      {/* ── completed + paid (no fare) fallback — show done state ── */}
+      {isCompleted && !showPayScreen && !showRating && (
+        <>
+          {/* step tracker still visible at top */}
+          <div style={{marginBottom:14}}>
+            {steps.map((step, i) => {
+              const done=activeIdx>i, current=activeIdx===i;
+              return (
+                <div key={step.key}>
+                  {i>0 && <div style={{width:2,height:16,marginLeft:18,backgroundColor:done?"#2563EB":"#E2E8F0"}}/>}
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{width:36,height:36,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",backgroundColor:done||current?"#2563EB":"#F1F5F9",border:`2px solid ${done||current?"#2563EB":"#CBD5E1"}`}}>
+                      {done?<span style={{color:"#fff",fontSize:12}}>✓</span>:<span style={{fontSize:14}}>{step.icon}</span>}
+                    </div>
+                    <div>
+                      <p style={{margin:0,fontSize:13,fontWeight:current?700:500,color:current?"#2563EB":done?"#1E293B":"#94A3B8"}}>{step.label}</p>
+                      {current && <p style={tr.stepSub}>{step.sub}</p>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
-      )}
 
-      {status==="assigned" && (
-        <div style={tr.searchingBox}>
-          <div style={{display:"flex",gap:5,marginBottom:6}}>
-            {[0,0.2,0.4].map((delay,i)=>(<div key={i} style={{width:7,height:7,borderRadius:"50%",backgroundColor:"#2563EB",animation:`bounce 1.4s ease-in-out ${delay}s infinite`}}/>))}
+          {ratingSubmitted ? (
+            <div style={{backgroundColor:"#F0FDF4",border:"1.5px solid #BBF7D0",borderRadius:12,padding:"12px 14px",marginTop:10,textAlign:"center"}}>
+              <p style={{margin:0,fontSize:14,fontWeight:700,color:"#16A34A"}}>⭐ Thanks for your rating!</p>
+            </div>
+          ) : (
+            // no fare set — show rate button directly
+            !fareAmount && (
+              <button
+                style={{...pay.payBtn, backgroundColor:"#2563EB", marginTop:8}}
+                onClick={()=>setShowRating(true)}>
+                ⭐ Rate Your Driver
+              </button>
+            )
+          )}
+
+          {/* route */}
+          <div style={tr.routeBox}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{...tr.routeDot,backgroundColor:"#10B981"}}/><p style={tr.routeTxt}>{booking.pickup}</p></div>
+            <div style={{width:2,height:10,backgroundColor:"#CBD5E1",marginLeft:3}}/>
+            <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{...tr.routeDot,backgroundColor:"#EF4444"}}/><p style={tr.routeTxt}>{booking.drop_location}</p></div>
           </div>
-          <p style={tr.searchingTxt}>Driver is confirming your booking…</p>
-        </div>
+        </>
       )}
 
-      {/* route */}
-      <div style={tr.routeBox}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{...tr.routeDot,backgroundColor:"#10B981"}}/><p style={tr.routeTxt}>{booking.pickup}</p></div>
-        <div style={{width:2,height:10,backgroundColor:"#CBD5E1",marginLeft:3}}/>
-        <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{...tr.routeDot,backgroundColor:"#EF4444"}}/><p style={tr.routeTxt}>{booking.drop_location}</p></div>
-      </div>
+      {/* normal status views (non-completed) */}
+      {!isCompleted && (
+        <>
+          {/* scheduled ride banner */}
+          {isScheduled && (
+            <div style={tr.scheduledBox}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                <span style={{fontSize:28}}>📅</span>
+                <div>
+                  <p style={{margin:"0 0 2px",fontSize:14,fontWeight:800,color:"#0F766E"}}>Ride Scheduled!</p>
+                  <p style={{margin:0,fontSize:12,color:"#0D9488"}}>Your ride is confirmed and will be dispatched on time.</p>
+                </div>
+              </div>
+              {booking.scheduled_at && (
+                <div style={tr.schedTimeBox}>
+                  <span style={{fontSize:13}}>🗓️</span>
+                  <span style={{fontSize:13,fontWeight:700,color:"#0F766E"}}>
+                    {new Date(booking.scheduled_at).toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"})}
+                    {" · "}
+                    {new Date(booking.scheduled_at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true})}
+                  </span>
+                </div>
+              )}
+              <div style={tr.policyMiniBox}>
+                <p style={tr.policyMiniTitle}>📋 Cancellation Policy</p>
+                {(() => {
+                  const rideTime = booking.scheduled_at ? new Date(booking.scheduled_at) : null;
+                  const minsLeft = rideTime ? (rideTime - new Date()) / (1000 * 60) : Infinity;
+                  return minsLeft > 60
+                    ? <p style={tr.policyMiniLine}>✅ Free cancellation available (more than 1 hr to go)</p>
+                    : minsLeft > 0
+                      ? <p style={{ ...tr.policyMiniLine, color: "#DC2626" }}>💸 ₹200 fee applies (within 1 hr of ride)</p>
+                      : <p style={{ ...tr.policyMiniLine, color: "#DC2626" }}>🚫 Ride time has passed</p>;
+                })()}
+              </div>
+              <button style={tr.cancelScheduledBtn} onClick={() => setShowCancelModal(true)}>
+                ✕ Cancel Booking
+              </button>
+            </div>
+          )}
 
-      {status!=="completed" && !isWaiting && !isAllBusy && !isScheduled && <p style={tr.pollNote}>🔄 Auto-updating every 5 seconds</p>}
+          {/* wait countdown */}
+          {isWaiting && (
+            <div style={tr.waitBox}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                <span style={{fontSize:22}}>⏱</span>
+                <div>
+                  <p style={{...tr.bannerTitle,color:"#92400E",margin:"0 0 2px"}}>Please Wait ~{waitMins} Minutes</p>
+                  <p style={{...tr.bannerSub,color:"#B45309",margin:0}}>Admin is finding a driver for you.</p>
+                </div>
+              </div>
+              {!waitExpired && waitCountdown!==null && (
+                <div style={tr.countdownBox}>
+                  <p style={tr.countdownLabel}>Time Remaining</p>
+                  <p style={tr.countdownTime}>
+                    {String(Math.floor(waitCountdown/60)).padStart(2,"0")}
+                    <span style={{fontSize:22,color:"#D97706"}}>:</span>
+                    {String(waitCountdown%60).padStart(2,"0")}
+                  </p>
+                  <div style={tr.progressBg}><div style={{...tr.progressFill,width:`${pct}%`,backgroundColor:pct>30?"#F59E0B":"#EF4444"}}/></div>
+                  <p style={tr.countdownSub}>{waitCountdown>60?`About ${Math.ceil(waitCountdown/60)} min left`:"Less than a minute left"}</p>
+                </div>
+              )}
+              {waitExpired && (
+                <div style={tr.expiredBox}>
+                  <span style={{fontSize:28,marginBottom:6}}>⏰</span>
+                  <p style={{margin:"0 0 4px",fontSize:15,fontWeight:800,color:"#9F1239"}}>Wait time is up!</p>
+                  <p style={{margin:"0 0 14px",fontSize:13,color:"#BE123C",textAlign:"center"}}>No driver assigned. Book again?</p>
+                  <button onClick={onRebook} style={tr.rebookBtn}>🚖 Book Again</button>
+                </div>
+              )}
+            </div>
+          )}
 
-      {status==="completed" && ratingSubmitted && (
-        <div style={{backgroundColor:"#F0FDF4",border:"1.5px solid #BBF7D0",borderRadius:12,padding:"12px 14px",marginTop:10,textAlign:"center"}}>
-          <p style={{margin:0,fontSize:14,fontWeight:700,color:"#16A34A"}}>⭐ Thanks for your rating!</p>
-        </div>
+          {/* all busy */}
+          {isAllBusy && (
+            <div style={tr.busyBox}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                <span style={{fontSize:22}}>🚫</span>
+                <div>
+                  <p style={{...tr.bannerTitle,color:"#9F1239",margin:"0 0 2px"}}>All drivers are currently busy</p>
+                  <p style={{...tr.bannerSub,color:"#BE123C",margin:0}}>Please try again shortly.</p>
+                </div>
+              </div>
+              <button onClick={onRebook} style={tr.rebookBtn}>🚖 Try Again</button>
+            </div>
+          )}
+
+          {/* step tracker */}
+          {!isWaiting && !isAllBusy && !isScheduled && (
+            <div style={{marginBottom:14}}>
+              {steps.map((step, i) => {
+                const done=activeIdx>i, current=activeIdx===i;
+                return (
+                  <div key={step.key}>
+                    {i>0 && <div style={{width:2,height:16,marginLeft:18,backgroundColor:done?"#2563EB":"#E2E8F0"}}/>}
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:36,height:36,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",backgroundColor:done||current?"#2563EB":"#F1F5F9",border:`2px solid ${done||current?"#2563EB":"#CBD5E1"}`}}>
+                        {done?<span style={{color:"#fff",fontSize:12}}>✓</span>:<span style={{fontSize:14}}>{step.icon}</span>}
+                      </div>
+                      <div>
+                        <p style={{margin:0,fontSize:13,fontWeight:current?700:500,color:current?"#2563EB":done?"#1E293B":"#94A3B8"}}>{step.label}</p>
+                        {current && <p style={tr.stepSub}>{step.sub}</p>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* driver card */}
+          {showDriver && (
+            <div style={tr.driverCard}>
+              <div style={tr.driverAvatar}>{booking.driver_name?.[0]?.toUpperCase()}</div>
+              <div style={{flex:1}}>
+                <p style={tr.driverName}>{booking.driver_name}</p>
+                {booking.driver_phone && <a href={`tel:${booking.driver_phone}`} style={tr.driverPhone}>📞 {booking.driver_phone}</a>}
+                <p style={tr.driverLabel}>Your Driver</p>
+              </div>
+              <div style={{...tr.statusPill,backgroundColor:status==="inride"?"#D1FAE5":"#EFF6FF",color:status==="inride"?"#065F46":"#1D4ED8"}}>
+                {status==="inride"?"🚗 In Ride":"🟢 On the Way"}
+              </div>
+            </div>
+          )}
+
+          {status==="assigned" && (
+            <div style={tr.searchingBox}>
+              <div style={{display:"flex",gap:5,marginBottom:6}}>
+                {[0,0.2,0.4].map((delay,i)=>(<div key={i} style={{width:7,height:7,borderRadius:"50%",backgroundColor:"#2563EB",animation:`bounce 1.4s ease-in-out ${delay}s infinite`}}/>))}
+              </div>
+              <p style={tr.searchingTxt}>Driver is confirming your booking…</p>
+            </div>
+          )}
+
+          {/* route */}
+          <div style={tr.routeBox}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{...tr.routeDot,backgroundColor:"#10B981"}}/><p style={tr.routeTxt}>{booking.pickup}</p></div>
+            <div style={{width:2,height:10,backgroundColor:"#CBD5E1",marginLeft:3}}/>
+            <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{...tr.routeDot,backgroundColor:"#EF4444"}}/><p style={tr.routeTxt}>{booking.drop_location}</p></div>
+          </div>
+
+          {!isWaiting && !isAllBusy && !isScheduled && <p style={tr.pollNote}>🔄 Auto-updating every 5 seconds</p>}
+        </>
       )}
 
-      {/* rating popup */}
+      {/* ── RATING POPUP (shown after Mark as Paid) ── */}
       {showRating && (
         <div style={{position:"fixed",inset:0,backgroundColor:"rgba(0,0,0,0.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{backgroundColor:"#fff",borderRadius:24,padding:28,maxWidth:360,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.2)"}}>
             <div style={{textAlign:"center",marginBottom:18}}>
               <div style={{fontSize:52,marginBottom:8}}>🎉</div>
-              <h3 style={{margin:"0 0 4px",fontSize:18,fontWeight:800,color:"#1E293B"}}>Ride Completed!</h3>
+              <h3 style={{margin:"0 0 4px",fontSize:18,fontWeight:800,color:"#1E293B"}}>Payment Confirmed!</h3>
               <p style={{margin:0,fontSize:13,color:"#64748B"}}>How was your ride with <strong>{booking.driver_name||"your driver"}</strong>?</p>
             </div>
             <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:16}}>
@@ -731,7 +894,6 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
         </div>
       )}
 
-      {/* ── NEW: Cancel confirmation modal ── */}
       {showCancelModal && (
         <CancelConfirmModal
           booking={booking}
@@ -1155,4 +1317,27 @@ const rec={
   chipBusy:{opacity:0.55},
   av:{width:26,height:26,borderRadius:"50%",fontSize:11,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"},
   note:{margin:"8px 0 0",fontSize:11,color:"#1D4ED8",backgroundColor:"#EFF6FF",borderRadius:8,padding:"5px 10px"},
+};
+
+const pay = {
+  wrap:          { marginBottom: 14 },
+  receipt:       { backgroundColor: "#F0FDF4", border: "1.5px solid #BBF7D0", borderRadius: 18, padding: 16, marginBottom: 12 },
+  receiptHeader: { display: "flex", alignItems: "center", gap: 12, marginBottom: 14 },
+  receiptTitle:  { margin: "0 0 2px", fontSize: 15, fontWeight: 800, color: "#15803D" },
+  receiptSub:    { margin: 0, fontSize: 12, color: "#16A34A" },
+  routeBox:      { backgroundColor: "#fff", borderRadius: 10, padding: "10px 12px", marginBottom: 12 },
+  dot:           { width: 8, height: 8, borderRadius: "50%", flexShrink: 0 },
+  routeTxt:      { margin: 0, fontSize: 12, color: "#1E293B", fontWeight: 500 },
+  breakdown:     { backgroundColor: "#fff", borderRadius: 12, padding: "12px 14px", marginBottom: 12 },
+  row:           { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  rowKey:        { fontSize: 12, color: "#64748B", fontWeight: 600 },
+  rowVal:        { fontSize: 13, color: "#1E293B", fontWeight: 700 },
+  divider:       { height: 1, backgroundColor: "#E2E8F0", margin: "8px 0" },
+  totalRow:      { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  totalKey:      { fontSize: 14, fontWeight: 800, color: "#15803D" },
+  totalAmt:      { fontSize: 28, fontWeight: 900, color: "#10B981", letterSpacing: -0.5 },
+  driverRow:     { display: "flex", alignItems: "center", gap: 10, backgroundColor: "#fff", borderRadius: 10, padding: "10px 12px" },
+  driverAvatar:  { width: 34, height: 34, borderRadius: "50%", backgroundColor: "#16A34A", color: "#fff", fontSize: 14, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  payBtn:        { width: "100%", padding: "15px 0", backgroundColor: "#10B981", border: "none", borderRadius: 16, fontSize: 15, fontWeight: 800, color: "#fff", cursor: "pointer", boxShadow: "0 4px 14px rgba(16,185,129,0.35)" },
+  payNote:       { margin: "8px 0 0", textAlign: "center", fontSize: 11, color: "#94A3B8" },
 };

@@ -8,7 +8,8 @@ const NAV_ITEMS = [
   { path: "/dashboard",        label: "Dashboard", icon: "📊" },
   { path: "/booking",          label: "Bookings",  icon: "📋" },
   { path: "/driver-dashboard", label: "Drivers",   icon: "🚗" },
-  {path:"/driver-status",label:"Driver Status"}
+  {path:"/driver-status",label:"Driver Status"},
+  {path:"/masterSettings",label:"Master Settings"}
 ];
 
 const AdminLayout = () => {

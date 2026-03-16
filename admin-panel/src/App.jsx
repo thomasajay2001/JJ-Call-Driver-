@@ -5,6 +5,7 @@ import Dashboard from "./pages/dashboard";
 import DriverDashboard from "./pages/driver-dashboard";
 import Login from "./pages/login";
 import DriverStats from "./pages/driver-status";
+import MasterSettings from "./pages/masterSettings";
 
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/booking" element={<Booking />} />
         <Route path="/driver-dashboard" element={<DriverDashboard/>}/>
         <Route path="/driver-status" element={<DriverStats/>}/>
+        <Route path="/masterSettings" element ={<MasterSettings/>}/>
         </Route>
         
      </Routes>
