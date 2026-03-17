@@ -32,7 +32,7 @@ const mysql = require("mysql2");
 const db = mysql.createConnection({
   host: "localhost",
   user: "root",
-  password: "Gomathi@123",
+  password: "Gomathi@123",   // ← change to your local DB password
   database: "jjdrivers",
 });
 
@@ -210,15 +210,22 @@ app.post("/api/verify-otp", (req, res) => {
 // ─── TRIP BOOKING ────────────────────────────
 app.post("/api/trip-booking", async (req, res) => {
   try {
-    const { name, phone, pickup, pickupLat, pickupLng, drop, bookingphnno, triptype,
-            recommended_driver_id, scheduled_at, is_scheduled } = req.body;
+    const {
+      name, phone, pickup, pickupLat, pickupLng,
+      drop, bookingphnno, triptype,
+      recommended_driver_id,
+      scheduled_at,
+      is_scheduled,
+    } = req.body;
 
     if (!name || !phone || !pickup || !drop || !bookingphnno)
       return res.status(400).json({ success: false, error: "All fields are required" });
 
     const scheduledDate = scheduled_at ? new Date(scheduled_at) : null;
-    if (scheduledDate && scheduledDate < new Date(Date.now() + 29 * 60 * 1000))
+
+    if (scheduledDate && scheduledDate < new Date(Date.now() + 29 * 60 * 1000)) {
       return res.status(400).json({ success: false, message: "Scheduled time must be at least 30 minutes from now" });
+    }
 
     const isScheduledBool = !!(is_scheduled && scheduledDate);
     const status          = isScheduledBool ? "scheduled" : "pending";
@@ -229,13 +236,24 @@ app.post("/api/trip-booking", async (req, res) => {
           pickup, pickup_lat, pickup_lng, drop_location, triptype, status,
           recommended_driver_id, is_scheduled, scheduled_at, scheduled_status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, phone, bookingphnno, pickup, pickupLat || null, pickupLng || null,
-       drop, triptype || "local", status, recommended_driver_id || null,
-       isScheduledBool ? 1 : 0, scheduledDate, isScheduledBool ? "pending" : null]
+      [
+        name, phone, bookingphnno,
+        pickup, pickupLat || null, pickupLng || null,
+        drop, triptype || "local", status,
+        recommended_driver_id || null,
+        isScheduledBool ? 1 : 0,
+        scheduledDate,
+        isScheduledBool ? "pending" : null,
+      ]
     );
 
-    if (!isScheduledBool && global.io)
-      global.io.to("admins").emit("newBooking", { bookingId: result.insertId, name, phone, pickup, drop, triptype: triptype || "local" });
+    if (!isScheduledBool && global.io) {
+      global.io.to("admins").emit("newBooking", {
+        bookingId: result.insertId,
+        name, phone, pickup, drop,
+        triptype: triptype || "local",
+      });
+    }
 
     res.json({ success: true, message: "Booking created successfully", bookingId: result.insertId });
   } catch (error) {
@@ -253,6 +271,7 @@ app.post("/api/bookings/:id/cancel", async (req, res) => {
     const cancelable = ["pending", "wait5", "wait10", "wait30", "allbusy"];
     if (!cancelable.includes(rows[0].status))
       return res.json({ success: false, message: "Cannot cancel booking at this stage" });
+
     await db.promise().query("UPDATE bookings SET status = 'cancelled', driver_id = NULL WHERE id = ?", [id]);
     io.to("admins").emit("bookingCancelled", { bookingId: id, message: "Customer cancelled the booking" });
     res.json({ success: true, message: "Booking cancelled" });
@@ -261,70 +280,110 @@ app.post("/api/bookings/:id/cancel", async (req, res) => {
   }
 });
 
+// ─── CANCEL SCHEDULED BOOKING ────────────────
 app.post("/api/bookings/:id/cancel-scheduled", async (req, res) => {
   const { id } = req.params;
   const PENALTY_AMOUNT = 200;
+
   try {
     const [rows] = await db.promise().query(
-      `SELECT id, status, is_scheduled, scheduled_at, customer_mobile, customer_name FROM bookings WHERE id = ? LIMIT 1`, [id]
+      `SELECT id, status, is_scheduled, scheduled_at, customer_mobile, customer_name FROM bookings WHERE id = ? LIMIT 1`,
+      [id]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Booking not found" });
 
-    const booking  = rows[0];
+    const booking = rows[0];
     const cancelable = ["scheduled", "pending", "wait5", "wait10", "wait30", "allbusy"];
     if (!cancelable.includes(booking.status?.toLowerCase()))
       return res.status(400).json({ success: false, message: `Cannot cancel booking with status: ${booking.status}` });
 
     let hasPenalty = false;
     let newStatus  = "cancelled";
+
     if (booking.is_scheduled && booking.scheduled_at) {
-      const minsUntil = (new Date(booking.scheduled_at) - new Date()) / (1000 * 60);
-      if (minsUntil < 60 && minsUntil > 0) { hasPenalty = true; newStatus = "cancelled_with_penalty"; }
+      const rideTime  = new Date(booking.scheduled_at);
+      const minsUntil = (rideTime - new Date()) / (1000 * 60);
+      if (minsUntil < 60 && minsUntil > 0) {
+        hasPenalty = true;
+        newStatus  = "cancelled_with_penalty";
+      }
     }
 
     await db.promise().query(
       `UPDATE bookings SET status = ?, driver_id = NULL, cancellation_penalty = ?, cancelled_at = NOW() WHERE id = ?`,
       [newStatus, hasPenalty ? PENALTY_AMOUNT : 0, id]
     );
+
     if (hasPenalty) {
       try {
         await db.promise().query(
           `INSERT INTO cancellation_penalties (booking_id, customer_mobile, customer_name, amount, penalty_reason, created_at) VALUES (?, ?, ?, ?, ?, NOW())`,
           [id, booking.customer_mobile, booking.customer_name, PENALTY_AMOUNT, "Cancelled within 1 hour of scheduled ride"]
         );
-      } catch (e) { console.warn("Penalty insert warn:", e.message); }
+      } catch (penaltyErr) {
+        console.warn("Could not record penalty:", penaltyErr.message);
+      }
     }
-    if (global.io) global.io.to("admins").emit("bookingCancelled", { bookingId: id, hasPenalty, penaltyAmount: hasPenalty ? PENALTY_AMOUNT : 0 });
-    return res.json({ success: true, hasPenalty, penaltyAmount: hasPenalty ? PENALTY_AMOUNT : 0,
-      message: hasPenalty ? `Booking cancelled. A ₹${PENALTY_AMOUNT} fee will be charged.` : "Booking cancelled successfully. No charge." });
+
+    if (global.io) {
+      global.io.to("admins").emit("bookingCancelled", {
+        bookingId: id,
+        message: hasPenalty
+          ? `Customer cancelled within 1 hour — ₹${PENALTY_AMOUNT} penalty applied`
+          : "Customer cancelled their scheduled booking (free)",
+        hasPenalty,
+        penaltyAmount: hasPenalty ? PENALTY_AMOUNT : 0,
+      });
+    }
+
+    return res.json({
+      success: true,
+      hasPenalty,
+      penaltyAmount: hasPenalty ? PENALTY_AMOUNT : 0,
+      message: hasPenalty
+        ? `Booking cancelled. A ₹${PENALTY_AMOUNT} fee will be charged.`
+        : "Booking cancelled successfully. No charge.",
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// ─── GET ALL BOOKINGS ─────────────────────────
+// ─── GET ALL BOOKINGS (admin) ─────────────────
 app.get("/api/bookings", (req, res) => {
   db.query(
     `SELECT id, customer_name, customer_mobile, pickup, drop_location,
             status, driver_id, pickup_lat, pickup_lng, triptype,
             recommended_driver_id, is_scheduled, scheduled_at, scheduled_status
      FROM bookings ORDER BY id DESC`,
-    (error, results) => {
-      if (error) return res.status(500).send({ message: "Database error" });
-      res.send(JSON.stringify(results.map((r) => ({
-        id: r.id, name: r.customer_name, mobile: r.customer_mobile,
-        pickup: r.pickup, drop: r.drop_location, status: r.status,
-        driver: r.driver_id, pickup_lat: r.pickup_lat, pickup_lng: r.pickup_lng,
-        triptype: r.triptype, recommended_driver_id: r.recommended_driver_id,
-        is_scheduled: r.is_scheduled === 1, scheduled_at: r.scheduled_at,
-        scheduled_status: r.scheduled_status,
-      }))));
+    function (error, results) {
+      if (error) {
+        console.error("error fetching bookings:", error);
+        return res.status(500).send({ message: "Database error" });
+      }
+      const result = results.map((r) => ({
+        id:                    r.id,
+        name:                  r.customer_name,
+        mobile:                r.customer_mobile,
+        pickup:                r.pickup,
+        drop:                  r.drop_location,
+        status:                r.status,
+        driver:                r.driver_id,
+        pickup_lat:            r.pickup_lat,
+        pickup_lng:            r.pickup_lng,
+        triptype:              r.triptype,
+        recommended_driver_id: r.recommended_driver_id,
+        is_scheduled:          r.is_scheduled === 1,
+        scheduled_at:          r.scheduled_at,
+        scheduled_status:      r.scheduled_status,
+      }));
+      res.send(JSON.stringify(result));
     }
   );
 });
 
-// ─── BOOKING STATUS ─────────────────────────────────────────────
-// Returns payment fields so customer app can show PaymentReceipt
+// ─── BOOKING STATUS ──────────────────────────────────────────────
+// Returns all payment fields so customer app can show PaymentReceipt
 // ────────────────────────────────────────────────────────────────
 app.get("/api/bookings/status/:id", async (req, res) => {
   const { id } = req.params;
@@ -340,7 +399,6 @@ app.get("/api/bookings/status/:id", async (req, res) => {
          b.driver_id,
          b.scheduled_at,
          b.is_scheduled,
-         -- ── payment columns ──────────────────────────────────
          b.ride_hours,
          b.ride_minutes,
          b.base_hours_used,
@@ -348,13 +406,11 @@ app.get("/api/bookings/status/:id", async (req, res) => {
          b.extra_per_hr_used,
          b.amount,
          b.payment_status,
-         -- ── driver info (only after accepted/inride/completed) ──
          CASE WHEN b.status IN ('accepted','inride','completed') THEN d.NAME  ELSE NULL END AS driver_name,
          CASE WHEN b.status IN ('accepted','inride','completed') THEN d.MOBILE ELSE NULL END AS driver_phone
        FROM bookings b
        LEFT JOIN DRIVERS d ON b.driver_id = d.ID
-       WHERE b.id = ?
-       LIMIT 1`,
+       WHERE b.id = ? LIMIT 1`,
       [id]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Booking not found" });
@@ -365,17 +421,43 @@ app.get("/api/bookings/status/:id", async (req, res) => {
   }
 });
 
-// ─── UPDATE BOOKING ───────────────────────────
+// ─── UPDATE BOOKING (admin assigns/updates) ──
 app.put("/api/bookings/:id", async (req, res) => {
   const { id } = req.params;
   const { driver, status } = req.body;
   try {
-    if (driver) {
-      await db.promise().query("UPDATE bookings SET driver_id = ?, status = 'assigned' WHERE id = ?", [driver, id]);
-      await db.promise().query("UPDATE DRIVERS SET STATUS = 'assigned' WHERE ID = ?", [driver]);
+    if (driver !== undefined && driver !== null) {
+      const newStatus = status || "assigned";
+      await db.promise().query(
+        "UPDATE bookings SET driver_id = ?, status = ? WHERE id = ?",
+        [driver, newStatus, id]
+      );
+      if (newStatus === "completed") {
+        await db.promise().query(
+          "UPDATE DRIVERS SET STATUS = 'offline', ENGAGED = 'No' WHERE ID = ?",
+          [driver]
+        );
+      } else if (newStatus === "accepted" || newStatus === "inride") {
+        await db.promise().query("UPDATE DRIVERS SET STATUS = 'inride', ENGAGED = 'Yes' WHERE ID = ?", [driver]);
+      } else {
+        await db.promise().query("UPDATE DRIVERS SET STATUS = 'assigned' WHERE ID = ?", [driver]);
+      }
+    } else if (status === "completed") {
+      const [rows] = await db.promise().query("SELECT driver_id FROM bookings WHERE id = ?", [id]);
+      await db.promise().query("UPDATE bookings SET status = 'completed' WHERE id = ?", [id]);
+      if (rows.length && rows[0].driver_id) {
+        await db.promise().query(
+          "UPDATE DRIVERS SET STATUS = 'offline', ENGAGED = 'No' WHERE ID = ?",
+          [rows[0].driver_id]
+        );
+      }
     } else {
-      await db.promise().query("UPDATE bookings SET driver_id = NULL, status = ? WHERE id = ?", [status, id]);
+      await db.promise().query(
+        "UPDATE bookings SET driver_id = NULL, status = ? WHERE id = ?",
+        [status, id]
+      );
     }
+
     io.to("admins").emit("bookingUpdated", { bookingId: id, status });
     res.json({ success: true });
   } catch (error) {
@@ -393,8 +475,16 @@ app.post("/api/accept-booking", async (req, res) => {
     const driver = drivers[0];
     if (!driver) return res.json({ success: false, message: "Driver not found" });
     await db.promise().query("UPDATE bookings SET status='accepted', driver_id=? WHERE id=?", [driverId, bookingId]);
-    try { await db.promise().query(`INSERT IGNORE INTO accept_booking (booking_id,driver_id,driver_name,driver_mobile) VALUES (?,?,?,?)`, [bookingId, driverId, driver.NAME, driver.MOBILE]); } catch {}
-    await db.promise().query("UPDATE DRIVERS SET STATUS='inride' WHERE ID=?", [driverId]);
+
+    try {
+      await db.promise().query(
+        `INSERT IGNORE INTO accept_booking (booking_id, driver_id, driver_name, driver_mobile) VALUES (?,?,?,?)`,
+        [bookingId, driverId, driver.NAME, driver.MOBILE]
+      );
+    } catch {}
+
+    await db.promise().query("UPDATE DRIVERS SET STATUS='inride', ENGAGED='Yes' WHERE ID=?", [driverId]);
+
     io.to(`booking_${bookingId}`).emit("driverAssigned", { bookingId, driverName: driver.NAME, driverMobile: driver.MOBILE });
     io.to(`driver_${driverId}`).emit("bookingConfirmed", { bookingId });
     res.json({ success: true });
@@ -414,7 +504,9 @@ app.post("/api/decline-booking", async (req, res) => {
     if (booking.status !== "assigned") return res.json({ success: false, message: `Cannot decline: ${booking.status}` });
     if (driverId && String(booking.driver_id) !== String(driverId)) return res.status(403).json({ success: false, message: "Not assigned to you" });
     await db.promise().query("UPDATE bookings SET driver_id = NULL, status = 'pending' WHERE id = ?", [bookingId]);
-    if (driverId) await db.promise().query("UPDATE DRIVERS SET STATUS = 'online' WHERE ID = ? AND STATUS != 'offline'", [driverId]);
+    if (driverId)
+      await db.promise().query("UPDATE DRIVERS SET STATUS = 'online', ENGAGED = 'No' WHERE ID = ? AND STATUS != 'offline'", [driverId]);
+
     io.to("admins").emit("bookingDeclined", { bookingId, message: "Driver declined — needs reassignment" });
     res.json({ success: true, message: "Booking returned to pending" });
   } catch (err) {
@@ -452,6 +544,8 @@ app.get("/api/bookings/customer", async (req, res) => {
       `SELECT b.id, b.customer_name, b.customer_mobile, b.booking_phnno,
               b.pickup, b.pickup_lat, b.pickup_lng, b.drop_location,
               b.driver_id, b.status, b.created_at, b.amount,
+              b.is_scheduled, b.scheduled_at, b.rating, b.feedback,
+              b.cancellation_penalty, b.duration_mins, b.triptype,
               d.NAME AS driver_name, d.MOBILE AS driver_phone
        FROM bookings b LEFT JOIN DRIVERS d ON b.driver_id = d.ID
        WHERE b.booking_phnno = ? ORDER BY b.created_at DESC`, [phone]
@@ -534,7 +628,7 @@ app.post("/api/bookings/start", (req, res) => {
   const { bookingId, driverId } = req.body;
   db.query("UPDATE bookings SET status='inride' WHERE id=?", [bookingId], (err) => {
     if (err) return res.status(500).send({ success: false });
-    db.query("UPDATE DRIVERS SET STATUS='inride' WHERE ID=?", [driverId], (err2) => {
+    db.query("UPDATE DRIVERS SET STATUS='inride', ENGAGED='Yes' WHERE ID=?", [driverId], (err2) => {
       if (err2) return res.status(500).send({ success: false });
       res.send({ success: true });
     });
@@ -543,11 +637,12 @@ app.post("/api/bookings/start", (req, res) => {
 
 // ─── COMPLETE RIDE ──────────────────────────────────────────────
 // Saves ride duration + fare + snapshots master_settings rates used
+// Sets payment_status = 'pending' so customer sees receipt first
 // ────────────────────────────────────────────────────────────────
 app.post("/api/complete-ride", async (req, res) => {
   const { bookingId, driverId, amount, ride_hours, ride_minutes } = req.body;
   try {
-    // fetch current master_settings to snapshot rates at time of ride
+    // Fetch current master_settings to snapshot rates at time of ride
     const [settings] = await db.promise().query(
       "SELECT base_hours, base_fare, extra_per_hr FROM master_settings WHERE id = 1"
     );
@@ -576,14 +671,29 @@ app.post("/api/complete-ride", async (req, res) => {
         ]
       );
     } else {
-      // no fare passed — just mark completed
+      // No fare passed — just mark completed (no payment screen shown)
       await db.promise().query("UPDATE bookings SET status='completed' WHERE id=?", [bookingId]);
     }
 
-    await db.promise().query("UPDATE DRIVERS SET STATUS='online' WHERE ID=?", [driverId]);
+    await db.promise().query("UPDATE DRIVERS SET STATUS='online', ENGAGED='No' WHERE ID=?", [driverId]);
     res.json({ success: true });
   } catch (err) {
     console.error("Complete ride error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── MARK PAYMENT AS PAID ────────────────────
+// Called by customer after viewing the receipt — triggers rating screen
+// ─────────────────────────────────────────────
+app.post("/api/bookings/:id/mark-paid", async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.promise().query(
+      "UPDATE bookings SET payment_status = 'paid' WHERE id = ?", [id]
+    );
+    res.json({ success: true });
+  } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -696,6 +806,7 @@ app.post("/api/driver/updateStatus", (req, res) => {
   });
 });
 
+// ─── DRIVER STATS ────────────────────────────
 const INCOME_PER_RIDE = 350;
 
 app.get("/api/driver-stats/:driverId", async (req, res) => {
@@ -762,8 +873,10 @@ app.post("/api/bookings/:id/preferred-unavailable", async (req, res) => {
   try {
     const [rows] = await db.promise().query("SELECT status, booking_phnno FROM bookings WHERE id = ?", [id]);
     if (!rows.length) return res.status(404).json({ success: false, message: "Booking not found" });
+
     await db.promise().query("UPDATE bookings SET status = 'preferred_query' WHERE id = ?", [id]);
     io.to(`customer_${rows[0].booking_phnno}`).emit("preferredUnavailable", { bookingId: id });
+
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
@@ -858,19 +971,6 @@ app.delete("/api/admin/master-settings/logo", async (req, res) => {
     await db.promise().query("UPDATE master_settings SET logo_url = NULL, logo_name = NULL WHERE id = 1");
     res.json({ success: true, message: "Logo removed successfully" });
   } catch (err) { res.status(500).json({ message: "Failed to remove logo" }); }
-});
-
-// ─── MARK PAYMENT AS PAID ─────────────────────
-app.post("/api/bookings/:id/mark-paid", async (req, res) => {
-  const { id } = req.params;
-  try {
-    await db.promise().query(
-      "UPDATE bookings SET payment_status = 'paid' WHERE id = ?", [id]
-    );
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
 });
 
 // ═══════════════════════════════════════════════════════════════
