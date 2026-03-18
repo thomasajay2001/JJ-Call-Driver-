@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useEffect, useRef, useState } from "react";  // ← added useRef
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PaginationBar, usePagination } from "../hooks/Usepagination";
 
@@ -29,7 +29,6 @@ const STATUS_LABEL = {
 const statusBadgeClass = (s) => STATUS_BADGE[s?.toLowerCase()] || "badge badge-gray";
 const statusLabel      = (s) => STATUS_LABEL[s?.toLowerCase()] || s || "N/A";
 
-// ── NEW: date filter options ──
 const DATE_FILTERS = [
   { key: "all",       label: "All Time"   },
   { key: "today",     label: "Today"      },
@@ -42,31 +41,26 @@ const DATE_FILTERS = [
 export default function DriverStats() {
   const navigate = useNavigate();
 
-  /* ── data ── */
   const [drivers,       setDrivers]       = useState([]);
   const [allStats,      setAllStats]      = useState({});
   const [loadingAll,    setLoadingAll]    = useState(true);
 
-  /* ── selected driver detail panel ── */
   const [selected,      setSelected]      = useState(null);
   const [selectedStats, setSelectedStats] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailTab,     setDetailTab]     = useState("overview");
 
-  // ── NEW: date filter state ──
   const [dateFilter, setDateFilter] = useState("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo,   setCustomTo]   = useState("");
   const [calOpen,    setCalOpen]    = useState(false);
   const calRef = useRef(null);
 
-  /* ── table filters ── */
   const [search,        setSearch]        = useState("");
   const [sortBy,        setSortBy]        = useState("totalRides");
   const [sortDir,       setSortDir]       = useState("desc");
   const [filterStatus,  setFilterStatus]  = useState("all");
 
-  // ── NEW: close calendar when clicking outside ──
   useEffect(() => {
     const fn = (e) => { if (calRef.current && !calRef.current.contains(e.target)) setCalOpen(false); };
     document.addEventListener("mousedown", fn);
@@ -97,7 +91,6 @@ export default function DriverStats() {
     finally { setLoadingAll(false); }
   };
 
-  // ── NEW: fetchDetail replaces openDetail's inline fetch — accepts filter params ──
   const fetchDetail = async (driverId, filter, from, to) => {
     setDetailLoading(true);
     try {
@@ -105,56 +98,49 @@ export default function DriverStats() {
       if (filter === "custom" && from && to) { params.from = from; params.to = to; }
       const r = await axios.get(`${BASE_URL}/api/driver-stats/${driverId}`, { params });
       setSelectedStats(r.data);
-      // keep allStats fresh for "all time" only (so the table doesn't show filtered numbers)
       if (filter === "all") setAllStats((prev) => ({ ...prev, [driverId]: r.data }));
     } catch {
       setSelectedStats({ totalRides: 0, totalIncome: 0, avgRating: 0, ratingCount: 0, ratingBreakdown: {}, comments: [] });
     } finally { setDetailLoading(false); }
   };
 
-  /* ── open detail panel (row click) ── */
   const openDetail = (d) => {
     setSelected(d);
     setDetailTab("overview");
-    // ── NEW: reset date filter on each new driver open ──
     setDateFilter("all");
     setCustomFrom(""); setCustomTo(""); setCalOpen(false);
     fetchDetail(d.id, "all");
   };
 
-  // ── NEW: change filter tab ──
   const changeFilter = (key) => {
     setDateFilter(key);
     setCalOpen(key === "custom");
     if (key !== "custom" && selected) fetchDetail(selected.id, key);
   };
 
-  // ── NEW: apply custom date range ──
   const applyCustom = () => {
     if (!customFrom || !customTo || !selected) return;
     setCalOpen(false);
     fetchDetail(selected.id, "custom", customFrom, customTo);
   };
 
-  // ── NEW: clear filter back to all ──
   const clearFilter = () => {
     setDateFilter("all"); setCustomFrom(""); setCustomTo(""); setCalOpen(false);
     if (selected) fetchDetail(selected.id, "all");
   };
 
-  // ── NEW: human-readable label for the active pill ──
   const filterLabel = () => {
     if (dateFilter === "custom" && customFrom && customTo) return `${customFrom} → ${customTo}`;
     return DATE_FILTERS.find((f) => f.key === dateFilter)?.label || "All Time";
   };
 
-  /* ── derived list ── */
+  /* ── FIX: Number() wrap prevents NaN from null/undefined stats ── */
   const enriched = drivers.map((d) => ({
     ...d,
-    totalRides:  allStats[d.id]?.totalRides  || 0,
-    totalIncome: allStats[d.id]?.totalIncome || 0,
-    avgRating:   allStats[d.id]?.avgRating   || 0,
-    ratingCount: allStats[d.id]?.ratingCount || 0,
+    totalRides:  Number(allStats[d.id]?.totalRides)  || 0,
+    totalIncome: Number(allStats[d.id]?.totalIncome) || 0,
+    avgRating:   Number(allStats[d.id]?.avgRating)   || 0,
+    ratingCount: Number(allStats[d.id]?.ratingCount) || 0,
   }));
 
   const filtered = enriched.filter((d) => {
@@ -173,13 +159,12 @@ export default function DriverStats() {
 
   const pg = usePagination(sorted, 12);
 
-  /* ── page-level KPIs ── */
-  const totalRidesAll  = Object.values(allStats).reduce((s, v) => s + (v.totalRides  || 0), 0);
-  const totalIncomeAll = Object.values(allStats).reduce((s, v) => s + (v.totalIncome || 0), 0);
-  const ratedDrivers   = Object.values(allStats).filter((v) => v.avgRating > 0);
+  const totalRidesAll  = Object.values(allStats).reduce((s, v) => s + (Number(v.totalRides)  || 0), 0);
+  const totalIncomeAll = Object.values(allStats).reduce((s, v) => s + (Number(v.totalIncome) || 0), 0);
+  const ratedDrivers   = Object.values(allStats).filter((v) => Number(v.avgRating) > 0);
   const avgRatingAll   = ratedDrivers.length
-    ? (ratedDrivers.reduce((s, v) => s + v.avgRating, 0) / ratedDrivers.length).toFixed(1) : "—";
-  const totalReviews   = Object.values(allStats).reduce((s, v) => s + (v.ratingCount || 0), 0);
+    ? (ratedDrivers.reduce((s, v) => s + Number(v.avgRating), 0) / ratedDrivers.length).toFixed(1) : "—";
+  const totalReviews   = Object.values(allStats).reduce((s, v) => s + (Number(v.ratingCount) || 0), 0);
 
   const toggleSort = (col) => {
     if (sortBy === col) setSortDir((d) => d === "desc" ? "asc" : "desc");
@@ -195,7 +180,6 @@ export default function DriverStats() {
   return (
     <div className="dsp-root">
 
-      {/* ════ LEFT PANEL — table (unchanged) ════ */}
       <div className={`dsp-left${selected ? " dsp-left-narrow" : ""}`}>
 
         <div className="page-header">
@@ -304,10 +288,11 @@ export default function DriverStats() {
                       <td><span className="dsp-number-cell">{d.totalRides}</span></td>
                       <td><span className="dsp-income-cell">₹{d.totalIncome.toLocaleString("en-IN")}</span></td>
                       <td>
+                        {/* FIX: guard toFixed with ||0 to prevent NaN */}
                         {d.avgRating > 0 ? (
                           <div className="dsp-rating-cell">
                             <span className="dsp-rating-num" style={{ color: ratingColor(d.avgRating) }}>
-                              {Number(d.avgRating).toFixed(1)}
+                              {(Number(d.avgRating) || 0).toFixed(1)}
                             </span>
                             <StarRow value={d.avgRating} size={13} />
                           </div>
@@ -327,11 +312,10 @@ export default function DriverStats() {
         </div>
       </div>
 
-      {/* ════ RIGHT PANEL — driver detail ════ */}
+      {/* RIGHT PANEL */}
       {selected && (
         <div className="dsp-right">
 
-          {/* sticky header — unchanged */}
           <div className="dsp-detail-header">
             <div className="ds-header-identity">
               <div className="ds-header-avatar" style={{ width: 48, height: 48, fontSize: 19 }}>
@@ -352,10 +336,8 @@ export default function DriverStats() {
             </div>
           </div>
 
-          {/* ══ NEW: DATE FILTER STRIP — inserted between header and tabs ══ */}
+          {/* DATE FILTER STRIP */}
           <div className="dsp-date-strip" ref={calRef}>
-
-            {/* filter tabs row */}
             <div className="dsp-date-tabs">
               {DATE_FILTERS.map((f) => (
                 <button key={f.key}
@@ -365,8 +347,6 @@ export default function DriverStats() {
                 </button>
               ))}
             </div>
-
-            {/* active filter pill — visible when not "all" */}
             {dateFilter !== "all" && (
               <div style={{ padding: "5px 0 1px" }}>
                 <span className="dsp-active-filter-pill">
@@ -379,8 +359,6 @@ export default function DriverStats() {
                 </span>
               </div>
             )}
-
-            {/* custom date range dropdown */}
             {calOpen && (
               <div className="dsp-calendar-drop">
                 <p className="dsp-cal-title">📅 Select Date Range</p>
@@ -409,9 +387,7 @@ export default function DriverStats() {
               </div>
             )}
           </div>
-          {/* ══ END DATE FILTER STRIP ══ */}
 
-          {/* tabs — unchanged */}
           <div className="ds-tabs">
             <button className={`ds-tab${detailTab === "overview" ? " ds-tab-active" : ""}`}
               onClick={() => setDetailTab("overview")}>📊 Overview</button>
@@ -424,7 +400,6 @@ export default function DriverStats() {
             </button>
           </div>
 
-          {/* detail body — unchanged except empty-state messages reference filterLabel() */}
           <div className="dsp-detail-body">
             {detailLoading ? (
               <div className="ds-loading">
@@ -441,12 +416,15 @@ export default function DriverStats() {
                   </div>
                   <div className="ds-kpi-card ds-kpi-green">
                     <span className="ds-kpi-icon">💰</span>
-                    <p className="ds-kpi-value">₹{(selectedStats.totalIncome || 0).toLocaleString("en-IN")}</p>
+                    <p className="ds-kpi-value">₹{(Number(selectedStats.totalIncome) || 0).toLocaleString("en-IN")}</p>
                     <p className="ds-kpi-label">Est. Income</p>
                   </div>
                   <div className="ds-kpi-card ds-kpi-amber">
                     <span className="ds-kpi-icon">⭐</span>
-                    <p className="ds-kpi-value">{selectedStats.avgRating ? Number(selectedStats.avgRating).toFixed(1) : "—"}</p>
+                    {/* FIX: guard against NaN */}
+                    <p className="ds-kpi-value">
+                      {Number(selectedStats.avgRating) > 0 ? (Number(selectedStats.avgRating)).toFixed(1) : "—"}
+                    </p>
                     <p className="ds-kpi-label">Avg Rating</p>
                   </div>
                   <div className="ds-kpi-card ds-kpi-purple">
@@ -456,13 +434,14 @@ export default function DriverStats() {
                   </div>
                 </div>
 
-                {selectedStats.avgRating > 0 && (
+                {Number(selectedStats.avgRating) > 0 && (
                   <div className="ds-rating-section" style={{ marginBottom: 18 }}>
                     <p className="ds-section-title">Rating Breakdown</p>
                     <div className="ds-rating-summary">
-                      <span className="ds-rating-big">{Number(selectedStats.avgRating).toFixed(1)}</span>
+                      {/* FIX: guard toFixed */}
+                      <span className="ds-rating-big">{(Number(selectedStats.avgRating) || 0).toFixed(1)}</span>
                       <div>
-                        <StarRow value={selectedStats.avgRating} size={20} />
+                        <StarRow value={Number(selectedStats.avgRating) || 0} size={20} />
                         <p className="ds-rating-sub">{selectedStats.ratingCount} review{selectedStats.ratingCount !== 1 ? "s" : ""}</p>
                       </div>
                     </div>
@@ -508,7 +487,6 @@ export default function DriverStats() {
                 {selectedStats.totalRides === 0 && (
                   <div className="ds-empty" style={{ marginTop: 20 }}>
                     <span className="ds-empty-icon">🚖</span>
-                    {/* ← updated message references active filter */}
                     <p>No completed rides {dateFilter !== "all" ? `for ${filterLabel()}` : "yet"}.</p>
                   </div>
                 )}
@@ -519,7 +497,6 @@ export default function DriverStats() {
                 {selectedStats.comments.length === 0 ? (
                   <div className="ds-empty">
                     <span className="ds-empty-icon">💬</span>
-                    {/* ← updated message references active filter */}
                     <p>No reviews {dateFilter !== "all" ? `for ${filterLabel()}` : "yet"}.</p>
                   </div>
                 ) : (
@@ -533,7 +510,7 @@ export default function DriverStats() {
                             <span className="ds-comment-date">{c.created_at ? new Date(c.created_at).toLocaleDateString("en-GB") : ""}</span>
                           </div>
                           <div className="ds-comment-rating-wrap">
-                            <StarRow value={c.rating} size={14} />
+                            <StarRow value={Number(c.rating) || 0} size={14} />
                             <span className="ds-comment-rating-num">{c.rating}/5</span>
                           </div>
                         </div>

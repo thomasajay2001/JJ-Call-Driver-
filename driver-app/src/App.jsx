@@ -4,10 +4,6 @@ import HomeTab    from "./components/home/HomeTab";
 import RideTab    from "./components/tabs/RideTab";
 import ProfileTab from "./components/tabs/ProfileTab";
 
-/* ═══════════════════════════════════════════
-   App — Root with bottom tab navigation
-   Always opens LoginTab on fresh load
-   ═══════════════════════════════════════════ */
 const TABS = [
   { id: "home",    label: "Home",    icon: "🏠" },
   { id: "ride",    label: "Ride",    icon: "🚕" },
@@ -19,7 +15,6 @@ const App = () => {
   const [role,       setRole]       = useState("");
   const [activeTab,  setActiveTab]  = useState("home");
 
-  /* Called by LoginTab after successful login */
   const handleLogin = () => {
     const storedRole = localStorage.getItem("role") || "";
     setRole(storedRole);
@@ -34,12 +29,10 @@ const App = () => {
     setActiveTab("home");
   };
 
-  /* Always show login until logged in */
   if (!isLoggedIn) return <LoginTab onLogin={handleLogin} />;
 
   return (
     <div style={styles.appShell}>
-      {/* ── Global CSS ── */}
       <style>{`
         * { box-sizing: border-box; }
         body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -58,9 +51,11 @@ const App = () => {
         ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 2px; }
       `}</style>
 
-      {/* ── Page content ── */}
       <main style={styles.main}>
-        {activeTab === "home"    && <HomeTab />}
+        {activeTab === "home" && (
+          // ── FIX: pass onNavigate so HomeTab/BookingForm can switch to Ride tab ──
+          <HomeTab onNavigate={(tab) => setActiveTab(tab)} />
+        )}
         {activeTab === "ride"    && <RideTab />}
         {activeTab === "profile" && (
           <div>
@@ -74,14 +69,12 @@ const App = () => {
         )}
       </main>
 
-      {/* ── Bottom Navigation ── */}
       <nav style={styles.bottomNav}>
         {TABS.map((tab) => {
           const active = activeTab === tab.id;
           return (
             <button
               key={tab.id}
-              /* ✅ Fix: use backgroundColor everywhere, no "background" shorthand */
               style={{
                 ...styles.tabBtn,
                 backgroundColor: active ? "#F0F7FF" : "transparent",

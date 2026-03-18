@@ -129,17 +129,22 @@ CREATE TABLE bookings (
   scheduled_at          DATETIME      NULL DEFAULT NULL,
   scheduled_status      ENUM('pending','dispatched','cancelled') NULL DEFAULT NULL,
 
+  -- ── offline driver flag ──────────────────────────────────────
+  -- Set to 1 when admin assigns an offline driver (booking jumps straight to accepted)
+  -- Used to show/hide the Complete button in admin panel
+  offline_assigned      TINYINT(1)    NOT NULL DEFAULT 0,
+
   -- ── cancellation ────────────────────────────────────────────
   cancellation_penalty  INT           DEFAULT 0,
   cancelled_at          DATETIME      NULL DEFAULT NULL,
 
   -- ── payment (filled when driver completes ride) ──────────────
-  ride_hours            INT           NULL DEFAULT NULL,   -- hours driver entered in RideCompletionModal
-  ride_minutes          INT           NULL DEFAULT NULL,   -- minutes driver entered
-  base_hours_used       INT           NULL DEFAULT NULL,   -- snapshot of master_settings.base_hours at ride time
-  base_fare_used        DECIMAL(10,2) NULL DEFAULT NULL,   -- snapshot of master_settings.base_fare
-  extra_per_hr_used     DECIMAL(10,2) NULL DEFAULT NULL,   -- snapshot of master_settings.extra_per_hr
-  amount                DECIMAL(10,2) NULL DEFAULT NULL,   -- final calculated fare shown to customer
+  ride_hours            INT           NULL DEFAULT NULL,
+  ride_minutes          INT           NULL DEFAULT NULL,
+  base_hours_used       INT           NULL DEFAULT NULL,
+  base_fare_used        DECIMAL(10,2) NULL DEFAULT NULL,
+  extra_per_hr_used     DECIMAL(10,2) NULL DEFAULT NULL,
+  amount                DECIMAL(10,2) NULL DEFAULT NULL,
   payment_status        ENUM('pending','paid','waived') NULL DEFAULT NULL,
 
   -- ── rating ──────────────────────────────────────────────────

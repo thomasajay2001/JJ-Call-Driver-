@@ -3,28 +3,21 @@ import { BASE_URL } from "../../utils/constants";
 
 /* ─────────────────────────────────────────
    IncomingRideCard
-   ───────────────────────────────────────── */
+───────────────────────────────────────── */
 export const IncomingRideCard = ({ ride, onAccept, onDecline }) => {
   const [accepting, setAccepting] = useState(false);
   const [timer,     setTimer]     = useState(60);
   const audioRef = useRef(null);
 
+  // Play sound when ride arrives
   useEffect(() => {
-    if (timer <= 0) { onDecline && onDecline(); return; }
-    const t = setTimeout(() => setTimer((p) => p - 1), 1000);
-    return () => clearTimeout(t);
-  }, [timer]);
+    audioRef.current?.play().catch(() => {});
+  }, []);
 
-  // 🔔 Play sound when ride comes
-  useEffect(() => {
-    if (ride) {
-      audioRef.current?.play().catch(() => {});
-    }
-  }, [ride]);
-
+  // Countdown timer — auto-decline at 0
   useEffect(() => {
     if (timer <= 0) {
-      audioRef.current?.pause();   // stop sound
+      audioRef.current?.pause();
       onDecline && onDecline();
       return;
     }
@@ -34,23 +27,19 @@ export const IncomingRideCard = ({ ride, onAccept, onDecline }) => {
 
   const handleAccept = async () => {
     setAccepting(true);
-    audioRef.current?.pause();   // stop sound
+    audioRef.current?.pause();
     await onAccept?.();
     setAccepting(false);
   };
 
-
-  const pct        = (timer / 60) * 100;
-  const isUrgent   = timer <= 15;
+  const pct      = (timer / 60) * 100;
+  const isUrgent = timer <= 15;
   const timerColor = isUrgent ? "#EF4444" : "#2563EB";
 
   return (
     <div style={s.requestCard}>
-      <audio
-        ref={audioRef}
-        src="/sounds/tone.mpeg"
-        loop   
-      />
+      <audio ref={audioRef} src="/sounds/tone.mpeg" loop />
+
       {/* Timer bar */}
       <div style={s.timerBarBg}>
         <div style={{ ...s.timerBarFill, width: `${pct}%`, backgroundColor: timerColor }} />
@@ -59,7 +48,7 @@ export const IncomingRideCard = ({ ride, onAccept, onDecline }) => {
       {/* Header */}
       <div style={s.requestHeader}>
         <div style={s.requestBadge}>
-          <span style={s.requestBadgeText}> Ride Assigned To You</span>
+          <span style={s.requestBadgeText}>🔔 Ride Assigned To You</span>
         </div>
         <div style={{ ...s.timerCircle, borderColor: isUrgent ? "#FCA5A5" : "#E2E8F0" }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: timerColor }}>{timer}s</span>
@@ -123,9 +112,8 @@ export const IncomingRideCard = ({ ride, onAccept, onDecline }) => {
 };
 
 /* ─────────────────────────────────────────
-   ActiveTripCard — ride accepted / in progress
-   Shows live driver location map (Rapido style)
-   ───────────────────────────────────────── */
+   ActiveTripCard
+───────────────────────────────────────── */
 export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
   const mapDivRef  = useRef(null);
   const leafletMap = useRef(null);
@@ -133,7 +121,7 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
   const [driverPos, setDriverPos] = useState(null);
   const watchId    = useRef(null);
 
-  /* ── Init Leaflet map ── */
+  /* Init Leaflet map */
   useEffect(() => {
     if (!document.getElementById("leaflet-css")) {
       const link = document.createElement("link");
@@ -145,20 +133,15 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
     const initMap = () => {
       if (!mapDivRef.current || leafletMap.current) return;
       const L = window.L;
-
       const defLat = parseFloat(ride.pickup_lat) || 13.0827;
       const defLng = parseFloat(ride.pickup_lng) || 80.2707;
 
       const map = L.map(mapDivRef.current, {
-        center: [defLat, defLng],
-        zoom: 14,
-        zoomControl: false,
-        attributionControl: false,
+        center: [defLat, defLng], zoom: 14,
+        zoomControl: false, attributionControl: false,
       });
-
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
 
-      // Pickup marker (green)
       const pickupIcon = L.divIcon({
         className: "",
         html: `<div style="background:#10B981;width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(16,185,129,0.5)"></div>`,
@@ -166,7 +149,6 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
       });
       L.marker([defLat, defLng], { icon: pickupIcon }).addTo(map).bindPopup("📍 Pickup");
 
-      // Driver car icon
       const carIcon = L.divIcon({
         className: "",
         html: `<div style="font-size:28px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))">🚕</div>`,
@@ -190,7 +172,7 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
     };
   }, []);
 
-  /* ── Driver: stream real GPS to server + update map ── */
+  /* Driver: stream real GPS */
   useEffect(() => {
     if (role !== "driver") return;
     const driverId = localStorage.getItem("driverId");
@@ -218,7 +200,7 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
     return () => { if (watchId.current) navigator.geolocation.clearWatch(watchId.current); };
   }, [role]);
 
-  /* ── Customer: poll driver GPS every 4s ── */
+  /* Customer: poll driver GPS every 4s */
   useEffect(() => {
     if (role !== "customer") return;
     const driverId = ride.driver_id;
@@ -243,12 +225,12 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
 
   const statusLabel = ride.status === "accepted" ? "🟡 Driver On The Way" :
                       ride.status === "inride"   ? "🟢 Ride In Progress"  : "⏳ Accepted";
-  const statusColor = ride.status === "inride"   ? "#10B981" : "#F59E0B";
-  const statusBg    = ride.status === "inride"   ? "#D1FAE5" : "#FEF3C7";
+  const statusColor = ride.status === "inride" ? "#10B981" : "#F59E0B";
+  const statusBg    = ride.status === "inride" ? "#D1FAE5" : "#FEF3C7";
 
   return (
     <div style={s.activeTripCard}>
-      
+
       {/* Status badge */}
       <div style={{ ...s.statusBadge, backgroundColor: statusBg }}>
         <div style={{ ...s.statusDot, backgroundColor: statusColor }} />
@@ -275,10 +257,14 @@ export const ActiveTripCard = ({ ride, onComplete, role = "driver" }) => {
         </div>
         <div style={{ flex: 1 }}>
           <p style={s.personName}>
-            {role === "driver" ? (ride.customer_name || "Customer") : (ride.driver_name || "Your Driver")}
+            {role === "driver"
+              ? (ride.customer_name || "Customer")
+              : (ride.driver_name  || "Your Driver")}
           </p>
           <p style={s.personPhone}>
-            📞 {role === "driver" ? (ride.customer_mobile || "—") : (ride.driver_phone || "—")}
+            📞 {role === "driver"
+              ? (ride.customer_mobile || "—")
+              : (ride.driver_phone   || "—")}
           </p>
         </div>
         <a

@@ -498,8 +498,7 @@ const BookingStatusTracker = ({ bookingId, onClose, onRebook }) => {
     { key:"completed", icon:"✅", label:"Trip Completed",    sub:"Thank you for riding with us!" },
   ];
   const activeIdx  = steps.findIndex((s) => s.key === status);
-  const showDriver = ["accepted","inride","completed"].includes(status) && booking.driver_name;
-
+  const showDriver = ["assigned","accepted","inride","completed"].includes(status) && booking.driver_name;
   if (cancelResult) {
     return (
       <div style={tr.wrap}>
@@ -1065,9 +1064,9 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
   };
 
   const handleCloseTracker=async(currentStatus)=>{
-    if(bookedId&&["wait5","wait10","wait30","allbusy","pending","scheduled"].includes(currentStatus)){
-      try{await fetch(`${BASE_URL}/api/bookings/${bookedId}/cancel`,{method:"POST"});}catch{}
-    }
+    // if(bookedId&&["wait5","wait10","wait30","allbusy","pending","scheduled"].includes(currentStatus)){
+    //   try{await fetch(`${BASE_URL}/api/bookings/${bookedId}/cancel`,{method:"POST"});}catch{}
+    // }
     onClose();
   };
 
