@@ -21,8 +21,8 @@ import {
 } from "./Modals";
 
 const HomeTab = () => {
-  const role      = localStorage.getItem("role")         || "";
-  const DRIVER_ID = localStorage.getItem("driverId")     || "";
+  const role      = localStorage.getItem("role")     || "";
+  const DRIVER_ID = localStorage.getItem("driverId") || "";
 
   /* ── Completion modal ── */
   const [showCompletionModal, setShowCompletionModal] = useState(false);
@@ -39,13 +39,13 @@ const HomeTab = () => {
   const [bookingHistory,      setBookingHistory]      = useState([]);
 
   /* ── Driver state ── */
-  const [isOnline,          setIsOnline]         = useState(localStorage.getItem('driverOnline') === 'true');
+  const [isOnline,          setIsOnline]         = useState(localStorage.getItem("driverOnline") === "true");
   const [showDriverHistory, setShowDriverHistory] = useState(false);
   const [togglingOnline,    setTogglingOnline]    = useState(false);
   const [pendingRide,       setPendingRide]       = useState(null);
   const [acceptedRide,      setAcceptedRide]      = useState(null);
   const [todayEarnings,     setTodayEarnings]     = useState(0);
-  const [driverName,        setDriverName]        = useState(localStorage.getItem('driverName') || 'Driver');
+  const [driverName,        setDriverName]        = useState(localStorage.getItem("driverName") || "Driver");
   const [totalTrips,        setTotalTrips]        = useState(0);
   const [profileLoading,    setProfileLoading]    = useState(false);
   const [recentDriverTrips, setRecentDriverTrips] = useState([]);
@@ -53,6 +53,15 @@ const HomeTab = () => {
 
   const pollRef    = useRef(null);
   const refreshRef = useRef(null);
+
+  /*
+   * ── COMPLETING GUARD ─────────────────────────────────────────
+   * Blocks the poll from re-populating acceptedRide/pendingRide
+   * while the complete-ride API call is in-flight and for 3s
+   * after, giving the DB time to write status = 'completed'.
+   * ─────────────────────────────────────────────────────────────
+   */
+  const completingRef = useRef(false);
 
   /* ── Driver init ── */
   useEffect(() => {
@@ -71,15 +80,23 @@ const HomeTab = () => {
     if (role !== "driver" || !DRIVER_ID) return;
 
     const poll = async () => {
+      /* ── guard: skip while completing ── */
+      if (completingRef.current) return;
       if (acceptedRide) return;
+
       try {
         const res  = await axios.get(`${BASE_URL}/api/bookings`);
         const list = Array.isArray(res.data) ? res.data : [];
 
+        /* double-check guard after async wait */
+        if (completingRef.current) return;
+
         const activeRide = list.find(
-          (b) => String(b.driver) === String(DRIVER_ID) &&
-                 (b.status === "accepted" || b.status === "inride")
+          (b) =>
+            String(b.driver) === String(DRIVER_ID) &&
+            (b.status === "accepted" || b.status === "inride")
         );
+
         if (activeRide) {
           setAcceptedRide({
             ...activeRide,
@@ -126,7 +143,7 @@ const HomeTab = () => {
   const fetchDriverBookings = async (driverId) => {
     setTripsLoading(true);
     try {
-      const res = await axios.get(`${BASE_URL}/api/bookings/driver/all?driverId=${driverId}`);
+      const res  = await axios.get(`${BASE_URL}/api/bookings/driver/all?driverId=${driverId}`);
       const list = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
       setRecentDriverTrips(list.slice(0, 4));
     } catch {}
@@ -153,7 +170,7 @@ const HomeTab = () => {
     try {
       await axios.post(`${BASE_URL}/api/driver/updateStatus`, {
         driverId: DRIVER_ID,
-        status: newStatus ? "online" : "offline",
+        status:   newStatus ? "online" : "offline",
       });
     } catch {}
     finally { setTogglingOnline(false); }
@@ -194,24 +211,39 @@ const HomeTab = () => {
     const bookingId = pendingRide.id;
     setPendingRide(null);
     try {
-      await axios.post(`${BASE_URL}/api/decline-booking`, { bookingId, driverId: DRIVER_ID });
+      await axios.post(`${BASE_URL}/api/decline-booking`, {
+        bookingId, driverId: DRIVER_ID,
+      });
     } catch (e) {
       console.warn("Decline API error:", e.message);
     }
   };
 
-  /* ── COMPLETE — now opens duration modal first ── */
+  /* ── OPEN COMPLETION MODAL ── */
   const handleOpenCompletionModal = () => {
     setShowCompletionModal(true);
   };
 
-  /* ── Called after driver confirms duration + fare in modal ── */
+  /* ── COMPLETE RIDE — called after driver confirms fare ── */
   const handleCompleteRide = async ({ hours, minutes, totalAmount }) => {
+    /* 1. Close modal */
     setShowCompletionModal(false);
+
+    /* 2. Save ride ref before clearing */
     const ride = acceptedRide;
+
+    /* 3. LOCK poll — must happen before any state/await */
+    completingRef.current = true;
+
+    /* 4. Clear UI immediately so button disappears at once */
     setAcceptedRide(null);
+    setPendingRide(null);
+
+    /* 5. Optimistic earnings */
     if (totalAmount) setTodayEarnings((p) => p + totalAmount);
+
     try {
+      /* 6. POST to server */
       await axios.post(`${BASE_URL}/api/complete-ride`, {
         bookingId:    ride?.id,
         driverId:     DRIVER_ID,
@@ -219,9 +251,20 @@ const HomeTab = () => {
         ride_hours:   hours,
         ride_minutes: minutes,
       });
-      fetchDriverProfile(DRIVER_ID);
-      fetchDriverBookings(DRIVER_ID);
-    } catch {}
+    } catch (e) {
+      console.warn("Complete ride API error:", e.message);
+    } finally {
+      /*
+       * 7. Keep guard locked for 3 s so the next poll
+       *    finds status = 'completed' in the DB, not 'inride'.
+       *    Then refresh profile + bookings.
+       */
+      setTimeout(() => {
+        completingRef.current = false;
+        fetchDriverProfile(DRIVER_ID);
+        fetchDriverBookings(DRIVER_ID);
+      }, 3000);
+    }
   };
 
   /* ── Customer handlers ── */
@@ -282,7 +325,7 @@ const HomeTab = () => {
             <h2 style={st.sectionHeading}>🚕 Active Trip</h2>
             <ActiveTripCard
               ride={acceptedRide}
-              onComplete={handleOpenCompletionModal}  
+              onComplete={handleOpenCompletionModal}
               role="driver"
             />
           </section>
@@ -316,13 +359,14 @@ const HomeTab = () => {
           onClose={() => setShowDriverHistory(false)}
         />
 
-        {/* ── Ride Completion Modal ── */}
         <RideCompletionModal
           visible={showCompletionModal}
           ride={acceptedRide}
           onClose={() => setShowCompletionModal(false)}
           onConfirm={handleCompleteRide}
         />
+
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
@@ -336,7 +380,7 @@ const HomeTab = () => {
         <button style={st.bookBtn} onClick={() => {
           setInitialDrop(""); setInitialTriptype(""); setShowBookingForm(true);
         }}>
-           Book a Ride
+          🚖 Book a Ride
         </button>
       </div>
       <BookingForm
