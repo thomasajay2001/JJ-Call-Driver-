@@ -724,23 +724,22 @@ const HistoryPanel = ({bookings,summary,loading,dateMode,setDateMode,customDate,
               </div>
               <div style={H.tagsRow}>
                 <span style={H.tag}>{b.triptype==="outstation"?"🗺️ Outstation":"🏙️ Local"}</span>
-                {b.is_scheduled && <span style={{...H.tag,backgroundColor:"#CCFBF1",color:"#0F766E"}}>📅 Scheduled</span>}
-                {b.amount       && <span style={{...H.tag,backgroundColor:"#DCFCE7",color:"#15803D"}}>₹{b.amount}</span>}
-                {b.cancellation_penalty>0 && <span style={{...H.tag,backgroundColor:"#FEE2E2",color:"#9F1239"}}>💸 ₹{b.cancellation_penalty} fee</span>}
-                {b.rating       && <span style={{...H.tag,backgroundColor:"#FEF9C3",color:"#854D0E"}}>{"⭐".repeat(b.rating)}</span>}
+                {b.is_scheduled&&<span style={{...H.tag,backgroundColor:"#CCFBF1",color:"#0F766E"}}>📅 Scheduled</span>}
+                {b.amount&&<span style={{...H.tag,backgroundColor:"#DCFCE7",color:"#15803D"}}>₹{b.amount}</span>}
+                {b.cancellation_penalty>0&&<span style={{...H.tag,backgroundColor:"#FEE2E2",color:"#9F1239"}}>💸 ₹{b.cancellation_penalty} fee</span>}
+                {b.rating&&<span style={{...H.tag,backgroundColor:"#FEF9C3",color:"#854D0E"}}>{"⭐".repeat(b.rating)}</span>}
               </div>
               {expanded && (
                 <div style={H.expandBody} onClick={e=>e.stopPropagation()}>
                   <div style={H.divider}/>
-                  {b.is_scheduled&&b.scheduled_at && <div style={H.detailRow}><span style={H.detailKey}>📅 Scheduled For</span><span style={H.detailVal}>{fmtDate(b.scheduled_at)} · {fmtTime(b.scheduled_at)}</span></div>}
-                  {b.driver_name && <div style={H.detailRow}><span style={H.detailKey}>👨‍✈️ Driver</span><span style={H.detailVal}>{b.driver_name}{b.driver_phone?` · ${b.driver_phone}`:""}</span></div>}
-                  {role==="driver"&&(b.customer_name||b.customer_mobile) && <div style={H.detailRow}><span style={H.detailKey}>👤 Customer</span><span style={H.detailVal}>{b.customer_name||"—"}{b.customer_mobile?` · ${b.customer_mobile}`:""}</span></div>}
-                  {b.amount && <div style={H.detailRow}><span style={H.detailKey}>💰 Fare</span><span style={{...H.detailVal,fontWeight:800,color:"#16A34A",fontSize:16}}>₹{b.amount}</span></div>}
-                  {b.ride_hours!=null && <div style={H.detailRow}><span style={H.detailKey}>⏱ Duration</span><span style={H.detailVal}>{b.ride_hours>0?`${b.ride_hours}h `:""}{b.ride_minutes>0?`${b.ride_minutes}m`:""}</span></div>}
-                  {b.cancellation_penalty>0 && <div style={H.detailRow}><span style={H.detailKey}>💸 Fee</span><span style={{...H.detailVal,color:"#DC2626",fontWeight:700}}>₹{b.cancellation_penalty}</span></div>}
-                  {b.rating && <div style={H.detailRow}><span style={H.detailKey}>⭐ Rating</span><span style={H.detailVal}>{"⭐".repeat(b.rating)} ({b.rating}/5)</span></div>}
-                  {b.feedback && <div style={H.feedbackBox}><span style={H.detailKey}>💬 Feedback</span><p style={H.feedbackTxt}>{b.feedback}</p></div>}
-                  {isActive && <button style={H.goActiveBtn} onClick={()=>{setExpandedId(null);onGoActive();}}>🚗 View Active Ride →</button>}
+                  {b.is_scheduled&&b.scheduled_at&&<div style={H.detailRow}><span style={H.detailKey}>📅 Scheduled For</span><span style={H.detailVal}>{fmtDate(b.scheduled_at)} · {fmtTime(b.scheduled_at)}</span></div>}
+                  {b.driver_name&&<div style={H.detailRow}><span style={H.detailKey}>👨‍✈️ Driver</span><span style={H.detailVal}>{b.driver_name}{b.driver_phone?` · ${b.driver_phone}`:""}</span></div>}
+                  {role==="driver"&&(b.customer_name||b.customer_mobile)&&<div style={H.detailRow}><span style={H.detailKey}>👤 Customer</span><span style={H.detailVal}>{b.customer_name||"—"}{b.customer_mobile?` · ${b.customer_mobile}`:""}</span></div>}
+                  {b.amount&&<div style={H.detailRow}><span style={H.detailKey}>💰 Fare</span><span style={{...H.detailVal,fontWeight:800,color:"#16A34A",fontSize:16}}>₹{b.amount}</span></div>}
+                  {b.cancellation_penalty>0&&<div style={H.detailRow}><span style={H.detailKey}>💸 Fee</span><span style={{...H.detailVal,color:"#DC2626",fontWeight:700}}>₹{b.cancellation_penalty}</span></div>}
+                  {b.rating&&<div style={H.detailRow}><span style={H.detailKey}>⭐ Rating</span><span style={H.detailVal}>{"⭐".repeat(b.rating)} ({b.rating}/5)</span></div>}
+                  {b.feedback&&<div style={H.feedbackBox}><span style={H.detailKey}>💬 Feedback</span><p style={H.feedbackTxt}>{b.feedback}</p></div>}
+                  {isActive&&<button style={H.goActiveBtn} onClick={()=>{setExpandedId(null);onGoActive();}}>🚗 View Active Ride →</button>}
                 </div>
               )}
             </div>

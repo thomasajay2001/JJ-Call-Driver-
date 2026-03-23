@@ -203,10 +203,10 @@ const ReminderPanel = ({ reminders, onAssign, onDismiss }) => {
 /* ═══ MAIN BOOKING COMPONENT ═══ */
 export default function Booking() {
   const [bookings,       setBookings]       = useState([]);
-  const [drivers,        setDrivers]        = useState([]);       // online active
-  const [offlineDrivers, setOfflineDrivers] = useState([]);       // offline active
+  const [drivers,        setDrivers]        = useState([]);
+  const [offlineDrivers, setOfflineDrivers] = useState([]);
   const [allDrivers,     setAllDrivers]     = useState([]);
-  const [driverMode,     setDriverMode]     = useState("online"); // "online" | "offline"
+  const [driverMode,     setDriverMode]     = useState("online");
   const [search,         setSearch]         = useState("");
   const [filterTab,      setFilterTab]      = useState("all");
 
@@ -223,11 +223,11 @@ export default function Booking() {
 
   const [showPrefWarn, setShowPrefWarn] = useState(false);
 
-  const [showAcceptedPopup, setShowAcceptedPopup] = useState(false);
-  const [acceptedBooking,   setAcceptedBooking]   = useState(null);
-  const [acceptedDriver,    setAcceptedDriver]    = useState("");
-  const [acceptedSaving,     setAcceptedSaving]    = useState(false);
-  const [acceptedDriverMode, setAcceptedDriverMode] = useState("online"); // for accepted popup
+  const [showAcceptedPopup,  setShowAcceptedPopup]  = useState(false);
+  const [acceptedBooking,    setAcceptedBooking]    = useState(null);
+  const [acceptedDriver,     setAcceptedDriver]     = useState("");
+  const [acceptedSaving,     setAcceptedSaving]     = useState(false);
+  const [acceptedDriverMode, setAcceptedDriverMode] = useState("online");
 
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -373,11 +373,11 @@ export default function Booking() {
   // ── Create booking ──
   const submitCreateBooking = async () => {
     const { customer_name, customer_mobile, pickup } = newBooking;
-    if (!customer_name.trim())                      { alert("Please enter customer name."); return; }
-    if (!/^[6-9]\d{9}$/.test(customer_mobile))      { alert("Enter a valid 10-digit mobile number."); return; }
-    if (!pickup.trim())                              { alert("Please enter pickup location."); return; }
-    if (!newBooking.drop_location.trim())            { alert("Please enter drop location."); return; }
-    if (!newBooking.triptype)                        { alert("Please select trip type."); return; }
+    if (!customer_name.trim())                               { alert("Please enter customer name."); return; }
+    if (!/^[6-9]\d{9}$/.test(customer_mobile))              { alert("Enter a valid 10-digit mobile number."); return; }
+    if (!pickup.trim())                                      { alert("Please enter pickup location."); return; }
+    if (!newBooking.drop_location.trim())                    { alert("Please enter drop location."); return; }
+    if (!newBooking.triptype)                                { alert("Please select trip type."); return; }
     if (newBooking.is_scheduled && !newBooking.scheduled_at) { alert("Please select scheduled date & time."); return; }
     setCreating(true);
     try {
@@ -404,7 +404,11 @@ export default function Booking() {
   // ── Assign flow ──
   const submitForm = async () => {
     if (assignMode === "assign" && !driver) { alert("Please select a driver."); return; }
-    if (assignMode === "assign" && editBooking?.recommended_driver_id && String(driver) !== String(editBooking.recommended_driver_id)) {
+    if (
+      assignMode === "assign" &&
+      editBooking?.recommended_driver_id &&
+      String(driver) !== String(editBooking.recommended_driver_id)
+    ) {
       setShowPrefWarn(true); return;
     }
     await doSubmit();
@@ -412,11 +416,10 @@ export default function Booking() {
 
   const doSubmit = async (overrideId, overrideDriver) => {
     setSaving(true);
-    const bid = overrideId || editId;
+    const bid            = overrideId || editId;
     const assignedDriver = overrideDriver || driver;
     try {
       if (assignMode === "assign" || overrideDriver) {
-        // Check if selected driver is offline → jump straight to accepted
         const isOffline = offlineDrivers.some((d) => String(d.id) === String(assignedDriver));
         const newStatus = isOffline ? "accepted" : "assigned";
         await axios.put(`${BASE_URL}/api/bookings/${bid}`, { driver: assignedDriver, status: newStatus });
@@ -438,15 +441,8 @@ export default function Booking() {
     } catch (e) { alert("Failed to notify customer: " + (e?.response?.data?.message || e.message)); }
   };
 
+  // ── Preferred warning: only "Assign Anyway", no cancel order ──
   const handlePrefWarnYes = async () => { setShowPrefWarn(false); await doSubmit(); };
-  const handlePrefWarnNo  = async () => {
-    setShowPrefWarn(false); setSaving(true);
-    try {
-      await axios.put(`${BASE_URL}/api/bookings/${editId}`, { driver:null, status:"cancelled" });
-      closeForm(); fetchBookings();
-    } catch (e) { alert("Failed: " + (e?.response?.data?.message || e.message)); }
-    finally { setSaving(false); }
-  };
 
   const handleAcceptedAssign = async () => {
     if (!acceptedDriver) { alert("Please select a driver."); return; }
@@ -454,7 +450,7 @@ export default function Booking() {
     try {
       const isOffline = acceptedDriverMode === "offline";
       const newStatus = isOffline ? "accepted" : "assigned";
-      await axios.put(`${BASE_URL}/api/bookings/${acceptedBooking.id}`, { driver:acceptedDriver, status:newStatus });
+      await axios.put(`${BASE_URL}/api/bookings/${acceptedBooking.id}`, { driver: acceptedDriver, status: newStatus });
       setShowAcceptedPopup(false); setAcceptedBooking(null); setAcceptedDriver(""); setAcceptedDriverMode("online"); fetchBookings();
     } catch (e) { alert("Failed: " + (e?.response?.data?.message || e.message)); }
     finally { setAcceptedSaving(false); }
@@ -483,6 +479,7 @@ export default function Booking() {
 
   const scheduledCount = bookings.filter((b) => b.is_scheduled).length;
   const immediateCount = bookings.filter((b) => !b.is_scheduled).length;
+
   const afterTab = bookings.filter((b) => {
     if (filterTab === "scheduled") return b.is_scheduled;
     if (filterTab === "immediate") return !b.is_scheduled;
@@ -507,14 +504,16 @@ export default function Booking() {
     { icon:"⏳", label:"Pending",         value:pendingB,   cls:"stat-icon-box-amber"  },
     { icon:"🎉", label:"Completed",       value:completedB, cls:"stat-icon-box-purple" },
   ];
-  const selMode = ASSIGN_MODES.find((m) => m.value === assignMode);
+  const selMode            = ASSIGN_MODES.find((m) => m.value === assignMode);
+  const currentDriverList  = driverMode === "online" ? drivers : offlineDrivers;
 
-  // Current driver list based on mode
-  const currentDriverList = driverMode === "online" ? drivers : offlineDrivers;
-
+  /* ══════════════════════════════════════════════════
+     RENDER
+  ══════════════════════════════════════════════════ */
   return (
     <div>
-      {/* Page header */}
+
+      {/* ── Page header ── */}
       <div className="page-header">
         <div className="page-header-left">
           <h1 className="page-title">Booking Management</h1>
@@ -539,7 +538,8 @@ export default function Booking() {
               <span className="refresh-ring-label">{countdown}s</span>
             </div>
           )}
-          <button className={autoRefresh ? "refresh-toggle-on" : "refresh-toggle-off"}
+          <button
+            className={autoRefresh ? "refresh-toggle-on" : "refresh-toggle-off"}
             onClick={() => { setAutoRefresh(v => !v); cdRef.current = REFRESH_MS/1000; setCountdown(REFRESH_MS/1000); }}>
             {autoRefresh ? "🔄 Auto ON" : "⏸ Auto OFF"}
           </button>
@@ -551,6 +551,7 @@ export default function Booking() {
       <ReminderPanel reminders={reminders} onAssign={openEdit} onDismiss={dismissReminder} />
       <UpcomingPanel bookings={bookings} onAssign={openEdit} />
 
+      {/* ── Stats ── */}
       <div className="stats-grid">
         {STATS.map((s) => (
           <div key={s.label} className="stat-card">
@@ -560,7 +561,7 @@ export default function Booking() {
         ))}
       </div>
 
-      {/* Filter tabs */}
+      {/* ── Filter tabs + search ── */}
       <div style={S.filterRow}>
         <div style={S.tabs}>
           {[
@@ -586,7 +587,7 @@ export default function Booking() {
         </span>
       </div>
 
-      {/* Table */}
+      {/* ── Table ── */}
       <div className="table-card">
         <div className="table-card-header">
           <h3 className="table-card-title">All Bookings</h3>
@@ -596,33 +597,31 @@ export default function Booking() {
           <table>
             <thead>
               <tr>
-                {["ID","Customer","Mobile","Pickup","Drop","Schedule","Preferred Driver","Assigned Driver","Trip","Status","Action"].map((h) => (
+                {["ID","Customer","Mobile","Pickup","Drop","Schedule","Assigned Driver","Status","Action"].map((h) => (
                   <th key={h}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {pg.slice.length === 0 ? (
-                <tr><td colSpan="11">
+                <tr><td colSpan="9">
                   <div className="empty-state">
                     <span className="empty-state-icon">📭</span>
                     <p className="empty-state-title">No bookings found</p>
                   </div>
                 </td></tr>
               ) : pg.slice.map((b) => {
-                const s           = b.status?.toLowerCase();
-                const isCancelled = s === "cancelled";
-                const isDone      = s === "completed";
-                const isLocked    = s === "preferred_query";
-                const isScheduled = !!b.is_scheduled;
-                const schedFmt    = fmtScheduled(b.scheduled_at);
-                const isReminder  = reminders.some((r) => r.id === b.id);
-                const schedInfo   = isScheduled && b.scheduled_at ? getScheduleInfo(b.scheduled_at) : null;
-                const isFuture    = schedInfo?.type === "future";
-                const isTomorrow  = schedInfo?.type === "tomorrow";
-                const isToday     = schedInfo?.type === "today";
-                // Complete button ONLY for offline-assigned drivers (offline_assigned=1)
-                // Online drivers complete via the driver app - we don't show Complete for them
+                const s              = b.status?.toLowerCase();
+                const isCancelled    = s === "cancelled";
+                const isDone         = s === "completed";
+                const isLocked       = s === "preferred_query";
+                const isScheduled    = !!b.is_scheduled;
+                const schedFmt       = fmtScheduled(b.scheduled_at);
+                const isReminder     = reminders.some((r) => r.id === b.id);
+                const schedInfo      = isScheduled && b.scheduled_at ? getScheduleInfo(b.scheduled_at) : null;
+                const isFuture       = schedInfo?.type === "future";
+                const isTomorrow     = schedInfo?.type === "tomorrow";
+                const isToday        = schedInfo?.type === "today";
                 const isOfflineAssigned = b.offline_assigned && (s === "accepted" || s === "inride") && b.driver;
                 const isOnlineAssigned  = !b.offline_assigned && (s === "assigned" || s === "accepted" || s === "inride") && b.driver;
 
@@ -634,7 +633,8 @@ export default function Booking() {
                     ...(isFuture    ? { backgroundColor:"#F5F3FF" } : {}),
                     ...(isTomorrow  ? { backgroundColor:"#EFF6FF" } : {}),
                     ...(isToday && !isReminder ? { backgroundColor:"#F0FDFA" } : {}),
-                    ...(isScheduled && !isCancelled && !isDone && !isReminder && !isFuture && !isTomorrow && !isToday ? { backgroundColor:"#F0FDFA" } : {}),
+                    ...(isScheduled && !isCancelled && !isDone && !isReminder && !isFuture && !isTomorrow && !isToday
+                      ? { backgroundColor:"#F0FDFA" } : {}),
                   }}>
                     <td>
                       <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
@@ -672,19 +672,9 @@ export default function Booking() {
                       ) : <span style={S.schedNow}>⚡ Now</span>}
                     </td>
                     <td>
-                      {b.recommended_driver_id
-                        ? <span className="badge badge-purple" style={{ display:"inline-flex", gap:4 }}>⭐ {getDriverName(b.recommended_driver_id)}</span>
-                        : <span style={{ color:"#94A3B8", fontSize:12 }}>—</span>}
-                    </td>
-                    <td>
                       {b.driver
                         ? <span className="badge badge-green">✓ {getDriverName(b.driver)}</span>
                         : <span className="badge badge-red">Not Assigned</span>}
-                    </td>
-                    <td>
-                      {b.triptype
-                        ? <span className={`badge ${b.triptype==="outstation"?"badge-purple":"badge-blue"}`}>{b.triptype}</span>
-                        : "—"}
                     </td>
                     <td><span className={getStatusClass(b.status)}>{getStatusLabel(b.status)}</span></td>
                     <td>
@@ -703,7 +693,6 @@ export default function Booking() {
                           </div>
                         </div>
                       ) : isOfflineAssigned ? (
-                        /* ── Offline driver: Complete + Reassign ── */
                         <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
                           <button
                             style={{ padding:"6px 10px", backgroundColor:"#10B981", border:"none", color:"#fff", fontWeight:700, borderRadius:7, fontSize:12, cursor:"pointer" }}
@@ -715,7 +704,6 @@ export default function Booking() {
                           </button>
                         </div>
                       ) : isOnlineAssigned ? (
-                        /* ── Online driver: only Reassign (driver completes via app) ── */
                         <button className="action-edit" onClick={() => openEdit(b)}>
                           ✏️ Reassign
                         </button>
@@ -737,12 +725,17 @@ export default function Booking() {
         )}
       </div>
 
-      {/* ═══ CREATE BOOKING MODAL ═══ */}
+      {/* ═══════════════════════════════════════════
+          CREATE BOOKING MODAL
+      ═══════════════════════════════════════════ */}
       {showCreateForm && (
         <div className="modal-overlay" style={{ zIndex:9999 }}>
           <div className="modal modal-md" style={{ maxWidth:520 }}>
             <div className="modal-header">
-              <div className="modal-header-inner"><span style={{ fontSize:24 }}>🚖</span><span className="modal-title">Create New Booking</span></div>
+              <div className="modal-header-inner">
+                <span style={{ fontSize:24 }}>🚖</span>
+                <span className="modal-title">Create New Booking</span>
+              </div>
               <button className="modal-close" onClick={() => { setShowCreateForm(false); setPickupSugg([]); setDropSugg([]); }}>✕</button>
             </div>
             <div className="modal-body">
@@ -774,7 +767,8 @@ export default function Booking() {
                           : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                               <circle cx="12" cy="12" r="3" fill="#2563EB" fillOpacity="0.2"/><circle cx="12" cy="12" r="7"/>
                               <line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
-                            </svg>}
+                            </svg>
+                        }
                       </button>
                     </div>
                     {pickupSugg.length > 0 && (
@@ -860,7 +854,9 @@ export default function Booking() {
         </div>
       )}
 
-      {/* ═══ ASSIGN MODAL ═══ */}
+      {/* ═══════════════════════════════════════════
+          ASSIGN MODAL
+      ═══════════════════════════════════════════ */}
       {showForm && editBooking && (
         <div className="modal-overlay">
           <div className="modal modal-md">
@@ -937,7 +933,7 @@ export default function Booking() {
                   <div className="form-field form-full">
                     <label className="form-label">Select Driver <span className="form-required">*</span></label>
 
-                    {/* ── Online / Offline toggle ── */}
+                    {/* Online / Offline toggle */}
                     <div style={{ display:"flex", gap:6, marginBottom:10 }}>
                       {[
                         { mode:"online",  label:"🟢 Online",  count:drivers.length,        color:"#2563EB" },
@@ -957,7 +953,6 @@ export default function Booking() {
                       ))}
                     </div>
 
-                    {/* ── Driver list ── */}
                     {currentDriverList.length === 0 ? (
                       <div style={{ padding:14, background:driverMode==="online"?"#fff7ed":"#F8FAFC", border:`1.5px solid ${driverMode==="online"?"#fed7aa":"#E2E8F0"}`, borderRadius:10, fontSize:13, color:driverMode==="online"?"#92400e":"#64748B" }}>
                         {driverMode==="online" ? "⚠️ No drivers online right now." : "ℹ️ No offline active drivers."}
@@ -978,7 +973,7 @@ export default function Booking() {
                         </select>
 
                         {driver && (() => {
-                          const sel = currentDriverList.find((d) => String(d.id) === String(driver));
+                          const sel   = currentDriverList.find((d) => String(d.id) === String(driver));
                           const trips = completedByDriver[String(driver)] || 0;
                           if (!sel) return null;
                           const isOff = driverMode === "offline";
@@ -1003,7 +998,6 @@ export default function Booking() {
                           );
                         })()}
 
-                        {/* ── Offline warning note ── */}
                         {driverMode === "offline" && (
                           <div style={{ marginTop:8, display:"flex", alignItems:"flex-start", gap:8, backgroundColor:"#FFF7ED", border:"1.5px solid #FED7AA", borderRadius:10, padding:"8px 12px" }}>
                             <span style={{ fontSize:14 }}>⚠️</span>
@@ -1040,37 +1034,74 @@ export default function Booking() {
         </div>
       )}
 
-      {/* ═══ PREFERRED WARNING ═══ */}
+      {/* ═══════════════════════════════════════════
+          PREFERRED WARNING
+          — Close icon only, no "Cancel Order" button
+      ═══════════════════════════════════════════ */}
       {showPrefWarn && editBooking && (
         <div className="modal-overlay" style={{ zIndex:9999 }}>
           <div className="modal modal-md" style={{ maxWidth:420 }}>
+
+            {/* header with ✕ close icon */}
             <div className="modal-header">
-              <div className="modal-header-inner"><span style={{ fontSize:22 }}>⚠️</span><span className="modal-title">Different Driver Selected</span></div>
+              <div className="modal-header-inner">
+                <span style={{ fontSize:22 }}>⚠️</span>
+                <span className="modal-title">Different Driver Selected</span>
+              </div>
+              <button
+                className="modal-close"
+                onClick={() => setShowPrefWarn(false)}
+                title="Close"
+              >
+                ✕
+              </button>
             </div>
+
             <div className="modal-body" style={{ textAlign:"center", padding:"16px 0 8px" }}>
               <div style={{ fontSize:50, marginBottom:12 }}>🚕</div>
-              <p style={{ fontSize:15, fontWeight:700, color:"#1E293B", margin:"0 0 12px" }}>Customer has a preferred driver</p>
+              <p style={{ fontSize:15, fontWeight:700, color:"#1E293B", margin:"0 0 12px" }}>
+                Customer has a preferred driver
+              </p>
               <div style={{ backgroundColor:"#FFF7ED", border:"1.5px solid #FED7AA", borderRadius:12, padding:"10px 14px", textAlign:"left", margin:"0 0 12px" }}>
-                <p style={{ margin:0, fontSize:13, color:"#92400E", fontWeight:600 }}>⭐ Preferred: <strong>{getDriverName(editBooking.recommended_driver_id)}</strong></p>
-                <p style={{ margin:"5px 0 0", fontSize:13, color:"#92400E", fontWeight:600 }}>🚗 You selected: <strong>{getDriverName(driver)}</strong></p>
+                <p style={{ margin:0, fontSize:13, color:"#92400E", fontWeight:600 }}>
+                  ⭐ Preferred: <strong>{getDriverName(editBooking.recommended_driver_id)}</strong>
+                </p>
+                <p style={{ margin:"5px 0 0", fontSize:13, color:"#92400E", fontWeight:600 }}>
+                  🚗 You selected: <strong>{getDriverName(driver)}</strong>
+                </p>
               </div>
-              <p style={{ fontSize:14, color:"#475569", margin:0 }}>Assign a different driver anyway?</p>
+              <p style={{ fontSize:14, color:"#475569", margin:0 }}>
+                Assign a different driver anyway?
+              </p>
             </div>
-            <div className="modal-footer" style={{ gap:10 }}>
-              <button style={{ flex:1, padding:"12px 0", backgroundColor:"#FEE2E2", color:"#9F1239", border:"1.5px solid #FECDD3", borderRadius:10, fontWeight:700, fontSize:14, cursor:"pointer" }}
-                onClick={handlePrefWarnNo} disabled={saving}>❌ Cancel Order</button>
-              <button className="btn btn-primary" style={{ flex:1 }} onClick={handlePrefWarnYes} disabled={saving}>✅ Assign Anyway</button>
+
+            <div className="modal-footer">
+              <button
+                className="btn btn-primary"
+                style={{ flex:1 }}
+                onClick={handlePrefWarnYes}
+                disabled={saving}
+              >
+                {saving ? "⏳ Saving…" : "✅ Assign Anyway"}
+              </button>
             </div>
+
           </div>
         </div>
       )}
 
-      {/* ═══ CUSTOMER ACCEPTED POPUP ═══ */}
+      {/* ═══════════════════════════════════════════
+          CUSTOMER ACCEPTED POPUP
+      ═══════════════════════════════════════════ */}
       {showAcceptedPopup && acceptedBooking && (
         <div className="modal-overlay" style={{ zIndex:9999 }}>
           <div className="modal modal-md" style={{ maxWidth:440 }}>
             <div className="modal-header">
-              <div className="modal-header-inner"><span style={{ fontSize:22 }}>✅</span><span className="modal-title">Customer Accepted — Assign a Driver</span></div>
+              <div className="modal-header-inner">
+                <span style={{ fontSize:22 }}>✅</span>
+                <span className="modal-title">Customer Accepted — Assign a Driver</span>
+              </div>
+              <button className="modal-close" onClick={() => { setShowAcceptedPopup(false); setAcceptedBooking(null); setAcceptedDriver(""); }}>✕</button>
             </div>
             <div className="modal-body">
               <div style={S.acceptedBanner}>
@@ -1093,9 +1124,11 @@ export default function Booking() {
                 )}
               </div>
               <div className="form-field" style={{ marginBottom:0 }}>
-                <label className="form-label">Select Alternate Driver <span className="form-required">*</span></label>
+                <label className="form-label">
+                  Select Alternate Driver <span className="form-required">*</span>
+                </label>
 
-                {/* Online / Offline toggle for accepted popup */}
+                {/* Online / Offline toggle */}
                 <div style={{ display:"flex", gap:6, margin:"8px 0 10px" }}>
                   {[
                     { mode:"online",  label:"🟢 Online",  count:drivers.length,        color:"#2563EB" },
@@ -1132,18 +1165,22 @@ export default function Booking() {
                         })}
                       </select>
                       {acceptedDriver && (() => {
-                        const sel = list.find((d) => String(d.id) === String(acceptedDriver));
+                        const sel   = list.find((d) => String(d.id) === String(acceptedDriver));
                         const trips = completedByDriver[String(acceptedDriver)] || 0;
                         if (!sel) return null;
                         const isOff = acceptedDriverMode === "offline";
                         return (
                           <>
                             <div style={{ ...S.driverCard, ...(isOff?{backgroundColor:"#F8FAFC",borderColor:"#E2E8F0"}:{}) }}>
-                              <div style={{ ...S.driverAvatar, backgroundColor:isOff?"#64748B":"#16A34A" }}>{(sel.name||sel.NAME||"?")[0].toUpperCase()}</div>
+                              <div style={{ ...S.driverAvatar, backgroundColor:isOff?"#64748B":"#16A34A" }}>
+                                {(sel.name||sel.NAME||"?")[0].toUpperCase()}
+                              </div>
                               <div style={{ flex:1 }}>
                                 <p style={S.driverCardName}>{sel.name||sel.NAME}</p>
                                 <p style={S.driverCardSub}>{sel.car_type||"N/A"} · ID: {sel.id}
-                                  <span style={{ marginLeft:8, fontSize:10, fontWeight:700, color:isOff?"#64748B":"#16A34A" }}>● {isOff?"Offline":"Online"}</span>
+                                  <span style={{ marginLeft:8, fontSize:10, fontWeight:700, color:isOff?"#64748B":"#16A34A" }}>
+                                    ● {isOff?"Offline":"Online"}
+                                  </span>
                                 </p>
                               </div>
                               <div style={{ ...S.tripBadge, ...(isOff?{backgroundColor:"#F1F5F9",borderColor:"#E2E8F0"}:{}) }}>
@@ -1168,8 +1205,12 @@ export default function Booking() {
               </div>
             </div>
             <div className="modal-footer" style={{ gap:10 }}>
-              <button className="btn btn-ghost" onClick={() => { setShowAcceptedPopup(false); setAcceptedBooking(null); setAcceptedDriver(""); }}>Later</button>
-              <button className="btn btn-primary" style={{ flex:2 }} onClick={handleAcceptedAssign} disabled={acceptedSaving||!acceptedDriver}>
+              <button className="btn btn-ghost"
+                onClick={() => { setShowAcceptedPopup(false); setAcceptedBooking(null); setAcceptedDriver(""); }}>
+                Later
+              </button>
+              <button className="btn btn-primary" style={{ flex:2 }}
+                onClick={handleAcceptedAssign} disabled={acceptedSaving||!acceptedDriver}>
                 {acceptedSaving ? "⏳ Assigning…" : "🚗 Assign Driver"}
               </button>
             </div>
@@ -1177,16 +1218,21 @@ export default function Booking() {
         </div>
       )}
 
-      {/* ═══ BOOKING SUCCESS POPUP ═══ */}
+      {/* ═══════════════════════════════════════════
+          BOOKING SUCCESS TOAST
+      ═══════════════════════════════════════════ */}
       {showBookingSuccess && (
         <div style={{ position:"fixed", bottom:32, left:"50%", transform:"translateX(-50%)", zIndex:99999, animation:"slideUp 0.35s cubic-bezier(0.34,1.56,0.64,1)" }}>
           <div style={{ display:"flex", alignItems:"center", gap:14, backgroundColor:"#fff", borderRadius:20, padding:"16px 24px", minWidth:320, boxShadow:"0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(37,99,235,0.12)", border:"1.5px solid #BBF7D0" }}>
             <div style={{ width:44, height:44, borderRadius:"50%", backgroundColor:"#DCFCE7", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>✅</div>
             <div style={{ flex:1 }}>
               <p style={{ margin:0, fontSize:14, fontWeight:800, color:"#15803D" }}>Booking Created!</p>
-              <p style={{ margin:"2px 0 0", fontSize:12, color:"#64748B" }}>Ride booked for <strong>{successBookingName}</strong> — pending driver assignment</p>
+              <p style={{ margin:"2px 0 0", fontSize:12, color:"#64748B" }}>
+                Ride booked for <strong>{successBookingName}</strong> — pending driver assignment
+              </p>
             </div>
-            <button onClick={() => setShowBookingSuccess(false)} style={{ background:"none", border:"none", fontSize:16, color:"#94A3B8", cursor:"pointer", flexShrink:0 }}>✕</button>
+            <button onClick={() => setShowBookingSuccess(false)}
+              style={{ background:"none", border:"none", fontSize:16, color:"#94A3B8", cursor:"pointer", flexShrink:0 }}>✕</button>
           </div>
         </div>
       )}
@@ -1195,14 +1241,19 @@ export default function Booking() {
         @keyframes spin    { to { transform: rotate(360deg); } }
         @keyframes slideUp { from { opacity:0; transform:translateX(-50%) translateY(20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
         @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:0.35} }
-        @keyframes bellShake { 0%,100%{transform:rotate(0)} 15%{transform:rotate(12deg)} 30%{transform:rotate(-10deg)} 45%{transform:rotate(8deg)} 60%{transform:rotate(-6deg)} 75%{transform:rotate(4deg)} 90%{transform:rotate(-2deg)} }
+        @keyframes bellShake {
+          0%,100%{transform:rotate(0)} 15%{transform:rotate(12deg)} 30%{transform:rotate(-10deg)}
+          45%{transform:rotate(8deg)} 60%{transform:rotate(-6deg)} 75%{transform:rotate(4deg)} 90%{transform:rotate(-2deg)}
+        }
         .badge-teal { background:#CCFBF1; color:#0F766E; border:1px solid #99F6E4; }
       `}</style>
     </div>
   );
 }
 
-/* ═══ STYLES ═══ */
+/* ═══════════════════════════════════════════
+   STYLES
+═══════════════════════════════════════════ */
 const U = {
   panel:       { backgroundColor:"#F5F3FF", border:"2px solid #DDD6FE", borderRadius:16, padding:"14px 16px", marginBottom:20 },
   header:      { width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", background:"none", border:"none", cursor:"pointer", padding:0, textAlign:"left" },
@@ -1231,83 +1282,85 @@ const U = {
   assignedTag: { fontSize:11, fontWeight:700, color:"#16A34A", backgroundColor:"#DCFCE7", borderRadius:20, padding:"4px 10px" },
   preAssignBtn:{ padding:"7px 14px", backgroundColor:"#7C3AED", color:"#fff", border:"none", borderRadius:20, fontSize:12, fontWeight:700, cursor:"pointer" },
 };
+
 const R = {
-  panel:        { backgroundColor:"#FFF7ED", border:"2px solid #FED7AA", borderRadius:16, padding:"14px 16px", marginBottom:20 },
-  panelHeader:  { display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 },
+  panel:         { backgroundColor:"#FFF7ED", border:"2px solid #FED7AA", borderRadius:16, padding:"14px 16px", marginBottom:20 },
+  panelHeader:   { display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 },
   panelHeaderLeft:{ display:"flex", alignItems:"center", gap:12 },
-  bellWrap:     { position:"relative", width:40, height:40, backgroundColor:"#FEF3C7", borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", animation:"bellShake 2s ease infinite", flexShrink:0 },
-  bellBadge:    { position:"absolute", top:-4, right:-4, width:18, height:18, backgroundColor:"#DC2626", color:"#fff", borderRadius:"50%", fontSize:10, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" },
-  panelTitle:   { margin:"0 0 2px", fontSize:14, fontWeight:800, color:"#92400E" },
-  panelSub:     { margin:0, fontSize:12, color:"#B45309" },
-  cardGrid:     { display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:12 },
-  card:         { borderRadius:14, border:"1.5px solid", padding:"12px 14px" },
-  cardTop:      { display:"flex", alignItems:"center", gap:6, marginBottom:10 },
-  urgencyBadge: { fontSize:10, fontWeight:800, borderRadius:20, padding:"3px 8px" },
-  minsLeft:     { marginLeft:"auto", fontSize:12, fontWeight:700 },
-  dismissBtn:   { width:22, height:22, borderRadius:"50%", border:"none", backgroundColor:"rgba(0,0,0,0.06)", color:"#64748B", fontSize:11, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 },
-  cardBody:     { display:"flex", flexDirection:"column", gap:8 },
-  infoRow:      { display:"flex", alignItems:"center", gap:10 },
-  avatar:       { width:36, height:36, borderRadius:"50%", backgroundColor:"#2563EB", color:"#fff", fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 },
-  customerName: { margin:0, fontSize:13, fontWeight:700, color:"#1E293B" },
-  customerPhone:{ margin:"1px 0 0", fontSize:11, color:"#64748B" },
-  rideTime:     { margin:0, fontSize:14, fontWeight:800 },
-  rideDate:     { margin:"1px 0 0", fontSize:11, color:"#94A3B8" },
-  routeBox:     { backgroundColor:"rgba(255,255,255,0.6)", borderRadius:10, padding:"8px 10px" },
-  routeRow:     { display:"flex", alignItems:"flex-start", gap:7 },
-  routeDot:     { width:7, height:7, borderRadius:"50%", flexShrink:0, marginTop:3 },
-  routeLine:    { width:2, height:8, backgroundColor:"#CBD5E1", marginLeft:2 },
-  routeTxt:     { fontSize:11, color:"#475569", lineHeight:1.4 },
-  cardFooter:   { display:"flex", alignItems:"center", justifyContent:"space-between" },
-  tripTag:      { fontSize:11, fontWeight:600, color:"#64748B" },
-  assignedTag:  { fontSize:11, fontWeight:700, color:"#16A34A", backgroundColor:"#DCFCE7", borderRadius:20, padding:"4px 10px" },
-  assignBtn:    { padding:"7px 14px", backgroundColor:"#2563EB", color:"#fff", border:"none", borderRadius:20, fontSize:12, fontWeight:700, cursor:"pointer" },
+  bellWrap:      { position:"relative", width:40, height:40, backgroundColor:"#FEF3C7", borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", animation:"bellShake 2s ease infinite", flexShrink:0 },
+  bellBadge:     { position:"absolute", top:-4, right:-4, width:18, height:18, backgroundColor:"#DC2626", color:"#fff", borderRadius:"50%", fontSize:10, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" },
+  panelTitle:    { margin:"0 0 2px", fontSize:14, fontWeight:800, color:"#92400E" },
+  panelSub:      { margin:0, fontSize:12, color:"#B45309" },
+  cardGrid:      { display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:12 },
+  card:          { borderRadius:14, border:"1.5px solid", padding:"12px 14px" },
+  cardTop:       { display:"flex", alignItems:"center", gap:6, marginBottom:10 },
+  urgencyBadge:  { fontSize:10, fontWeight:800, borderRadius:20, padding:"3px 8px" },
+  minsLeft:      { marginLeft:"auto", fontSize:12, fontWeight:700 },
+  dismissBtn:    { width:22, height:22, borderRadius:"50%", border:"none", backgroundColor:"rgba(0,0,0,0.06)", color:"#64748B", fontSize:11, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 },
+  cardBody:      { display:"flex", flexDirection:"column", gap:8 },
+  infoRow:       { display:"flex", alignItems:"center", gap:10 },
+  avatar:        { width:36, height:36, borderRadius:"50%", backgroundColor:"#2563EB", color:"#fff", fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 },
+  customerName:  { margin:0, fontSize:13, fontWeight:700, color:"#1E293B" },
+  customerPhone: { margin:"1px 0 0", fontSize:11, color:"#64748B" },
+  rideTime:      { margin:0, fontSize:14, fontWeight:800 },
+  rideDate:      { margin:"1px 0 0", fontSize:11, color:"#94A3B8" },
+  routeBox:      { backgroundColor:"rgba(255,255,255,0.6)", borderRadius:10, padding:"8px 10px" },
+  routeRow:      { display:"flex", alignItems:"flex-start", gap:7 },
+  routeDot:      { width:7, height:7, borderRadius:"50%", flexShrink:0, marginTop:3 },
+  routeLine:     { width:2, height:8, backgroundColor:"#CBD5E1", marginLeft:2 },
+  routeTxt:      { fontSize:11, color:"#475569", lineHeight:1.4 },
+  cardFooter:    { display:"flex", alignItems:"center", justifyContent:"space-between" },
+  tripTag:       { fontSize:11, fontWeight:600, color:"#64748B" },
+  assignedTag:   { fontSize:11, fontWeight:700, color:"#16A34A", backgroundColor:"#DCFCE7", borderRadius:20, padding:"4px 10px" },
+  assignBtn:     { padding:"7px 14px", backgroundColor:"#2563EB", color:"#fff", border:"none", borderRadius:20, fontSize:12, fontWeight:700, cursor:"pointer" },
 };
+
 const S = {
-  createBtn:        { padding:"9px 18px", backgroundColor:"#2563EB", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6, boxShadow:"0 2px 8px rgba(37,99,235,0.3)", whiteSpace:"nowrap" },
-  suggBox:          { position:"absolute", top:"100%", left:0, right:0, backgroundColor:"#fff", borderRadius:14, boxShadow:"0 6px 20px rgba(0,0,0,0.12)", zIndex:9999, maxHeight:200, overflowY:"auto", marginTop:4, border:"1.5px solid #E2E8F0" },
-  suggItem:         { display:"flex", alignItems:"flex-start", padding:"10px 14px", borderBottom:"1px solid #F1F5F9", cursor:"pointer" },
-  filterRow:        { display:"flex", alignItems:"center", gap:12, margin:"0 0 16px", flexWrap:"wrap" },
-  tabs:             { display:"flex", gap:3, backgroundColor:"#F1F5F9", borderRadius:10, padding:4 },
-  tab:              { padding:"6px 14px", borderRadius:8, border:"none", backgroundColor:"transparent", fontSize:13, fontWeight:600, color:"#64748B", cursor:"pointer", display:"flex", alignItems:"center", gap:6 },
-  tabActive:        { backgroundColor:"#fff", color:"#1E293B", boxShadow:"0 1px 4px rgba(0,0,0,0.1)" },
-  tabCount:         { fontSize:11, fontWeight:700, backgroundColor:"#E2E8F0", color:"#64748B", borderRadius:20, padding:"1px 7px" },
-  tabCountActive:   { backgroundColor:"#2563EB", color:"#fff" },
-  schedCell:        { display:"flex", flexDirection:"column", gap:2 },
-  schedDate:        { fontSize:12, fontWeight:700, color:"#0F766E" },
-  schedTime:        { fontSize:12, fontWeight:600, color:"#0D9488" },
-  schedStatus:      { fontSize:10, fontWeight:700, borderRadius:6, padding:"2px 6px", display:"inline-block", marginTop:1 },
-  schedCountdown:   { fontSize:10, fontWeight:700 },
-  schedNow:         { fontSize:11, color:"#94A3B8", fontWeight:500 },
-  schedBadge:       { fontSize:10, fontWeight:700, backgroundColor:"#CCFBF1", color:"#0F766E", borderRadius:5, padding:"2px 5px", display:"inline-block" },
-  reminderBadge:    { fontSize:10, fontWeight:700, backgroundColor:"#FEF3C7", color:"#D97706", borderRadius:5, padding:"2px 5px", display:"inline-block", animation:"pulse 1.5s ease infinite" },
-  futureBadge:      { fontSize:10, fontWeight:700, borderRadius:5, padding:"2px 5px", display:"inline-block" },
-  modalSchedBanner: { display:"flex", alignItems:"center", gap:12, borderRadius:12, border:"1.5px solid", padding:"12px 14px", marginBottom:4 },
-  modalSchedLabel:  { margin:0, fontSize:11, fontWeight:700, color:"#0D9488", textTransform:"uppercase", letterSpacing:"0.4px" },
-  modalSchedTime:   { margin:"3px 0 0", fontSize:14, fontWeight:800, color:"#0F766E" },
-  modalSchedPill:   { fontSize:11, fontWeight:700, borderRadius:8, padding:"4px 10px", whiteSpace:"nowrap" },
-  futureNotice:     { display:"flex", alignItems:"flex-start", gap:8, backgroundColor:"#EFF6FF", border:"1.5px solid #BFDBFE", borderRadius:10, padding:"10px 12px", marginTop:8 },
-  futureNoticeText: { margin:0, fontSize:12, color:"#1E40AF", lineHeight:1.5 },
-  lockedCell:       { display:"flex", alignItems:"center", gap:8 },
-  lockedDot:        { width:8, height:8, borderRadius:"50%", backgroundColor:"#F59E0B", flexShrink:0, animation:"pulse 1.2s ease infinite" },
-  lockedTitle:      { fontSize:12, fontWeight:700, color:"#92400E" },
-  lockedSub:        { fontSize:11, color:"#B45309", marginTop:2 },
-  prefBanner:       { display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, backgroundColor:"#F0F9FF", border:"1.5px solid #BFDBFE", borderRadius:10, padding:"10px 14px" },
-  prefLabel:        { margin:0, fontSize:11, fontWeight:700, color:"#1E40AF" },
-  prefName:         { margin:"2px 0 0", fontSize:13, color:"#1E293B", fontWeight:600 },
-  notAvailBtn:      { padding:"6px 12px", backgroundColor:"#FEE2E2", color:"#9F1239", border:"1.5px solid #FECDD3", borderRadius:8, fontWeight:700, fontSize:12, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 },
-  acceptedBanner:   { display:"flex", alignItems:"center", gap:12, backgroundColor:"#F0FDF4", border:"1.5px solid #BBF7D0", borderRadius:14, padding:"14px 16px", marginBottom:16 },
+  createBtn:          { padding:"9px 18px", backgroundColor:"#2563EB", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6, boxShadow:"0 2px 8px rgba(37,99,235,0.3)", whiteSpace:"nowrap" },
+  suggBox:            { position:"absolute", top:"100%", left:0, right:0, backgroundColor:"#fff", borderRadius:14, boxShadow:"0 6px 20px rgba(0,0,0,0.12)", zIndex:9999, maxHeight:200, overflowY:"auto", marginTop:4, border:"1.5px solid #E2E8F0" },
+  suggItem:           { display:"flex", alignItems:"flex-start", padding:"10px 14px", borderBottom:"1px solid #F1F5F9", cursor:"pointer" },
+  filterRow:          { display:"flex", alignItems:"center", gap:12, margin:"0 0 16px", flexWrap:"wrap" },
+  tabs:               { display:"flex", gap:3, backgroundColor:"#F1F5F9", borderRadius:10, padding:4 },
+  tab:                { padding:"6px 14px", borderRadius:8, border:"none", backgroundColor:"transparent", fontSize:13, fontWeight:600, color:"#64748B", cursor:"pointer", display:"flex", alignItems:"center", gap:6 },
+  tabActive:          { backgroundColor:"#fff", color:"#1E293B", boxShadow:"0 1px 4px rgba(0,0,0,0.1)" },
+  tabCount:           { fontSize:11, fontWeight:700, backgroundColor:"#E2E8F0", color:"#64748B", borderRadius:20, padding:"1px 7px" },
+  tabCountActive:     { backgroundColor:"#2563EB", color:"#fff" },
+  schedCell:          { display:"flex", flexDirection:"column", gap:2 },
+  schedDate:          { fontSize:12, fontWeight:700, color:"#0F766E" },
+  schedTime:          { fontSize:12, fontWeight:600, color:"#0D9488" },
+  schedStatus:        { fontSize:10, fontWeight:700, borderRadius:6, padding:"2px 6px", display:"inline-block", marginTop:1 },
+  schedCountdown:     { fontSize:10, fontWeight:700 },
+  schedNow:           { fontSize:11, color:"#94A3B8", fontWeight:500 },
+  schedBadge:         { fontSize:10, fontWeight:700, backgroundColor:"#CCFBF1", color:"#0F766E", borderRadius:5, padding:"2px 5px", display:"inline-block" },
+  reminderBadge:      { fontSize:10, fontWeight:700, backgroundColor:"#FEF3C7", color:"#D97706", borderRadius:5, padding:"2px 5px", display:"inline-block", animation:"pulse 1.5s ease infinite" },
+  futureBadge:        { fontSize:10, fontWeight:700, borderRadius:5, padding:"2px 5px", display:"inline-block" },
+  modalSchedBanner:   { display:"flex", alignItems:"center", gap:12, borderRadius:12, border:"1.5px solid", padding:"12px 14px", marginBottom:4 },
+  modalSchedLabel:    { margin:0, fontSize:11, fontWeight:700, color:"#0D9488", textTransform:"uppercase", letterSpacing:"0.4px" },
+  modalSchedTime:     { margin:"3px 0 0", fontSize:14, fontWeight:800, color:"#0F766E" },
+  modalSchedPill:     { fontSize:11, fontWeight:700, borderRadius:8, padding:"4px 10px", whiteSpace:"nowrap" },
+  futureNotice:       { display:"flex", alignItems:"flex-start", gap:8, backgroundColor:"#EFF6FF", border:"1.5px solid #BFDBFE", borderRadius:10, padding:"10px 12px", marginTop:8 },
+  futureNoticeText:   { margin:0, fontSize:12, color:"#1E40AF", lineHeight:1.5 },
+  lockedCell:         { display:"flex", alignItems:"center", gap:8 },
+  lockedDot:          { width:8, height:8, borderRadius:"50%", backgroundColor:"#F59E0B", flexShrink:0, animation:"pulse 1.2s ease infinite" },
+  lockedTitle:        { fontSize:12, fontWeight:700, color:"#92400E" },
+  lockedSub:          { fontSize:11, color:"#B45309", marginTop:2 },
+  prefBanner:         { display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, backgroundColor:"#F0F9FF", border:"1.5px solid #BFDBFE", borderRadius:10, padding:"10px 14px" },
+  prefLabel:          { margin:0, fontSize:11, fontWeight:700, color:"#1E40AF" },
+  prefName:           { margin:"2px 0 0", fontSize:13, color:"#1E293B", fontWeight:600 },
+  notAvailBtn:        { padding:"6px 12px", backgroundColor:"#FEE2E2", color:"#9F1239", border:"1.5px solid #FECDD3", borderRadius:8, fontWeight:700, fontSize:12, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 },
+  acceptedBanner:     { display:"flex", alignItems:"center", gap:12, backgroundColor:"#F0FDF4", border:"1.5px solid #BBF7D0", borderRadius:14, padding:"14px 16px", marginBottom:16 },
   acceptedBannerTitle:{ margin:0, fontSize:14, fontWeight:800, color:"#15803D" },
   acceptedBannerSub:  { margin:"3px 0 0", fontSize:12, color:"#166534" },
-  bookingCard:      { backgroundColor:"#F8FAFC", border:"1.5px solid #E2E8F0", borderRadius:12, padding:"12px 14px", marginBottom:16 },
-  cardMeta:         { fontSize:11, color:"#94A3B8", fontWeight:700, textTransform:"uppercase" },
-  routeRow:         { display:"flex", alignItems:"flex-start", gap:6 },
-  routeTxt:         { fontSize:12, color:"#475569", lineHeight:1.4 },
-  prefNote:         { marginTop:10, padding:"6px 10px", backgroundColor:"#FFF7ED", border:"1px solid #FED7AA", borderRadius:8, fontSize:12, color:"#92400E", fontWeight:600 },
-  driverCard:       { display:"flex", alignItems:"center", gap:10, marginTop:10, backgroundColor:"#F0FDF4", border:"1.5px solid #BBF7D0", borderRadius:12, padding:"10px 12px" },
-  driverAvatar:     { width:36, height:36, borderRadius:"50%", backgroundColor:"#16A34A", color:"#fff", fontSize:15, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 },
-  driverCardName:   { margin:0, fontSize:13, fontWeight:700, color:"#1E293B" },
-  driverCardSub:    { margin:"2px 0 0", fontSize:11, color:"#64748B" },
-  tripBadge:        { display:"flex", flexDirection:"column", alignItems:"center", backgroundColor:"#DCFCE7", border:"1.5px solid #BBF7D0", borderRadius:10, padding:"6px 10px", flexShrink:0, minWidth:56 },
-  tripBadgeNum:     { fontSize:18, fontWeight:900, color:"#15803D", lineHeight:1 },
-  tripBadgeLbl:     { fontSize:9, fontWeight:700, color:"#16A34A", textTransform:"uppercase", letterSpacing:"0.3px", marginTop:2 },
+  bookingCard:        { backgroundColor:"#F8FAFC", border:"1.5px solid #E2E8F0", borderRadius:12, padding:"12px 14px", marginBottom:16 },
+  cardMeta:           { fontSize:11, color:"#94A3B8", fontWeight:700, textTransform:"uppercase" },
+  routeRow:           { display:"flex", alignItems:"flex-start", gap:6 },
+  routeTxt:           { fontSize:12, color:"#475569", lineHeight:1.4 },
+  prefNote:           { marginTop:10, padding:"6px 10px", backgroundColor:"#FFF7ED", border:"1px solid #FED7AA", borderRadius:8, fontSize:12, color:"#92400E", fontWeight:600 },
+  driverCard:         { display:"flex", alignItems:"center", gap:10, marginTop:10, backgroundColor:"#F0FDF4", border:"1.5px solid #BBF7D0", borderRadius:12, padding:"10px 12px" },
+  driverAvatar:       { width:36, height:36, borderRadius:"50%", backgroundColor:"#16A34A", color:"#fff", fontSize:15, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 },
+  driverCardName:     { margin:0, fontSize:13, fontWeight:700, color:"#1E293B" },
+  driverCardSub:      { margin:"2px 0 0", fontSize:11, color:"#64748B" },
+  tripBadge:          { display:"flex", flexDirection:"column", alignItems:"center", backgroundColor:"#DCFCE7", border:"1.5px solid #BBF7D0", borderRadius:10, padding:"6px 10px", flexShrink:0, minWidth:56 },
+  tripBadgeNum:       { fontSize:18, fontWeight:900, color:"#15803D", lineHeight:1 },
+  tripBadgeLbl:       { fontSize:9, fontWeight:700, color:"#16A34A", textTransform:"uppercase", letterSpacing:"0.3px", marginTop:2 },
 };
