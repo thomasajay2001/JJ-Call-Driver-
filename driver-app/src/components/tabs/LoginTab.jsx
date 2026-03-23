@@ -100,11 +100,12 @@ localStorage.setItem("role", "customer");
     try {
       const res = await axios.get(`${BASE_URL}/api/drivers`);
       const list = res.data || [];
-      const driver = list.find((d) => String(d.id) === String(driverId.trim()));
+      const driver = list.find((d) => String(d.driver_no) === String(driverId.trim()));
       if (!driver) { setErrorMessage("Driver ID not found"); return; }
       if (String(driver.mobile) !== String(driverPhone)) { setErrorMessage("Phone number does not match"); return; }
       localStorage.setItem("role",       "driver");
-      localStorage.setItem("driverId",   driverId);
+      localStorage.setItem("driverId",   driver.id);
+      console.log(driver.id);
       localStorage.setItem("driverName", driver.name || driver.NAME || "");
       onLogin && onLogin("driver");
     } catch { setErrorMessage("Failed to login driver"); }
