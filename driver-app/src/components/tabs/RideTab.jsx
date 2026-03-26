@@ -724,7 +724,6 @@ const HistoryPanel = ({bookings,summary,loading,dateMode,setDateMode,customDate,
               </div>
               <div style={H.tagsRow}>
                 <span style={H.tag}>{b.triptype==="outstation"?"🗺️ Outstation":"🏙️ Local"}</span>
-                {b.is_scheduled&&<span style={{...H.tag,backgroundColor:"#CCFBF1",color:"#0F766E"}}>📅 Scheduled</span>}
                 {b.amount&&<span style={{...H.tag,backgroundColor:"#DCFCE7",color:"#15803D"}}>₹{b.amount}</span>}
                 {b.cancellation_penalty>0&&<span style={{...H.tag,backgroundColor:"#FEE2E2",color:"#9F1239"}}>💸 ₹{b.cancellation_penalty} fee</span>}
                 {b.rating&&<span style={{...H.tag,backgroundColor:"#FEF9C3",color:"#854D0E"}}>{"⭐".repeat(b.rating)}</span>}
@@ -732,7 +731,6 @@ const HistoryPanel = ({bookings,summary,loading,dateMode,setDateMode,customDate,
               {expanded && (
                 <div style={H.expandBody} onClick={e=>e.stopPropagation()}>
                   <div style={H.divider}/>
-                  {b.is_scheduled&&b.scheduled_at&&<div style={H.detailRow}><span style={H.detailKey}>📅 Scheduled For</span><span style={H.detailVal}>{fmtDate(b.scheduled_at)} · {fmtTime(b.scheduled_at)}</span></div>}
                   {b.driver_name&&<div style={H.detailRow}><span style={H.detailKey}>👨‍✈️ Driver</span><span style={H.detailVal}>{b.driver_name}{b.driver_phone?` · ${b.driver_phone}`:""}</span></div>}
                   {role==="driver"&&(b.customer_name||b.customer_mobile)&&<div style={H.detailRow}><span style={H.detailKey}>👤 Customer</span><span style={H.detailVal}>{b.customer_name||"—"}{b.customer_mobile?` · ${b.customer_mobile}`:""}</span></div>}
                   {b.amount&&<div style={H.detailRow}><span style={H.detailKey}>💰 Fare</span><span style={{...H.detailVal,fontWeight:800,color:"#16A34A",fontSize:16}}>₹{b.amount}</span></div>}
