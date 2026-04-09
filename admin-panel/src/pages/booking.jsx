@@ -1,6 +1,7 @@
 import axios from "axios";
 import { useEffect, useRef, useState } from "react";
 import { PaginationBar, usePagination } from "../hooks/Usepagination";
+import RideCompletionModal from "../../../driver-app/src/components/home/Ridecompletionmodel"; // adjust path if needed
 
 const BASE_URL   = import.meta.env.VITE_BASE_URL;
 const REFRESH_MS = 30000;
@@ -222,6 +223,14 @@ export default function Booking() {
   const [saving,      setSaving]      = useState(false);
 
   const [showPrefWarn, setShowPrefWarn] = useState(false);
+
+  // ── Offline driver completion modal ──
+  const [showCompleteModal,  setShowCompleteModal]  = useState(false);
+  const [completingBooking,  setCompletingBooking]  = useState(null);  // booking being completed
+  const [adminCompleting,    setAdminCompleting]    = useState(false);
+
+  // ── Completed rides popup ──
+  const [showCompletedPopup, setShowCompletedPopup] = useState(false);
 
   const [showAcceptedPopup,  setShowAcceptedPopup]  = useState(false);
   const [acceptedBooking,    setAcceptedBooking]    = useState(null);
@@ -456,12 +465,29 @@ export default function Booking() {
     finally { setAcceptedSaving(false); }
   };
 
-  const handleComplete = async (bookingId) => {
-    if (!window.confirm(`Mark booking #${bookingId} as completed?`)) return;
+  const handleComplete = (booking) => {
+    setCompletingBooking(booking);
+    setShowCompleteModal(true);
+  };
+
+  const handleCompleteConfirm = async ({ hours, minutes, totalAmount }) => {
+    setAdminCompleting(true);
     try {
-      await axios.put(`${BASE_URL}/api/bookings/${bookingId}`, { status:"completed" });
+      await axios.post(`${BASE_URL}/api/completes-ride`, {
+        bookingId:    completingBooking.id,
+        driverId:     completingBooking.driver,
+        amount:       totalAmount,
+        ride_hours:   hours,
+        ride_minutes: minutes,
+      });
+      setShowCompleteModal(false);
+      setCompletingBooking(null);
       fetchBookings();
-    } catch (e) { alert("Failed: " + e.message); }
+    } catch (e) {
+      alert("Failed: " + (e?.response?.data?.message || e.message));
+    } finally {
+      setAdminCompleting(false);
+    }
   };
 
   const getDriverName = (id) => {
@@ -521,28 +547,7 @@ export default function Booking() {
         </div>
         <div className="refresh-bar">
           <button onClick={() => setShowCreateForm(true)} style={S.createBtn}>＋ New Booking</button>
-          {lastUpdated && (
-            <div className="refresh-timestamp">
-              <span className="refresh-live-dot" />
-              {lastUpdated.toLocaleTimeString("en-US", { hour:"2-digit", minute:"2-digit", second:"2-digit" })}
-            </div>
-          )}
-          {autoRefresh && (
-            <div className="refresh-ring-wrap">
-              <svg width="28" height="28" style={{ transform:"rotate(-90deg)" }}>
-                <circle cx="14" cy="14" r={R2} fill="none" stroke="#e2e8f0" strokeWidth="3" />
-                <circle cx="14" cy="14" r={R2} fill="none" stroke="#2563eb" strokeWidth="3"
-                  strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
-                  style={{ transition:"stroke-dasharray 1s linear" }} />
-              </svg>
-              <span className="refresh-ring-label">{countdown}s</span>
-            </div>
-          )}
-          <button
-            className={autoRefresh ? "refresh-toggle-on" : "refresh-toggle-off"}
-            onClick={() => { setAutoRefresh(v => !v); cdRef.current = REFRESH_MS/1000; setCountdown(REFRESH_MS/1000); }}>
-            {autoRefresh ? "🔄 Auto ON" : "⏸ Auto OFF"}
-          </button>
+          
           <button className="refresh-manual-btn" onClick={fetchAll}>↻ Refresh</button>
           <div className="live-badge"><span className="live-badge-dot" />Live</div>
         </div>
@@ -554,9 +559,22 @@ export default function Booking() {
       {/* ── Stats ── */}
       <div className="stats-grid">
         {STATS.map((s) => (
-          <div key={s.label} className="stat-card">
+          <div
+            key={s.label}
+            className="stat-card"
+            onClick={s.label === "Completed" ? () => setShowCompletedPopup(true) : undefined}
+            style={s.label === "Completed" ? { cursor:"pointer", transition:"transform 0.15s, box-shadow 0.15s" } : {}}
+            onMouseEnter={s.label === "Completed" ? (e) => { e.currentTarget.style.transform="translateY(-2px)"; e.currentTarget.style.boxShadow="0 6px 20px rgba(124,58,237,0.15)"; } : undefined}
+            onMouseLeave={s.label === "Completed" ? (e) => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow=""; } : undefined}
+          >
             <div className={`stat-icon-box ${s.cls}`}><span>{s.icon}</span></div>
-            <div><p className="stat-label">{s.label}</p><h3 className="stat-value">{s.value}</h3></div>
+            <div>
+              <p className="stat-label">{s.label}</p>
+              <h3 className="stat-value">{s.value}</h3>
+              {s.label === "Completed" && s.value > 0 && (
+                <p style={{ margin:"2px 0 0", fontSize:10, color:"#7C3AED", fontWeight:600 }}>Click to view →</p>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -597,7 +615,7 @@ export default function Booking() {
           <table>
             <thead>
               <tr>
-                {["ID","Customer","Mobile","Pickup","Drop","Schedule","Assigned Driver","Status","Action"].map((h) => (
+                {["ID","Customer","Mobile","Pickup","Drop","Assigned Driver","Status","Action"].map((h) => (
                   <th key={h}>{h}</th>
                 ))}
               </tr>
@@ -639,6 +657,11 @@ export default function Booking() {
                     <td>
                       <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
                         <span className="cell-id">{b.id}</span>
+                        {b.driver_no && (
+                          <span style={{ fontSize:10, fontWeight:700, color:"#2563EB", backgroundColor:"#EFF6FF", borderRadius:5, padding:"2px 6px", display:"inline-block", fontFamily:"var(--font-mono,monospace)", letterSpacing:"0.3px" }}>
+                            {b.driver_no}
+                          </span>
+                        )}
                         {isScheduled && <span style={S.schedBadge}>📅 Sched</span>}
                         {isReminder  && <span style={S.reminderBadge}>🔔 Due Soon</span>}
                         {isScheduled && schedInfo && !isReminder && (
@@ -657,20 +680,6 @@ export default function Booking() {
                     <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{b.mobile}</td>
                     <td><div className="cell-loc"><span>📍</span><span className="cell-loc-text">{b.pickup}</span></div></td>
                     <td><div className="cell-loc"><span>🎯</span><span className="cell-loc-text">{b.drop||b.drop_location}</span></div></td>
-                    <td>
-                      {isScheduled && schedFmt ? (
-                        <div style={S.schedCell}>
-                          <span style={S.schedDate}>{schedFmt.date}</span>
-                          <span style={S.schedTime}>{schedFmt.time}</span>
-                          {schedInfo && <span style={{ ...S.schedCountdown, color:schedInfo.color }}>{schedInfo.label}</span>}
-                          {b.scheduled_status && (
-                            <span style={{ ...S.schedStatus, ...(b.scheduled_status==="dispatched" ? { backgroundColor:"#DCFCE7", color:"#166534" } : { backgroundColor:"#FEF9C3", color:"#854D0E" }) }}>
-                              {b.scheduled_status==="dispatched" ? "✓ Dispatched" : "⏳ Pending"}
-                            </span>
-                          )}
-                        </div>
-                      ) : <span style={S.schedNow}>⚡ Now</span>}
-                    </td>
                     <td>
                       {b.driver
                         ? <span className="badge badge-green">✓ {getDriverName(b.driver)}</span>
@@ -696,7 +705,7 @@ export default function Booking() {
                         <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
                           <button
                             style={{ padding:"6px 10px", backgroundColor:"#10B981", border:"none", color:"#fff", fontWeight:700, borderRadius:7, fontSize:12, cursor:"pointer" }}
-                            onClick={() => handleComplete(b.id)}>
+                            onClick={() => handleComplete(b)}>
                             ✅ Complete
                           </button>
                           <button className="action-edit" style={{ fontSize:11, padding:"4px 8px" }} onClick={() => openEdit(b)}>
@@ -1236,6 +1245,108 @@ export default function Booking() {
           </div>
         </div>
       )}
+
+      {/* ═══════════════════════════════════════════
+          COMPLETED RIDES POPUP
+      ═══════════════════════════════════════════ */}
+      {showCompletedPopup && (
+        <div className="modal-overlay" style={{ zIndex:9999 }}>
+          <div className="modal modal-lg" style={{ maxWidth:760 }}>
+            <div className="modal-header">
+              <div className="modal-header-inner">
+                <span style={{ fontSize:24 }}>🎉</span>
+                <div>
+                  <span className="modal-title">Completed Rides</span>
+                  <span className="badge badge-green" style={{ marginLeft:10 }}>{completedB} Total</span>
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setShowCompletedPopup(false)}>✕</button>
+            </div>
+
+            <div className="modal-body" style={{ padding:"0 0 4px" }}>
+              {completedB === 0 ? (
+                <div className="empty-state" style={{ padding:"48px 0" }}>
+                  <span className="empty-state-icon">📭</span>
+                  <p className="empty-state-title">No completed rides yet</p>
+                </div>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        {["ID / Driver No","Customer","Mobile","Pickup","Drop","Driver","Amount","Trip"].map((h) => (
+                          <th key={h}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bookings
+                        .filter((b) => b.status?.toLowerCase() === "completed")
+                        .map((b) => (
+                          <tr key={b.id}>
+                            <td>
+                              <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+                                <span className="cell-id">{b.id}</span>
+                                {b.driver_no && (
+                                  <span style={{ fontSize:10, fontWeight:700, color:"#2563EB", backgroundColor:"#EFF6FF", borderRadius:5, padding:"2px 6px", display:"inline-block", fontFamily:"monospace" }}>
+                                    {b.driver_no}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              <div className="cell-name">
+                                <div className="avatar">{(b.name||"?").charAt(0).toUpperCase()}</div>
+                                <span className="cell-name-text">{b.name}</span>
+                              </div>
+                            </td>
+                            <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{b.mobile}</td>
+                            <td><div className="cell-loc"><span>📍</span><span className="cell-loc-text">{b.pickup}</span></div></td>
+                            <td><div className="cell-loc"><span>🎯</span><span className="cell-loc-text">{b.drop||b.drop_location}</span></div></td>
+                            <td>
+                              {b.driver
+                                ? <span className="badge badge-green">✓ {getDriverName(b.driver)}</span>
+                                : <span style={{ color:"#94A3B8", fontSize:12 }}>—</span>}
+                            </td>
+                            <td>
+                              {b.amount != null
+                                ? <span className="dsp-income-cell">₹{b.amount}</span>
+                                : <span style={{ color:"#94A3B8", fontSize:12 }}>—</span>}
+                            </td>
+                            <td>
+                              <span className={`badge ${b.triptype==="outstation"?"badge-purple":"badge-blue"}`}>
+                                {b.triptype || "local"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setShowCompletedPopup(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════
+          RIDE COMPLETION MODAL (admin completing offline driver ride)
+      ═══════════════════════════════════════════ */}
+      <RideCompletionModal
+        visible={showCompleteModal}
+        ride={completingBooking}
+        onConfirm={handleCompleteConfirm}
+        onClose={() => {
+          if (!adminCompleting) {
+            setShowCompleteModal(false);
+            setCompletingBooking(null);
+          }
+        }}
+      />
 
       <style>{`
         @keyframes spin    { to { transform: rotate(360deg); } }

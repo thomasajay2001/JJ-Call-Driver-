@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { PaginationBar, usePagination } from "../hooks/Usepagination";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL || "http://localhost:3000";
-const INCOME_PER_RIDE = 350;
 
 /* ── star row ── */
 const StarRow = ({ value = 0, size = 16 }) => (
@@ -61,6 +60,10 @@ export default function DriverStats() {
   const [sortDir,       setSortDir]       = useState("desc");
   const [filterStatus,  setFilterStatus]  = useState("all");
 
+  const [showRidesModal, setShowRidesModal] = useState(false);
+  const [ridesData,      setRidesData]      = useState([]);
+  const [ridesLoading,   setRidesLoading]   = useState(false);
+
   useEffect(() => {
     const fn = (e) => { if (calRef.current && !calRef.current.contains(e.target)) setCalOpen(false); };
     document.addEventListener("mousedown", fn);
@@ -102,6 +105,20 @@ export default function DriverStats() {
     } catch {
       setSelectedStats({ totalRides: 0, totalIncome: 0, avgRating: 0, ratingCount: 0, ratingBreakdown: {}, comments: [] });
     } finally { setDetailLoading(false); }
+  };
+
+  const fetchRides = async (driverId, filter, from, to) => {
+    setRidesLoading(true);
+    setShowRidesModal(true);
+    try {
+      const params = { driverId };
+      if (filter && filter !== "all") params.filter = filter;
+      if (filter === "custom" && from && to) { params.from = from; params.to = to; }
+      const r = await axios.get(`${BASE_URL}/api/bookings/driver/all`, { params });
+      const list = Array.isArray(r.data?.data) ? r.data.data : [];
+      setRidesData(list);
+    } catch { setRidesData([]); }
+    finally { setRidesLoading(false); }
   };
 
   const openDetail = (d) => {
@@ -312,6 +329,78 @@ export default function DriverStats() {
         </div>
       </div>
 
+      {/* RIDES HISTORY MODAL */}
+      {showRidesModal && (
+        <div style={{position:"fixed",inset:0,backgroundColor:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{backgroundColor:"#fff",borderRadius:20,width:"100%",maxWidth:680,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 40px rgba(0,0,0,0.2)"}}>
+            {/* Header */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 20px",borderBottom:"1px solid #F1F5F9"}}>
+              <div>
+                <h3 style={{margin:0,fontSize:17,fontWeight:800,color:"#0F172A"}}>🚗 Ride History</h3>
+                <p style={{margin:"2px 0 0",fontSize:12,color:"#64748B"}}>{selected?.name} · {ridesData.length} rides</p>
+              </div>
+              <button onClick={()=>setShowRidesModal(false)} style={{width:32,height:32,borderRadius:"50%",background:"#F1F5F9",border:"none",cursor:"pointer",fontSize:16,color:"#64748B"}}>✕</button>
+            </div>
+            {/* Body */}
+            <div style={{overflowY:"auto",flex:1,padding:"12px 0"}}>
+              {ridesLoading ? (
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:40,gap:12}}>
+                  <div style={{width:32,height:32,border:"3px solid #DBEAFE",borderTopColor:"#2563EB",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+                  <p style={{color:"#64748B",fontSize:13}}>Loading rides…</p>
+                </div>
+              ) : ridesData.length === 0 ? (
+                <div style={{textAlign:"center",padding:40}}>
+                  <span style={{fontSize:40}}>📭</span>
+                  <p style={{color:"#64748B",marginTop:8}}>No rides found</p>
+                </div>
+              ) : (
+                <table style={{width:"100%",borderCollapse:"collapse"}}>
+                  <thead>
+                    <tr style={{backgroundColor:"#F8FAFC"}}>
+                      {["#","Date","Customer","Pickup → Drop","Status","Amount"].map(h=>(
+                        <th key={h} style={{padding:"10px 14px",fontSize:11,fontWeight:700,color:"#64748B",textAlign:"left",textTransform:"uppercase",letterSpacing:"0.4px",borderBottom:"1px solid #F1F5F9"}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ridesData.map((b,i)=>{
+                      const statusColors = {completed:"#16A34A",inride:"#0F766E",assigned:"#1D4ED8",accepted:"#92400E",cancelled:"#9F1239",pending:"#C2410C"};
+                      const color = statusColors[b.status] || "#475569";
+                      return (
+                        <tr key={b.id} style={{borderBottom:"1px solid #F8FAFC"}}>
+                          <td style={{padding:"10px 14px",fontSize:12,color:"#94A3B8"}}>{i+1}</td>
+                          <td style={{padding:"10px 14px",fontSize:12,color:"#475569",whiteSpace:"nowrap"}}>
+                            {b.created_at ? new Date(b.created_at).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}) : "—"}
+                          </td>
+                          <td style={{padding:"10px 14px",fontSize:12,color:"#1E293B",fontWeight:600}}>{b.customer_name||"—"}</td>
+                          <td style={{padding:"10px 14px",fontSize:11,color:"#475569",maxWidth:200}}>
+                            <div style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.pickup||"—"}</div>
+                            <div style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"#94A3B8"}}>→ {b.drop_location||"—"}</div>
+                          </td>
+                          <td style={{padding:"10px 14px"}}>
+                            <span style={{fontSize:11,fontWeight:700,color,backgroundColor:color+"15",padding:"3px 8px",borderRadius:20}}>{b.status}</span>
+                          </td>
+                          <td style={{padding:"10px 14px",fontSize:13,fontWeight:700,color:"#16A34A"}}>
+                            {b.amount ? `₹${b.amount}` : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            {/* Footer */}
+            <div style={{padding:"12px 20px",borderTop:"1px solid #F1F5F9",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:12,color:"#64748B"}}>
+                Total: <strong>₹{ridesData.filter(b=>b.status==="completed").reduce((s,b)=>s+Number(b.amount||0),0).toLocaleString("en-IN")}</strong> earned from {ridesData.filter(b=>b.status==="completed").length} completed rides
+              </span>
+              <button onClick={()=>setShowRidesModal(false)} style={{padding:"8px 18px",backgroundColor:"#2563EB",color:"#fff",border:"none",borderRadius:10,fontWeight:700,fontSize:13,cursor:"pointer"}}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* RIGHT PANEL */}
       {selected && (
         <div className="dsp-right">
@@ -409,10 +498,12 @@ export default function DriverStats() {
             ) : selectedStats && detailTab === "overview" ? (
               <div>
                 <div className="dsp-detail-kpis">
-                  <div className="ds-kpi-card ds-kpi-blue">
+                  <div className="ds-kpi-card ds-kpi-blue" style={{cursor:"pointer"}}
+                    onClick={() => fetchRides(selected.id, dateFilter, customFrom, customTo)}
+                    title="Click to view ride history">
                     <span className="ds-kpi-icon">🚗</span>
                     <p className="ds-kpi-value">{selectedStats.totalRides}</p>
-                    <p className="ds-kpi-label">Total Rides</p>
+                    <p className="ds-kpi-label">Total Rides <span style={{fontSize:10,opacity:0.7}}>↗</span></p>
                   </div>
                   <div className="ds-kpi-card ds-kpi-green">
                     <span className="ds-kpi-icon">💰</span>

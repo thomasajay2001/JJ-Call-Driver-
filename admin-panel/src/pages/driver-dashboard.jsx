@@ -227,7 +227,7 @@ export default function DriverDashboard() {
   const totalD    = drivers.length;
   const activeD   = drivers.filter((d) => d.driver_status?.toLowerCase() === "active").length;
   const paidFees  = drivers.filter((d) => d.feeDetails === "Paid").length;
-  const autoD     = drivers.filter((d) => d.car_type?.toLowerCase().includes("automatic")).length;
+  const autoD     = drivers.filter((d) => d.car_type?.toLowerCase().includes("automatic") || d.car_type?.toLowerCase().includes("both")).length;
   const engagedD  = drivers.filter((d) => d.engaged?.toLowerCase() === "yes").length;
 
   const ErrMsg = ({ k }) => formErrors[k] ? <span className="form-error">⚠ {formErrors[k]}</span> : null;
@@ -252,7 +252,6 @@ export default function DriverDashboard() {
         {[
           { icon:"👥", label:"Total Drivers",      value:totalD,   cls:"stat-icon-box-blue"   },
           { icon:"✓",  label:"Active Drivers",      value:activeD,  cls:"stat-icon-box-green"  },
-          { icon:"💳", label:"Fees Paid",           value:paidFees, cls:"stat-icon-box-purple" },
           { icon:"🚗", label:"Automatic Cars",      value:autoD,    cls:"stat-icon-box-amber"  },
           { icon:"🔵", label:"Currently Engaged",   value:engagedD, cls:"stat-icon-box-blue"   },
         ].map((s) => (
