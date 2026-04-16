@@ -455,6 +455,59 @@ app.post("/api/complete-ride", async (req, res) => {
   }
 });
 
+app.post("/api/completes-ride", async (req, res) => {
+  const { bookingId, driverId, amount, ride_hours, ride_minutes } = req.body;
+
+  try {
+    const [settings] = await db.promise()
+      .query("SELECT base_hours, base_fare, extra_per_hr FROM master_settings WHERE id = 1")
+      .catch(() => [[]]);
+
+    const cfg = settings[0] || {};
+
+    if (amount != null) {
+      await db.promise().query(
+        `UPDATE bookings 
+         SET status='completed', 
+             ride_hours=?, 
+             ride_minutes=?, 
+             amount=?, 
+             base_hours_used=?, 
+             base_fare_used=?, 
+             extra_per_hr_used=?, 
+             payment_status='pending' 
+         WHERE id=?`,
+        [
+          ride_hours ?? 0,
+          ride_minutes ?? 0,
+          amount,
+          cfg.base_hours ?? null,
+          cfg.base_fare ?? null,
+          cfg.extra_per_hr ?? null,
+          bookingId
+        ]
+      );
+    } else {
+      await db.promise().query(
+        "UPDATE bookings SET status='completed' WHERE id=?",
+        [bookingId]
+      );
+    }
+
+    // ✅ ONLY free driver, don't change status
+    await db.promise().query(
+      "UPDATE DRIVERS SET STATUS='offline', ENGAGED='No' WHERE ID=?",
+      [driverId]
+    );
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error("Complete ride error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ─── MARK PAYMENT AS PAID ─────────────────────
 app.post("/api/bookings/:id/mark-paid", async (req, res) => {
   const { id } = req.params;
@@ -578,7 +631,7 @@ app.get("/api/driver-stats/:driverId", async (req, res) => {
     );
     return res.json({
       success: true, totalRides,
-      totalIncome: Number(row.totalEarnings) || totalRides * INCOME_PER_RIDE,
+      totalIncome: Number(row.totalEarnings),
       avgRating:   row.avgRating || 0,
       ratingCount: Number(row.ratingCount) || 0,
       ratingBreakdown: { 5:Number(row.r5)||0, 4:Number(row.r4)||0, 3:Number(row.r3)||0, 2:Number(row.r2)||0, 1:Number(row.r1)||0 },
