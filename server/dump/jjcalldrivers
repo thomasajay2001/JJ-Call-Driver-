@@ -216,3 +216,4 @@ CREATE TABLE master_settings (
   updated_at   TIMESTAMP      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 INSERT IGNORE INTO master_settings (id) VALUES (1);
+ALTER TABLE master_settings ADD COLUMN outstation_extra DECIMAL(10,2) DEFAULT NULL;

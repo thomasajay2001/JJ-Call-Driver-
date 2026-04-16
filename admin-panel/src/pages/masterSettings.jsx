@@ -15,20 +15,21 @@ export default function MasterSettings() {
   /* ── state ── */
   const [saved, setSaved] = useState({
     logo_url: null, logo_name: null,
-    base_hours: null, base_fare: null, extra_per_hr: null, updated_at: null,
+    base_hours: null, base_fare: null, extra_per_hr: null, outstation_extra: null, updated_at: null,  // ADD outstation_extra
   });
 
   const [logoPreview, setLogoPreview] = useState(null);
-  const [logoFile,    setLogoFile]    = useState(null);
-  const [baseHours,   setBaseHours]   = useState("");
-  const [baseFare,    setBaseFare]    = useState("");
-  const [extraPerHr,  setExtraPerHr]  = useState("");
-  const [formErrors,  setFormErrors]  = useState({});
+  const [logoFile, setLogoFile] = useState(null);
+  const [baseHours, setBaseHours] = useState("");
+  const [baseFare, setBaseFare] = useState("");
+  const [extraPerHr, setExtraPerHr] = useState("");
+  const [formErrors, setFormErrors] = useState({});
 
-  const [showForm, setShowForm]   = useState(false);
-  const [loading,  setLoading]    = useState(true);
-  const [saving,   setSaving]     = useState(false);
-  const [toast,    setToast]      = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [outstationExtra, setOutstationExtra] = useState("");
 
   /* ── load ── */
   const fetchSettings = async () => {
@@ -36,7 +37,7 @@ export default function MasterSettings() {
     try {
       const { data } = await axios.get(`${BASE_URL}/api/admin/master-settings`);
       setSaved(data);
-    } catch {}
+    } catch { }
     finally { setLoading(false); }
   };
   useEffect(() => { fetchSettings(); }, []);
@@ -50,11 +51,13 @@ export default function MasterSettings() {
 
   /* ── open edit — pre-fill ── */
   const openEdit = () => {
-    setLogoPreview(saved.logo_url    || null);
+    setLogoPreview(saved.logo_url || null);
     setLogoFile(null);
-    setBaseHours(saved.base_hours    ?? "");
-    setBaseFare(saved.base_fare      ?? "");
+    setBaseHours(saved.base_hours ?? "");
+    setBaseFare(saved.base_fare ?? "");
     setExtraPerHr(saved.extra_per_hr ?? "");
+    setExtraPerHr(saved.extra_per_hr ?? "");
+    setOutstationExtra(saved.outstation_extra ?? "");
     setFormErrors({});
     setShowForm(true);
   };
@@ -94,8 +97,8 @@ export default function MasterSettings() {
   /* ── validate ── */
   const validate = () => {
     const e = {};
-    if (!baseHours || Number(baseHours) < 1) e.base_hours   = "Base hours must be ≥ 1";
-    if (!baseFare  || Number(baseFare)  < 1) e.base_fare    = "Base fare must be ≥ ₹1";
+    if (!baseHours || Number(baseHours) < 1) e.base_hours = "Base hours must be ≥ 1";
+    if (!baseFare || Number(baseFare) < 1) e.base_fare = "Base fare must be ≥ ₹1";
     if (extraPerHr === "" || Number(extraPerHr) < 0) e.extra_per_hr = "Extra/hr cannot be negative";
     setFormErrors(e);
     return Object.keys(e).length === 0;
@@ -107,9 +110,10 @@ export default function MasterSettings() {
     setSaving(true);
     try {
       const fd = new FormData();
-      fd.append("base_hours",   baseHours);
-      fd.append("base_fare",    baseFare);
+      fd.append("base_hours", baseHours);
+      fd.append("base_fare", baseFare);
       fd.append("extra_per_hr", extraPerHr);
+      fd.append("outstation_extra", outstationExtra);
       if (logoFile) fd.append("logo", logoFile);
       const { data } = await axios.post(`${BASE_URL}/api/admin/master-settings`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -135,8 +139,8 @@ export default function MasterSettings() {
   const exampleFare = saved.base_fare != null && saved.extra_per_hr != null
     ? Number(saved.base_fare) + Number(saved.extra_per_hr) : null;
 
-  const hrs  = Number(baseHours)  || 0;
-  const fare = Number(baseFare)   || 0;
+  const hrs = Number(baseHours) || 0;
+  const fare = Number(baseFare) || 0;
   const xtra = Number(extraPerHr) || 0;
 
   const ErrMsg = ({ k }) => formErrors[k]
@@ -184,6 +188,7 @@ export default function MasterSettings() {
                   <th>Base Hours</th>
                   <th>Base Fare</th>
                   <th>Extra / Hr</th>
+                  <th>Outstation Extra</th>
                   <th>
                     Example Fare
                     {saved.base_hours != null && (
@@ -231,6 +236,11 @@ export default function MasterSettings() {
                   <td>
                     {saved.extra_per_hr != null
                       ? <span className="dsp-income-cell">₹{saved.extra_per_hr}</span>
+                      : <span className="badge badge-gray">Not set</span>}
+                  </td>
+                  <td>
+                    {saved.outstation_extra != null
+                      ? <span className="dsp-income-cell">₹{saved.outstation_extra}</span>
                       : <span className="badge badge-gray">Not set</span>}
                   </td>
                   <td>
@@ -387,6 +397,26 @@ export default function MasterSettings() {
                   </div>
                   <ErrMsg k="extra_per_hr" />
                 </div>
+
+
+                {/* Outstation Extra */}
+                <div className="form-field">
+                  <label className="form-label">
+                    Outstation Extra Fare <span className="form-required">*</span>
+                  </label>
+                  <div style={{ display: "flex", border: "1.5px solid #E2E8F0", borderRadius: 8, overflow: "hidden", background: "#F8FAFF" }}>
+                    <span style={{ padding: "0 12px", fontSize: 12, fontWeight: 700, color: "#94A3B8", background: "#F0F4FB", borderRight: "1.5px solid #E2E8F0", display: "flex", alignItems: "center", whiteSpace: "nowrap" }}>₹</span>
+                    <input
+                      className={`form-input${formErrors.outstation_extra ? " form-input-error" : ""}`}
+                      style={{ border: "none", borderRadius: 0, background: "transparent" }}
+                      type="number" min={0} placeholder="e.g. 200"
+                      value={outstationExtra}
+                      onChange={e => { setOutstationExtra(e.target.value); setFormErrors(p => ({ ...p, outstation_extra: "" })); }}
+                    />
+                  </div>
+                  <ErrMsg k="outstation_extra" />
+                </div>
+
 
                 {/* Live fare preview */}
                 {hrs > 0 && fare > 0 && (

@@ -7,7 +7,7 @@ const upload = multer();
 const axios = require("axios");
 const http = require("http");
 const path = require("path");
-const fs   = require("fs");
+const fs = require("fs");
 require("dotenv").config();
 const otpStore = {};
 const OTP_EXPIRY_MS = 5 * 60 * 1000;
@@ -44,7 +44,7 @@ if (!fs.existsSync(logoDir)) fs.mkdirSync(logoDir, { recursive: true });
 
 const logoStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, logoDir),
-  filename:    (_req,  file, cb) => {
+  filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     cb(null, `app_logo${ext}`);
   },
@@ -52,7 +52,7 @@ const logoStorage = multer.diskStorage({
 const logoUpload = multer({
   storage: logoStorage,
   fileFilter: (_req, file, cb) => {
-    const allowed = ["image/png","image/jpeg","image/jpg","image/svg+xml","image/webp"];
+    const allowed = ["image/png", "image/jpeg", "image/jpg", "image/svg+xml", "image/webp"];
     allowed.includes(file.mimetype) ? cb(null, true) : cb(new Error("Only PNG/JPG/SVG/WEBP allowed"));
   },
   limits: { fileSize: 2 * 1024 * 1024 },
@@ -83,9 +83,9 @@ const normalizeBlood = (val) => {
   const s = String(val).trim().toUpperCase();
   if (s.length <= 10) return s;
   const map = {
-    "AB POSITIVE":"AB+","AB NEGATIVE":"AB-","A1 POSITIVE":"A1+","A1 NEGATIVE":"A1-",
-    "B1 POSITIVE":"B1+","B1 NEGATIVE":"B1-","A POSITIVE":"A+","A NEGATIVE":"A-",
-    "B POSITIVE":"B+","B NEGATIVE":"B-","O POSITIVE":"O+","O NEGATIVE":"O-",
+    "AB POSITIVE": "AB+", "AB NEGATIVE": "AB-", "A1 POSITIVE": "A1+", "A1 NEGATIVE": "A1-",
+    "B1 POSITIVE": "B1+", "B1 NEGATIVE": "B1-", "A POSITIVE": "A+", "A NEGATIVE": "A-",
+    "B POSITIVE": "B+", "B NEGATIVE": "B-", "O POSITIVE": "O+", "O NEGATIVE": "O-",
   };
   for (const [long, short] of Object.entries(map)) { if (s.includes(long)) return short; }
   return s.substring(0, 10);
@@ -96,10 +96,10 @@ app.get("/test", (req, res) => res.json({ message: "API working" }));
 
 io.on("connection", (socket) => {
   console.log("✅ Socket connected:", socket.id);
-  socket.on("joinAdminRoom",   () => { socket.join("admins"); });
+  socket.on("joinAdminRoom", () => { socket.join("admins"); });
   socket.on("joinBookingRoom", ({ bookingId }) => { socket.join(`booking_${bookingId}`); });
-  socket.on("joinDriverRoom",  ({ driverId  }) => { socket.join(`driver_${driverId}`); socket.driverId = driverId; });
-  socket.on("joinCustomer",    (customerId)   => { socket.join(`customer_${customerId}`); });
+  socket.on("joinDriverRoom", ({ driverId }) => { socket.join(`driver_${driverId}`); socket.driverId = driverId; });
+  socket.on("joinCustomer", (customerId) => { socket.join(`customer_${customerId}`); });
   socket.on("disconnect", async () => {
     if (socket.driverId) {
       await db.promise().query("UPDATE DRIVERS SET STATUS='offline' WHERE ID=?", [socket.driverId]);
@@ -308,7 +308,7 @@ app.post("/api/accept-booking", async (req, res) => {
     const driver = drivers[0];
     if (!driver) return res.json({ success: false, message: "Driver not found" });
     await db.promise().query("UPDATE bookings SET status='accepted', driver_id=? WHERE id=?", [driverId, bookingId]);
-    try { await db.promise().query(`INSERT IGNORE INTO accept_booking (booking_id, driver_id, driver_name, driver_mobile) VALUES (?,?,?,?)`, [bookingId, driverId, driver.NAME, driver.MOBILE]); } catch {}
+    try { await db.promise().query(`INSERT IGNORE INTO accept_booking (booking_id, driver_id, driver_name, driver_mobile) VALUES (?,?,?,?)`, [bookingId, driverId, driver.NAME, driver.MOBILE]); } catch { }
     await db.promise().query("UPDATE DRIVERS SET STATUS='inride', ENGAGED='Yes' WHERE ID=?", [driverId]);
     io.to(`booking_${bookingId}`).emit("driverAssigned", { bookingId, driverName: driver.NAME, driverMobile: driver.MOBILE });
     io.to(`driver_${driverId}`).emit("bookingConfirmed", { bookingId });
@@ -391,9 +391,9 @@ app.get("/api/bookings/driver/all", async (req, res) => {
   if (!driverId) return res.status(400).json({ success: false, error: "driverId is required" });
   let dateClause = "";
   switch (filter) {
-    case "today":     dateClause = "AND DATE(b.created_at) = CURDATE()"; break;
+    case "today": dateClause = "AND DATE(b.created_at) = CURDATE()"; break;
     case "yesterday": dateClause = "AND DATE(b.created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)"; break;
-    case "thisweek":  dateClause = "AND YEARWEEK(b.created_at, 1) = YEARWEEK(CURDATE(), 1)"; break;
+    case "thisweek": dateClause = "AND YEARWEEK(b.created_at, 1) = YEARWEEK(CURDATE(), 1)"; break;
     case "thismonth": dateClause = "AND MONTH(b.created_at) = MONTH(CURDATE()) AND YEAR(b.created_at) = YEAR(CURDATE())"; break;
   }
   try {
@@ -540,7 +540,7 @@ app.post("/api/adddrivers", upload.none(), (req, res) => {
   const mobile = safeMobile(req.body.mobile), dob = safeDate(req.body.dob), joinDate = safeDate(req.body.join_date), licExpiry = safeDate(req.body.license_expiry_date), blood = normalizeBlood(req.body.bloodgrp);
   db.query(
     `INSERT INTO DRIVERS (NAME,MOBILE,LOCATION,EXPERIENCE,FEES_DETAILS,DOB,BLOODGRP,AGE,GENDER,CAR_TYPE,LICENCENO,LAT,LNG,PAYMENT_METHOD,STATUS,PAYACTIVE,DRIVER_NO,FATHER_NAME,QUALIFICATION,BADGE_NO,JOIN_DATE,ALT_NO,CUR_ADDRESS,PER_ADDRESS,REGION,BIKE_STATUS,DRIVER_STATUS,REMARKS,ENGAGED,LICENSE_EXPIRY_DATE) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [safeStr(name),safeStr(mobile?.toString()),safeStr(location),safeStr(experience,50),safeStr(feeDetails,50),dob,blood,safeStr(age,10),safeStr(gender,10),safeStr(car_type,50),safeStr(licenceNo,50),lat||null,lng||null,safeStr(paymentmode,50),status||"offline",safeStr(payactive,20),safeStr(driver_no,50),safeStr(father_name),safeStr(qualification,100),safeStr(badge_no,50),joinDate,safeStr(alt_no,50),safeStr(cur_address),safeStr(per_address),safeStr(region,100),safeStr(bike_status,20),safeStr(driver_status,20),safeStr(remarks),safeStr(engaged,10)||"No",licExpiry],
+    [safeStr(name), safeStr(mobile?.toString()), safeStr(location), safeStr(experience, 50), safeStr(feeDetails, 50), dob, blood, safeStr(age, 10), safeStr(gender, 10), safeStr(car_type, 50), safeStr(licenceNo, 50), lat || null, lng || null, safeStr(paymentmode, 50), status || "offline", safeStr(payactive, 20), safeStr(driver_no, 50), safeStr(father_name), safeStr(qualification, 100), safeStr(badge_no, 50), joinDate, safeStr(alt_no, 50), safeStr(cur_address), safeStr(per_address), safeStr(region, 100), safeStr(bike_status, 20), safeStr(driver_status, 20), safeStr(remarks), safeStr(engaged, 10) || "No", licExpiry],
     (err) => {
       if (err) return res.status(500).send({ message: "Database Error", detail: err.sqlMessage });
       return res.status(200).send({ message: "Driver added successfully" });
@@ -554,7 +554,7 @@ app.get("/api/drivers", (req, res) => {
     `SELECT ID,NAME,MOBILE,LOCATION,STATUS,CAR_TYPE,EXPERIENCE,FEES_DETAILS,DOB,BLOODGRP,AGE,GENDER,LICENCENO,LAT,LNG,PAYMENT_METHOD,PAYACTIVE,DRIVER_NO,FATHER_NAME,QUALIFICATION,BADGE_NO,JOIN_DATE,ALT_NO,CUR_ADDRESS,PER_ADDRESS,REGION,BIKE_STATUS,DRIVER_STATUS,REMARKS,ENGAGED,LICENSE_EXPIRY_DATE FROM DRIVERS ORDER BY ID DESC`,
     (error, results) => {
       if (error) return res.send(JSON.stringify({ status: false }));
-      res.send(JSON.stringify(results.map((r) => ({ id:r.ID,name:r.NAME,mobile:r.MOBILE,location:r.LOCATION,car_type:r.CAR_TYPE,experience:r.EXPERIENCE,feeDetails:r.FEES_DETAILS,dob:r.DOB,bloodgrp:r.BLOODGRP,age:r.AGE,gender:r.GENDER,licenceNo:r.LICENCENO,paymentmode:r.PAYMENT_METHOD,status:r.STATUS,lat:parseFloat(r.LAT),lng:parseFloat(r.LNG),payactive:r.PAYACTIVE,driver_no:r.DRIVER_NO,father_name:r.FATHER_NAME,qualification:r.QUALIFICATION,badge_no:r.BADGE_NO,join_date:r.JOIN_DATE,alt_no:r.ALT_NO,cur_address:r.CUR_ADDRESS,per_address:r.PER_ADDRESS,region:r.REGION,bike_status:r.BIKE_STATUS,driver_status:r.DRIVER_STATUS,remarks:r.REMARKS,engaged:r.ENGAGED,license_expiry_date:r.LICENSE_EXPIRY_DATE }))));
+      res.send(JSON.stringify(results.map((r) => ({ id: r.ID, name: r.NAME, mobile: r.MOBILE, location: r.LOCATION, car_type: r.CAR_TYPE, experience: r.EXPERIENCE, feeDetails: r.FEES_DETAILS, dob: r.DOB, bloodgrp: r.BLOODGRP, age: r.AGE, gender: r.GENDER, licenceNo: r.LICENCENO, paymentmode: r.PAYMENT_METHOD, status: r.STATUS, lat: parseFloat(r.LAT), lng: parseFloat(r.LNG), payactive: r.PAYACTIVE, driver_no: r.DRIVER_NO, father_name: r.FATHER_NAME, qualification: r.QUALIFICATION, badge_no: r.BADGE_NO, join_date: r.JOIN_DATE, alt_no: r.ALT_NO, cur_address: r.CUR_ADDRESS, per_address: r.PER_ADDRESS, region: r.REGION, bike_status: r.BIKE_STATUS, driver_status: r.DRIVER_STATUS, remarks: r.REMARKS, engaged: r.ENGAGED, license_expiry_date: r.LICENSE_EXPIRY_DATE }))));
     }
   );
 });
@@ -566,7 +566,7 @@ app.put("/api/updatedriver/:id", upload.none(), (req, res) => {
   const mobile = safeMobile(req.body.mobile), dob = safeDate(req.body.dob), joinDate = safeDate(req.body.join_date), licExpiry = safeDate(req.body.license_expiry_date), blood = normalizeBlood(req.body.bloodgrp);
   db.query(
     `UPDATE DRIVERS SET NAME=?,MOBILE=?,LOCATION=?,EXPERIENCE=?,FEES_DETAILS=?,DOB=?,BLOODGRP=?,AGE=?,GENDER=?,CAR_TYPE=?,LICENCENO=?,PAYMENT_METHOD=?,LAT=?,LNG=?,STATUS=?,PAYACTIVE=?,DRIVER_NO=?,FATHER_NAME=?,QUALIFICATION=?,BADGE_NO=?,JOIN_DATE=?,ALT_NO=?,CUR_ADDRESS=?,PER_ADDRESS=?,REGION=?,BIKE_STATUS=?,DRIVER_STATUS=?,REMARKS=?,ENGAGED=?,LICENSE_EXPIRY_DATE=? WHERE ID=?`,
-    [safeStr(name),mobile,safeStr(location),safeStr(experience,50),safeStr(feeDetails,50),dob,blood,safeStr(age,10),safeStr(gender,10),safeStr(car_type,50),safeStr(licenceNo,50),safeStr(paymentmode,50),lat||null,lng||null,status||"offline",safeStr(payactive,20),safeStr(driver_no,50),safeStr(father_name),safeStr(qualification,100),safeStr(badge_no,50),joinDate,safeStr(alt_no,50),safeStr(cur_address),safeStr(per_address),safeStr(region,100),safeStr(bike_status,20),safeStr(driver_status,20),safeStr(remarks),safeStr(engaged,10)||"No",licExpiry,driverId],
+    [safeStr(name), mobile, safeStr(location), safeStr(experience, 50), safeStr(feeDetails, 50), dob, blood, safeStr(age, 10), safeStr(gender, 10), safeStr(car_type, 50), safeStr(licenceNo, 50), safeStr(paymentmode, 50), lat || null, lng || null, status || "offline", safeStr(payactive, 20), safeStr(driver_no, 50), safeStr(father_name), safeStr(qualification, 100), safeStr(badge_no, 50), joinDate, safeStr(alt_no, 50), safeStr(cur_address), safeStr(per_address), safeStr(region, 100), safeStr(bike_status, 20), safeStr(driver_status, 20), safeStr(remarks), safeStr(engaged, 10) || "No", licExpiry, driverId],
     (err, result) => {
       if (err) return res.status(500).send({ message: "Database error", detail: err.sqlMessage });
       if (result.affectedRows === 0) return res.status(404).send({ message: "Driver not found" });
@@ -610,11 +610,11 @@ app.get("/api/driver-stats/:driverId", async (req, res) => {
   const { filter = "all", from, to } = req.query;
   let dateClause = "";
   switch (filter) {
-    case "today":     dateClause = "AND DATE(created_at) = CURDATE()"; break;
+    case "today": dateClause = "AND DATE(created_at) = CURDATE()"; break;
     case "yesterday": dateClause = "AND DATE(created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)"; break;
-    case "thisweek":  dateClause = "AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1)"; break;
+    case "thisweek": dateClause = "AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1)"; break;
     case "thismonth": dateClause = "AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())"; break;
-    case "custom":    if (from && to) dateClause = `AND DATE(created_at) BETWEEN '${from}' AND '${to}'`; break;
+    case "custom": if (from && to) dateClause = `AND DATE(created_at) BETWEEN '${from}' AND '${to}'`; break;
   }
   try {
     const [summary] = await db.promise().query(
@@ -632,9 +632,9 @@ app.get("/api/driver-stats/:driverId", async (req, res) => {
     return res.json({
       success: true, totalRides,
       totalIncome: Number(row.totalEarnings),
-      avgRating:   row.avgRating || 0,
+      avgRating: row.avgRating || 0,
       ratingCount: Number(row.ratingCount) || 0,
-      ratingBreakdown: { 5:Number(row.r5)||0, 4:Number(row.r4)||0, 3:Number(row.r3)||0, 2:Number(row.r2)||0, 1:Number(row.r1)||0 },
+      ratingBreakdown: { 5: Number(row.r5) || 0, 4: Number(row.r4) || 0, 3: Number(row.r3) || 0, 2: Number(row.r2) || 0, 1: Number(row.r1) || 0 },
       comments,
     });
   } catch (err) { return res.status(500).json({ success: false, message: err.message }); }
@@ -684,46 +684,83 @@ app.post("/api/bookings/:id/preferred-response", async (req, res) => {
     }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
-});
-
-// ═══ MASTER SETTINGS ═══
+});// ═══ MASTER SETTINGS ═══
 app.get("/api/admin/master-settings", async (req, res) => {
   try {
-    const [rows] = await db.promise().query("SELECT id, logo_url, logo_name, base_hours, base_fare, extra_per_hr, updated_at FROM master_settings WHERE id = 1");
-    if (!rows.length) return res.json({ logo_url:null, logo_name:null, base_hours:null, base_fare:null, extra_per_hr:null, updated_at:null });
+    const [rows] = await db.promise().query("SELECT id, logo_url, logo_name, base_hours, base_fare, extra_per_hr, outstation_extra, updated_at FROM master_settings WHERE id = 1");
+    if (!rows.length) return res.json({ logo_url: null, logo_name: null, base_hours: null, base_fare: null, extra_per_hr: null, outstation_extra: null, updated_at: null });
     const row = rows[0];
-    res.json({ logo_url: row.logo_url||null, logo_name: row.logo_name||null, base_hours: row.base_hours??null, base_fare: row.base_fare!=null?parseFloat(row.base_fare):null, extra_per_hr: row.extra_per_hr!=null?parseFloat(row.extra_per_hr):null, updated_at: row.updated_at||null });
+    res.json({
+      logo_url: row.logo_url || null,
+      logo_name: row.logo_name || null,
+      base_hours: row.base_hours ?? null,
+      base_fare: row.base_fare != null ? parseFloat(row.base_fare) : null,
+      extra_per_hr: row.extra_per_hr != null ? parseFloat(row.extra_per_hr) : null,
+      outstation_extra: row.outstation_extra != null ? parseFloat(row.outstation_extra) : null,
+      updated_at: row.updated_at || null,
+    });
   } catch (err) { res.status(500).json({ message: "Failed to load settings" }); }
 });
 
 app.post("/api/admin/master-settings", logoUpload.single("logo"), async (req, res) => {
   try {
-    const base_hours   = req.body.base_hours   !== "" ? parseInt(req.body.base_hours,   10) : null;
-    const base_fare    = req.body.base_fare    !== "" ? parseFloat(req.body.base_fare)       : null;
-    const extra_per_hr = req.body.extra_per_hr !== "" ? parseFloat(req.body.extra_per_hr)    : null;
-    if (base_hours   != null && (isNaN(base_hours)   || base_hours < 1))   return res.status(400).json({ message: "base_hours must be ≥ 1" });
-    if (base_fare    != null && (isNaN(base_fare)    || base_fare < 0))     return res.status(400).json({ message: "base_fare must be ≥ 0" });
-    if (extra_per_hr != null && (isNaN(extra_per_hr) || extra_per_hr < 0))  return res.status(400).json({ message: "extra_per_hr must be ≥ 0" });
+    const base_hours = req.body.base_hours !== "" ? parseInt(req.body.base_hours, 10) : null;
+    const base_fare = req.body.base_fare !== "" ? parseFloat(req.body.base_fare) : null;
+    const extra_per_hr = req.body.extra_per_hr !== "" ? parseFloat(req.body.extra_per_hr) : null;
+    const outstation_extra = req.body.outstation_extra !== "" ? parseFloat(req.body.outstation_extra) : null;
+
+    if (base_hours != null && (isNaN(base_hours) || base_hours < 1)) return res.status(400).json({ message: "base_hours must be ≥ 1" });
+    if (base_fare != null && (isNaN(base_fare) || base_fare < 0)) return res.status(400).json({ message: "base_fare must be ≥ 0" });
+    if (extra_per_hr != null && (isNaN(extra_per_hr) || extra_per_hr < 0)) return res.status(400).json({ message: "extra_per_hr must be ≥ 0" });
+    if (outstation_extra != null && (isNaN(outstation_extra) || outstation_extra < 0)) return res.status(400).json({ message: "outstation_extra must be ≥ 0" });
+
     let logo_url = undefined, logo_name = undefined;
     if (req.file) {
       const serverBase = process.env.EXPO_PUBLIC_BASE_URL || "http://localhost:3000";
-      logo_url  = `${serverBase}/uploads/logos/${req.file.filename}`;
+      logo_url = `${serverBase}/uploads/logos/${req.file.filename}`;
       logo_name = req.file.originalname;
     }
+
     const fields = [], values = [];
-    if (base_hours   != null)    { fields.push("base_hours = ?");   values.push(base_hours); }
-    if (base_fare    != null)    { fields.push("base_fare = ?");    values.push(base_fare); }
-    if (extra_per_hr != null)    { fields.push("extra_per_hr = ?"); values.push(extra_per_hr); }
-    if (logo_url  !== undefined) { fields.push("logo_url = ?");     values.push(logo_url); }
-    if (logo_name !== undefined) { fields.push("logo_name = ?");    values.push(logo_name); }
+    if (base_hours != null) { fields.push("base_hours = ?"); values.push(base_hours); }
+    if (base_fare != null) { fields.push("base_fare = ?"); values.push(base_fare); }
+    if (extra_per_hr != null) { fields.push("extra_per_hr = ?"); values.push(extra_per_hr); }
+    if (outstation_extra != null) { fields.push("outstation_extra = ?"); values.push(outstation_extra); }
+    if (logo_url !== undefined) { fields.push("logo_url = ?"); values.push(logo_url); }
+    if (logo_name !== undefined) { fields.push("logo_name = ?"); values.push(logo_name); }
+
     if (fields.length === 0) return res.status(400).json({ message: "Nothing to save" });
     values.push(1);
+
     await db.promise().query(`UPDATE master_settings SET ${fields.join(", ")} WHERE id = 1`, values);
-    const [rows] = await db.promise().query("SELECT id, logo_url, logo_name, base_hours, base_fare, extra_per_hr, updated_at FROM master_settings WHERE id = 1");
+
+    const [rows] = await db.promise().query("SELECT id, logo_url, logo_name, base_hours, base_fare, extra_per_hr, outstation_extra, updated_at FROM master_settings WHERE id = 1");
     const row = rows[0];
-    res.json({ message: "Settings saved successfully", logo_url: row.logo_url||null, logo_name: row.logo_name||null, base_hours: row.base_hours??null, base_fare: row.base_fare!=null?parseFloat(row.base_fare):null, extra_per_hr: row.extra_per_hr!=null?parseFloat(row.extra_per_hr):null, updated_at: row.updated_at||null });
+    res.json({
+      message: "Settings saved successfully",
+      logo_url: row.logo_url || null,
+      logo_name: row.logo_name || null,
+      base_hours: row.base_hours ?? null,
+      base_fare: row.base_fare != null ? parseFloat(row.base_fare) : null,
+      extra_per_hr: row.extra_per_hr != null ? parseFloat(row.extra_per_hr) : null,
+      outstation_extra: row.outstation_extra != null ? parseFloat(row.outstation_extra) : null,
+      updated_at: row.updated_at || null,
+    });
   } catch (err) { res.status(500).json({ message: "Failed to save settings" }); }
 });
+
+app.delete("/api/admin/master-settings/logo", async (req, res) => {
+  try {
+    const [rows] = await db.promise().query("SELECT logo_url FROM master_settings WHERE id = 1");
+    if (rows.length && rows[0].logo_url) {
+      const filePath = path.join(__dirname, "uploads/logos", path.basename(rows[0].logo_url));
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
+    await db.promise().query("UPDATE master_settings SET logo_url = NULL, logo_name = NULL WHERE id = 1");
+    res.json({ success: true, message: "Logo removed successfully" });
+  } catch (err) { res.status(500).json({ message: "Failed to remove logo" }); }
+});
+
 
 app.delete("/api/admin/master-settings/logo", async (req, res) => {
   try {
