@@ -226,11 +226,17 @@ export default function Booking() {
 
   // ── Offline driver completion modal ──
   const [showCompleteModal,  setShowCompleteModal]  = useState(false);
-  const [completingBooking,  setCompletingBooking]  = useState(null);  // booking being completed
+  const [completingBooking,  setCompletingBooking]  = useState(null);
   const [adminCompleting,    setAdminCompleting]    = useState(false);
 
-  // ── Completed rides popup ──
+  // ── Popups ──
   const [showCompletedPopup, setShowCompletedPopup] = useState(false);
+  const [showPendingPopup,   setShowPendingPopup]   = useState(false);
+  const [showAssignedPopup,  setShowAssignedPopup]  = useState(false);
+
+  // ── Scroll animation states ──
+  const [scrollToPending, setScrollToPending] = useState(false);
+  const [scrollToCompleted, setScrollToCompleted] = useState(false);
 
   const [showAcceptedPopup,  setShowAcceptedPopup]  = useState(false);
   const [acceptedBooking,    setAcceptedBooking]    = useState(null);
@@ -246,13 +252,21 @@ export default function Booking() {
 
   // ── CREATE BOOKING STATE ──
   const [showCreateForm,     setShowCreateForm]     = useState(false);
-  const [newBooking,         setNewBooking]         = useState({ customer_name:"", customer_mobile:"", pickup:"", pickup_lat:null, pickup_lng:null, drop_location:"", triptype:"local", is_scheduled:false, scheduled_at:null });
+  const [newBooking,         setNewBooking]         = useState({
+    customer_name:"", customer_mobile:"", pickup:"", pickup_lat:null, pickup_lng:null,
+    drop_location:"", triptype:"local", is_scheduled:false, scheduled_at:null, vehicle:""
+  });
   const [creating,           setCreating]           = useState(false);
   const [pickupSugg,         setPickupSugg]         = useState([]);
   const [dropSugg,           setDropSugg]           = useState([]);
   const [locLoading,         setLocLoading]         = useState(false);
   const [showBookingSuccess, setShowBookingSuccess] = useState(false);
   const [successBookingName, setSuccessBookingName] = useState("");
+
+  const [showEditDetailsForm, setShowEditDetailsForm] = useState(false);
+  const [editBookingData,     setEditBookingData]     = useState({
+    customer_name:"", customer_mobile:"", pickup:"", drop_location:"", triptype:"local", scheduled_at:""
+  });
 
   const computeReminders = (allBookings) => {
     const now = new Date();
@@ -349,6 +363,75 @@ export default function Booking() {
     setDriver(""); setAssignMode("assign"); setDriverMode("online");
   };
 
+  const openBookingEdit = (b) => {
+    setEditId(b.id);
+    setEditBooking(b);
+    setEditBookingData({
+      customer_name: b.name || "",
+      customer_mobile: b.mobile || "",
+      pickup: b.pickup || "",
+      drop_location: b.drop || b.drop_location || "",
+      triptype: b.triptype || "local",
+      scheduled_at: b.is_scheduled && b.scheduled_at
+        ? new Date(b.scheduled_at).toISOString().slice(0, 16)
+        : "",
+    });
+    setShowEditDetailsForm(true);
+  };
+
+  const closeEditDetailsForm = () => {
+    setShowEditDetailsForm(false);
+    setEditId(null);
+    setEditBooking(null);
+    setEditBookingData({ customer_name:"", customer_mobile:"", pickup:"", drop_location:"", triptype:"local", scheduled_at:"" });
+  };
+
+  const submitEditBooking = async () => {
+    if (!editBookingData.customer_name.trim()) { alert("Enter customer name."); return; }
+    if (!editBookingData.customer_mobile.trim() || !/^[6-9]\d{9}$/.test(editBookingData.customer_mobile.trim())) { alert("Enter a valid 10-digit mobile number."); return; }
+    if (!editBookingData.pickup.trim()) { alert("Enter pickup location."); return; }
+    if (!editBookingData.drop_location.trim()) { alert("Enter drop location."); return; }
+    if (!["local","outstation"].includes(editBookingData.triptype)) { alert("Select a trip type."); return; }
+    if (editBooking?.is_scheduled && editBookingData.scheduled_at && isNaN(new Date(editBookingData.scheduled_at).getTime())) {
+      alert("Enter a valid scheduled time."); return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        customer_name: editBookingData.customer_name.trim(),
+        customer_mobile: editBookingData.customer_mobile.trim(),
+        pickup: editBookingData.pickup.trim(),
+        drop_location: editBookingData.drop_location.trim(),
+        triptype: editBookingData.triptype,
+      };
+      if (editBooking?.is_scheduled) {
+        payload.scheduled_at = editBookingData.scheduled_at
+          ? new Date(editBookingData.scheduled_at).toISOString()
+          : null;
+      }
+      await axios.put(`${BASE_URL}/api/bookings/${editId}/edit`, payload);
+      closeEditDetailsForm();
+      fetchBookings();
+    } catch (e) {
+      alert("Failed to update booking: " + (e?.response?.data?.message || e.message));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelBooking = async (booking) => {
+    if (!window.confirm(`Cancel booking #${booking.id}? This will release any assigned driver.`)) return;
+    setSaving(true);
+    try {
+      await axios.post(`${BASE_URL}/api/bookings/${booking.id}/admin-cancel`, { reason: "Cancelled by admin" });
+      fetchBookings();
+    } catch (e) {
+      alert("Failed to cancel booking: " + (e?.response?.data?.message || e.message));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const dismissReminder = (bookingId) => setDismissedIds((prev) => new Set([...prev, bookingId]));
 
   // ── Location search ──
@@ -397,13 +480,17 @@ export default function Booking() {
         drop: newBooking.drop_location.trim(), triptype: newBooking.triptype,
         is_scheduled: newBooking.is_scheduled ? 1 : 0,
         scheduled_at: newBooking.is_scheduled && newBooking.scheduled_at ? newBooking.scheduled_at.toISOString() : null,
+        vehicle: newBooking.vehicle.trim() || null,
         recommended_driver_id: null,
       });
       setShowCreateForm(false);
       setSuccessBookingName(newBooking.customer_name.trim());
       setShowBookingSuccess(true);
       setTimeout(() => setShowBookingSuccess(false), 3500);
-      setNewBooking({ customer_name:"", customer_mobile:"", pickup:"", pickup_lat:null, pickup_lng:null, drop_location:"", triptype:"local", is_scheduled:false, scheduled_at:null });
+      setNewBooking({
+        customer_name:"", customer_mobile:"", pickup:"", pickup_lat:null, pickup_lng:null,
+        drop_location:"", triptype:"local", is_scheduled:false, scheduled_at:null, vehicle:""
+      });
       setPickupSugg([]); setDropSugg([]);
       fetchBookings();
     } catch (e) { alert("Failed to create booking: " + (e?.response?.data?.message || e.message)); }
@@ -450,7 +537,6 @@ export default function Booking() {
     } catch (e) { alert("Failed to notify customer: " + (e?.response?.data?.message || e.message)); }
   };
 
-  // ── Preferred warning: only "Assign Anyway", no cancel order ──
   const handlePrefWarnYes = async () => { setShowPrefWarn(false); await doSubmit(); };
 
   const handleAcceptedAssign = async () => {
@@ -522,14 +608,44 @@ export default function Booking() {
   const pendingB   = bookings.filter((b) => !b.driver).length;
   const completedB = bookings.filter((b) => b.status?.toLowerCase() === "completed").length;
 
-  const R2 = 10, circ = 2 * Math.PI * R2;
-  const dash = circ * (autoRefresh ? countdown / (REFRESH_MS / 1000) : 0);
+  // ── Scroll animation handlers ──
+  const handlePendingClick = () => {
+    setFilterTab("all"); // Reset to show all bookings
+    setSearch(""); // Clear search
+    pg.setPage(1); // Go to first page
+    setScrollToPending(true);
+    // Scroll to table after a short delay
+    setTimeout(() => {
+      const tableElement = document.querySelector('.table-card');
+      if (tableElement) {
+        tableElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+    setTimeout(() => setScrollToPending(false), 1000); // Reset animation after 1 second
+  };
+
+  const handleCompletedClick = () => {
+    setFilterTab("all"); // Reset to show all bookings
+    setSearch(""); // Clear search
+    pg.setPage(1); // Go to first page
+    setScrollToCompleted(true);
+    // Scroll to table after a short delay
+    setTimeout(() => {
+      const tableElement = document.querySelector('.table-card');
+      if (tableElement) {
+        tableElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+    setTimeout(() => setScrollToCompleted(false), 1000); // Reset animation after 1 second
+  };
+
   const STATS = [
-    { icon:"📋", label:"Total Bookings", value:totalB,     cls:"stat-icon-box-blue"   },
-    { icon:"✓",  label:"Assigned",       value:assignedB,  cls:"stat-icon-box-green"  },
-    { icon:"⏳", label:"Pending",         value:pendingB,   cls:"stat-icon-box-amber"  },
-    { icon:"🎉", label:"Completed",       value:completedB, cls:"stat-icon-box-purple" },
+    { icon:"📋", label:"Total Bookings", value:totalB,     cls:"stat-icon-box-blue"                               },
+    { icon:"✓",  label:"Assigned",       value:assignedB,  cls:"stat-icon-box-green",  onClick:() => setShowAssignedPopup(true)  },
+    { icon:"⏳", label:"Pending",         value:pendingB,   cls:"stat-icon-box-amber",  onClick:() => setShowPendingPopup(true)   },
+    { icon:"🎉", label:"Completed",       value:completedB, cls:"stat-icon-box-purple", onClick:() => setShowCompletedPopup(true) },
   ];
+
   const selMode            = ASSIGN_MODES.find((m) => m.value === assignMode);
   const currentDriverList  = driverMode === "online" ? drivers : offlineDrivers;
 
@@ -540,16 +656,15 @@ export default function Booking() {
     <div>
 
       {/* ── Page header ── */}
-      <div className="page-header">
+      <div className="page-header page-header-mobile">
         <div className="page-header-left">
           <h1 className="page-title">Booking Management</h1>
           <p className="page-subtitle">Track and manage all customer bookings</p>
         </div>
-        <div className="refresh-bar">
+        <div className="refresh-bar page-header-right-mobile">
           <button onClick={() => setShowCreateForm(true)} style={S.createBtn}>＋ New Booking</button>
-          
           <button className="refresh-manual-btn" onClick={fetchAll}>↻ Refresh</button>
-          <div className="live-badge"><span className="live-badge-dot" />Live</div>
+          <div className="live-badge live-badge-mobile"><span className="live-badge-dot" />Live</div>
         </div>
       </div>
 
@@ -562,17 +677,17 @@ export default function Booking() {
           <div
             key={s.label}
             className="stat-card"
-            onClick={s.label === "Completed" ? () => setShowCompletedPopup(true) : undefined}
-            style={s.label === "Completed" ? { cursor:"pointer", transition:"transform 0.15s, box-shadow 0.15s" } : {}}
-            onMouseEnter={s.label === "Completed" ? (e) => { e.currentTarget.style.transform="translateY(-2px)"; e.currentTarget.style.boxShadow="0 6px 20px rgba(124,58,237,0.15)"; } : undefined}
-            onMouseLeave={s.label === "Completed" ? (e) => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow=""; } : undefined}
+            onClick={s.onClick}
+            style={s.onClick ? { cursor:"pointer", transition:"transform 0.15s, box-shadow 0.15s" } : {}}
+            onMouseEnter={s.onClick ? (e) => { e.currentTarget.style.transform="translateY(-2px)"; e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.12)"; } : undefined}
+            onMouseLeave={s.onClick ? (e) => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow=""; } : undefined}
           >
             <div className={`stat-icon-box ${s.cls}`}><span>{s.icon}</span></div>
             <div>
               <p className="stat-label">{s.label}</p>
               <h3 className="stat-value">{s.value}</h3>
-              {s.label === "Completed" && s.value > 0 && (
-                <p style={{ margin:"2px 0 0", fontSize:10, color:"#7C3AED", fontWeight:600 }}>Click to view →</p>
+              {s.onClick && s.value > 0 && (
+                <p style={{ margin:"2px 0 0", fontSize:10, color:"#64748B", fontWeight:600 }}>Click to view →</p>
               )}
             </div>
           </div>
@@ -580,8 +695,8 @@ export default function Booking() {
       </div>
 
       {/* ── Filter tabs + search ── */}
-      <div style={S.filterRow}>
-        <div style={S.tabs}>
+      <div style={S.filterRow} className="filter-row-mobile">
+        <div style={S.tabs} className="filter-tabs-mobile">
           {[
             { key:"all",       label:"All Bookings", count:bookings.length },
             { key:"scheduled", label:"📅 Scheduled", count:scheduledCount  },
@@ -595,12 +710,12 @@ export default function Booking() {
             </button>
           ))}
         </div>
-        <div className="search-wrap" style={{ flex:1, maxWidth:320 }}>
+        <div className="search-wrap search-bar-mobile" style={{ flex:1, maxWidth:320 }}>
           <span className="search-icon-pos">🔍</span>
           <input className="search-input" placeholder="Search by name or mobile..."
             value={search} onChange={(e) => { setSearch(e.target.value); pg.setPage(1); }} />
         </div>
-        <span className="search-result-count">
+        <span className="search-result-count search-result-mobile">
           Showing <strong>{pg.startDisplay}–{pg.endDisplay}</strong> of <strong>{pg.total}</strong>
         </span>
       </div>
@@ -615,7 +730,7 @@ export default function Booking() {
           <table>
             <thead>
               <tr>
-                {["ID","Customer","Mobile","Pickup","Drop","Assigned Driver","Status","Action"].map((h) => (
+                {["ID","Customer","Mobile","Date","Pickup","Drop","Assigned Driver","Status","Action"].map((h) => (
                   <th key={h}>{h}</th>
                 ))}
               </tr>
@@ -644,7 +759,11 @@ export default function Booking() {
                 const isOnlineAssigned  = !b.offline_assigned && (s === "assigned" || s === "accepted" || s === "inride") && b.driver;
 
                 return (
-                  <tr key={b.id} style={{
+                  <tr key={b.id} className={`${
+                    scrollToPending && !b.driver ? 'scroll-highlight-pending' : ''
+                  } ${
+                    scrollToCompleted && b.status?.toLowerCase() === 'completed' ? 'scroll-highlight-completed' : ''
+                  }`} style={{
                     ...(isCancelled ? { opacity:0.6, backgroundColor:"#FFF8F8" } : {}),
                     ...(isLocked    ? { opacity:0.55, backgroundColor:"#FFFBEB" } : {}),
                     ...(isReminder  ? { backgroundColor:"#FFF7ED", outline:"2px solid #FED7AA" } : {}),
@@ -678,6 +797,13 @@ export default function Booking() {
                       </div>
                     </td>
                     <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{b.mobile}</td>
+                    <td style={{ fontSize:12, color:"#64748B" }}>
+                      {b.is_scheduled && b.scheduled_at
+                        ? new Date(b.scheduled_at).toLocaleDateString("en-IN", { day:"2-digit", month:"2-digit", year:"numeric" })
+                        : b.created_at
+                          ? new Date(b.created_at).toLocaleDateString("en-IN", { day:"2-digit", month:"2-digit", year:"numeric" })
+                          : "—"}
+                    </td>
                     <td><div className="cell-loc"><span>📍</span><span className="cell-loc-text">{b.pickup}</span></div></td>
                     <td><div className="cell-loc"><span>🎯</span><span className="cell-loc-text">{b.drop||b.drop_location}</span></div></td>
                     <td>
@@ -688,7 +814,12 @@ export default function Booking() {
                     <td><span className={getStatusClass(b.status)}>{getStatusLabel(b.status)}</span></td>
                     <td>
                       {isDone ? (
-                        <span className="badge badge-green">✅ Done</span>
+                        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                          <span className="badge badge-green">✅ Done</span>
+                          <button className="action-edit" style={{ padding:"6px 10px" }} onClick={() => openBookingEdit(b)}>
+                            ✏️ Edit
+                          </button>
+                        </div>
                       ) : isCancelled ? (
                         <span className="badge badge-gray" style={{ backgroundColor:"#FFF1F2", color:"#9F1239", border:"1px solid #FECDD3" }}>
                           🚫 Cancelled
@@ -701,25 +832,28 @@ export default function Booking() {
                             <div style={S.lockedSub}>Locked until customer responds</div>
                           </div>
                         </div>
-                      ) : isOfflineAssigned ? (
-                        <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                          <button
-                            style={{ padding:"6px 10px", backgroundColor:"#10B981", border:"none", color:"#fff", fontWeight:700, borderRadius:7, fontSize:12, cursor:"pointer" }}
-                            onClick={() => handleComplete(b)}>
-                            ✅ Complete
-                          </button>
-                          <button className="action-edit" style={{ fontSize:11, padding:"4px 8px" }} onClick={() => openEdit(b)}>
-                            ✏️ Reassign
-                          </button>
-                        </div>
-                      ) : isOnlineAssigned ? (
-                        <button className="action-edit" onClick={() => openEdit(b)}>
-                          ✏️ Reassign
-                        </button>
                       ) : (
-                        <button className="action-edit" onClick={() => openEdit(b)}>
-                          ✏️ {b.driver ? "Reassign" : isFuture||isTomorrow ? "Pre-assign" : "Assign"}
-                        </button>
+                        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                          {isOfflineAssigned ? (
+                            <button
+                              style={{ padding:"6px 10px", backgroundColor:"#10B981", border:"none", color:"#fff", fontWeight:700, borderRadius:7, fontSize:12, cursor:"pointer" }}
+                              onClick={() => handleComplete(b)}>
+                              ✅ Complete
+                            </button>
+                          ) : (
+                            <button className="action-edit" onClick={() => openEdit(b)}>
+                              ✏️ {b.driver ? "Reassign" : isFuture||isTomorrow ? "Pre-assign" : "Assign"}
+                            </button>
+                          )}
+                          <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                            <button className="action-edit" style={{ padding:"6px 10px" }} onClick={() => openBookingEdit(b)}>
+                              ✏️ Edit
+                            </button>
+                            <button className="action-edit" style={{ padding:"6px 10px", backgroundColor:"#FEE2E2", color:"#B91C1C" }} onClick={() => handleCancelBooking(b)}>
+                              🚫 Cancel
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -831,6 +965,15 @@ export default function Booking() {
                     ))}
                   </div>
                 </div>
+                <div className="form-field">
+                  <label className="form-label">Vehicle Type</label>
+                  <input
+                    className="form-input"
+                    placeholder="e.g. Sedan, SUV, Auto..."
+                    value={newBooking.vehicle}
+                    onChange={(e) => setNewBooking(p=>({...p, vehicle:e.target.value}))}
+                  />
+                </div>
                 <div className="form-field" style={{ display:"flex", alignItems:"center", paddingTop:22 }}>
                   <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:13, fontWeight:600, color:"#374151" }}>
                     <input type="checkbox" checked={newBooking.is_scheduled}
@@ -857,6 +1000,69 @@ export default function Booking() {
               <button className="btn btn-ghost" onClick={() => { setShowCreateForm(false); setPickupSugg([]); setDropSugg([]); }}>Cancel</button>
               <button className="btn btn-primary" onClick={submitCreateBooking} disabled={creating} style={{ background:creating?"#94A3B8":undefined }}>
                 {creating ? "⏳ Creating…" : "🚖 Create Booking"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditDetailsForm && editBooking && (
+        <div className="modal-overlay" style={{ zIndex:9999 }}>
+          <div className="modal modal-md" style={{ maxWidth:520 }}>
+            <div className="modal-header">
+              <div className="modal-header-inner">
+                <span style={{ fontSize:24 }}>✏️</span>
+                <span className="modal-title">Edit Booking #{editId}</span>
+              </div>
+              <button className="modal-close" onClick={closeEditDetailsForm}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-grid">
+                <div className="form-section-label">Booking Details</div>
+                <div className="form-section-divider" />
+                <div className="form-field">
+                  <label className="form-label">Customer Name</label>
+                  <input className="form-input" value={editBookingData.customer_name}
+                    onChange={(e) => setEditBookingData((p) => ({ ...p, customer_name: e.target.value }))} />
+                </div>
+                <div className="form-field">
+                  <label className="form-label">Customer Mobile</label>
+                  <input className="form-input" value={editBookingData.customer_mobile}
+                    onChange={(e) => setEditBookingData((p) => ({ ...p, customer_mobile: e.target.value.replace(/\D/g,"") }))} maxLength={10} />
+                </div>
+                <div className="form-field">
+                  <label className="form-label">Pickup Location</label>
+                  <input className="form-input" value={editBookingData.pickup}
+                    onChange={(e) => setEditBookingData((p) => ({ ...p, pickup: e.target.value }))} />
+                </div>
+                <div className="form-field">
+                  <label className="form-label">Drop Location</label>
+                  <input className="form-input" value={editBookingData.drop_location}
+                    onChange={(e) => setEditBookingData((p) => ({ ...p, drop_location: e.target.value }))} />
+                </div>
+                <div className="form-field">
+                  <label className="form-label">Trip Type</label>
+                  <select className="form-select" value={editBookingData.triptype}
+                    onChange={(e) => setEditBookingData((p) => ({ ...p, triptype: e.target.value }))}>
+                    <option value="local">Local</option>
+                    <option value="outstation">Outstation</option>
+                  </select>
+                </div>
+                {editBooking.is_scheduled && (
+                  <div className="form-field form-full">
+                    <label className="form-label">Scheduled Date & Time</label>
+                    <input type="datetime-local" className="form-input"
+                      value={editBookingData.scheduled_at}
+                      min={new Date().toISOString().slice(0, 16)}
+                      onChange={(e) => setEditBookingData((p) => ({ ...p, scheduled_at: e.target.value }))} />
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={closeEditDetailsForm}>Cancel</button>
+              <button className="btn btn-primary" onClick={submitEditBooking} disabled={saving}>
+                {saving ? "⏳ Saving..." : "Save Changes"}
               </button>
             </div>
           </div>
@@ -942,7 +1148,6 @@ export default function Booking() {
                   <div className="form-field form-full">
                     <label className="form-label">Select Driver <span className="form-required">*</span></label>
 
-                    {/* Online / Offline toggle */}
                     <div style={{ display:"flex", gap:6, marginBottom:10 }}>
                       {[
                         { mode:"online",  label:"🟢 Online",  count:drivers.length,        color:"#2563EB" },
@@ -1045,27 +1250,17 @@ export default function Booking() {
 
       {/* ═══════════════════════════════════════════
           PREFERRED WARNING
-          — Close icon only, no "Cancel Order" button
       ═══════════════════════════════════════════ */}
       {showPrefWarn && editBooking && (
         <div className="modal-overlay" style={{ zIndex:9999 }}>
           <div className="modal modal-md" style={{ maxWidth:420 }}>
-
-            {/* header with ✕ close icon */}
             <div className="modal-header">
               <div className="modal-header-inner">
                 <span style={{ fontSize:22 }}>⚠️</span>
                 <span className="modal-title">Different Driver Selected</span>
               </div>
-              <button
-                className="modal-close"
-                onClick={() => setShowPrefWarn(false)}
-                title="Close"
-              >
-                ✕
-              </button>
+              <button className="modal-close" onClick={() => setShowPrefWarn(false)} title="Close">✕</button>
             </div>
-
             <div className="modal-body" style={{ textAlign:"center", padding:"16px 0 8px" }}>
               <div style={{ fontSize:50, marginBottom:12 }}>🚕</div>
               <p style={{ fontSize:15, fontWeight:700, color:"#1E293B", margin:"0 0 12px" }}>
@@ -1083,18 +1278,11 @@ export default function Booking() {
                 Assign a different driver anyway?
               </p>
             </div>
-
             <div className="modal-footer">
-              <button
-                className="btn btn-primary"
-                style={{ flex:1 }}
-                onClick={handlePrefWarnYes}
-                disabled={saving}
-              >
+              <button className="btn btn-primary" style={{ flex:1 }} onClick={handlePrefWarnYes} disabled={saving}>
                 {saving ? "⏳ Saving…" : "✅ Assign Anyway"}
               </button>
             </div>
-
           </div>
         </div>
       )}
@@ -1133,11 +1321,7 @@ export default function Booking() {
                 )}
               </div>
               <div className="form-field" style={{ marginBottom:0 }}>
-                <label className="form-label">
-                  Select Alternate Driver <span className="form-required">*</span>
-                </label>
-
-                {/* Online / Offline toggle */}
+                <label className="form-label">Select Alternate Driver <span className="form-required">*</span></label>
                 <div style={{ display:"flex", gap:6, margin:"8px 0 10px" }}>
                   {[
                     { mode:"online",  label:"🟢 Online",  count:drivers.length,        color:"#2563EB" },
@@ -1156,7 +1340,6 @@ export default function Booking() {
                     </button>
                   ))}
                 </div>
-
                 {(() => {
                   const list = acceptedDriverMode === "online" ? drivers : offlineDrivers;
                   if (list.length === 0) return (
@@ -1214,12 +1397,8 @@ export default function Booking() {
               </div>
             </div>
             <div className="modal-footer" style={{ gap:10 }}>
-              <button className="btn btn-ghost"
-                onClick={() => { setShowAcceptedPopup(false); setAcceptedBooking(null); setAcceptedDriver(""); }}>
-                Later
-              </button>
-              <button className="btn btn-primary" style={{ flex:2 }}
-                onClick={handleAcceptedAssign} disabled={acceptedSaving||!acceptedDriver}>
+              <button className="btn btn-ghost" onClick={() => { setShowAcceptedPopup(false); setAcceptedBooking(null); setAcceptedDriver(""); }}>Later</button>
+              <button className="btn btn-primary" style={{ flex:2 }} onClick={handleAcceptedAssign} disabled={acceptedSaving||!acceptedDriver}>
                 {acceptedSaving ? "⏳ Assigning…" : "🚗 Assign Driver"}
               </button>
             </div>
@@ -1247,6 +1426,151 @@ export default function Booking() {
       )}
 
       {/* ═══════════════════════════════════════════
+          PENDING BOOKINGS POPUP
+      ═══════════════════════════════════════════ */}
+      {showPendingPopup && (
+        <div className="modal-overlay" style={{ zIndex:9999 }}>
+          <div className="modal modal-lg" style={{ maxWidth:760 }}>
+            <div className="modal-header">
+              <div className="modal-header-inner">
+                <span style={{ fontSize:24 }}>⏳</span>
+                <div>
+                  <span className="modal-title">Pending Bookings</span>
+                  <span className="badge badge-amber" style={{ marginLeft:10 }}>{pendingB} Total</span>
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setShowPendingPopup(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding:"0 0 4px" }}>
+              {pendingB === 0 ? (
+                <div className="empty-state" style={{ padding:"48px 0" }}>
+                  <span className="empty-state-icon">📭</span>
+                  <p className="empty-state-title">No pending bookings</p>
+                </div>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        {["ID","Customer","Mobile","Pickup","Drop","Status","Action"].map((h) => (
+                          <th key={h}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bookings.filter((b) => !b.driver).map((b) => (
+                        <tr key={b.id}>
+                          <td>
+                            <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+                              <span className="cell-id">{b.id}</span>
+                              {b.is_scheduled && <span style={S.schedBadge}>📅 Sched</span>}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="cell-name">
+                              <div className="avatar">{(b.name||"?").charAt(0).toUpperCase()}</div>
+                              <span className="cell-name-text">{b.name}</span>
+                            </div>
+                          </td>
+                          <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{b.mobile}</td>
+                          <td style={{ fontSize:12, color:"#64748B" }}>{b.pickup}</td>
+                          <td style={{ fontSize:12, color:"#64748B" }}>{b.drop || b.drop_location}</td>
+                          <td>
+                            <span className={getStatusClass(b.status)} style={{ fontSize:11, padding:"4px 8px" }}>{getStatusLabel(b.status)}</span>
+                          </td>
+                          <td>
+                            <button className="action-edit" onClick={() => { setShowPendingPopup(false); openEdit(b); }}>
+                              ✏️ Assign
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setShowPendingPopup(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════
+          ASSIGNED BOOKINGS POPUP
+      ═══════════════════════════════════════════ */}
+      {showAssignedPopup && (
+        <div className="modal-overlay" style={{ zIndex:9999 }}>
+          <div className="modal modal-lg" style={{ maxWidth:760 }}>
+            <div className="modal-header">
+              <div className="modal-header-inner">
+                <span style={{ fontSize:24 }}>✓</span>
+                <div>
+                  <span className="modal-title">Assigned Bookings</span>
+                  <span className="badge badge-green" style={{ marginLeft:10 }}>{assignedB} Total</span>
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setShowAssignedPopup(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding:"0 0 4px" }}>
+              {assignedB === 0 ? (
+                <div className="empty-state" style={{ padding:"48px 0" }}>
+                  <span className="empty-state-icon">📭</span>
+                  <p className="empty-state-title">No assigned bookings</p>
+                </div>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        {["ID","Customer","Mobile","Pickup","Drop","Driver","Status"].map((h) => (
+                          <th key={h}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bookings.filter((b) => b.status?.toLowerCase() === "assigned").map((b) => (
+                        <tr key={b.id}>
+                          <td>
+                            <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+                              <span className="cell-id">{b.id}</span>
+                              {b.driver_no && (
+                                <span style={{ fontSize:10, fontWeight:700, color:"#2563EB", backgroundColor:"#EFF6FF", borderRadius:5, padding:"2px 6px", display:"inline-block", fontFamily:"var(--font-mono,monospace)", letterSpacing:"0.3px" }}>
+                                  {b.driver_no}
+                                </span>
+                              )}
+                              {b.is_scheduled && <span style={S.schedBadge}>📅 Sched</span>}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="cell-name">
+                              <div className="avatar">{(b.name||"?").charAt(0).toUpperCase()}</div>
+                              <span className="cell-name-text">{b.name}</span>
+                            </div>
+                          </td>
+                          <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{b.mobile}</td>
+                          <td style={{ fontSize:12, color:"#64748B" }}>{b.pickup}</td>
+                          <td style={{ fontSize:12, color:"#64748B" }}>{b.drop || b.drop_location}</td>
+                          <td style={{ fontSize:12 }}>{b.driver ? getDriverName(b.driver) : '—'}</td>
+                          <td>
+                            <span className={getStatusClass(b.status)} style={{ fontSize:11, padding:"4px 8px" }}>{getStatusLabel(b.status)}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setShowAssignedPopup(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════
           COMPLETED RIDES POPUP
       ═══════════════════════════════════════════ */}
       {showCompletedPopup && (
@@ -1262,7 +1586,6 @@ export default function Booking() {
               </div>
               <button className="modal-close" onClick={() => setShowCompletedPopup(false)}>✕</button>
             </div>
-
             <div className="modal-body" style={{ padding:"0 0 4px" }}>
               {completedB === 0 ? (
                 <div className="empty-state" style={{ padding:"48px 0" }}>
@@ -1274,7 +1597,7 @@ export default function Booking() {
                   <table>
                     <thead>
                       <tr>
-                        {["ID / Driver No","Customer","Mobile","Pickup","Drop","Driver","Amount","Trip"].map((h) => (
+                        {["ID","Customer","Mobile","Pickup","Drop","Driver","Amount","Completed"].map((h) => (
                           <th key={h}>{h}</th>
                         ))}
                       </tr>
@@ -1288,7 +1611,7 @@ export default function Booking() {
                               <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
                                 <span className="cell-id">{b.id}</span>
                                 {b.driver_no && (
-                                  <span style={{ fontSize:10, fontWeight:700, color:"#2563EB", backgroundColor:"#EFF6FF", borderRadius:5, padding:"2px 6px", display:"inline-block", fontFamily:"monospace" }}>
+                                  <span style={{ fontSize:10, fontWeight:700, color:"#2563EB", backgroundColor:"#EFF6FF", borderRadius:5, padding:"2px 6px", display:"inline-block", fontFamily:"var(--font-mono,monospace)", letterSpacing:"0.3px" }}>
                                     {b.driver_no}
                                   </span>
                                 )}
@@ -1301,22 +1624,12 @@ export default function Booking() {
                               </div>
                             </td>
                             <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{b.mobile}</td>
-                            <td><div className="cell-loc"><span>📍</span><span className="cell-loc-text">{b.pickup}</span></div></td>
-                            <td><div className="cell-loc"><span>🎯</span><span className="cell-loc-text">{b.drop||b.drop_location}</span></div></td>
+                            <td style={{ fontSize:12, color:"#64748B" }}>{b.pickup}</td>
+                            <td style={{ fontSize:12, color:"#64748B" }}>{b.drop || b.drop_location}</td>
+                            <td style={{ fontSize:12 }}>{b.driver ? getDriverName(b.driver) : '—'}</td>
+                            <td style={{ fontSize:12, fontWeight:600, color:"#059669" }}>{b.amount != null ? `₹${b.amount}` : '—'}</td>
                             <td>
-                              {b.driver
-                                ? <span className="badge badge-green">✓ {getDriverName(b.driver)}</span>
-                                : <span style={{ color:"#94A3B8", fontSize:12 }}>—</span>}
-                            </td>
-                            <td>
-                              {b.amount != null
-                                ? <span className="dsp-income-cell">₹{b.amount}</span>
-                                : <span style={{ color:"#94A3B8", fontSize:12 }}>—</span>}
-                            </td>
-                            <td>
-                              <span className={`badge ${b.triptype==="outstation"?"badge-purple":"badge-blue"}`}>
-                                {b.triptype || "local"}
-                              </span>
+                              <span className="badge badge-green" style={{ fontSize:11, padding:"4px 8px" }}>✓ Completed</span>
                             </td>
                           </tr>
                         ))}
@@ -1325,7 +1638,6 @@ export default function Booking() {
                 </div>
               )}
             </div>
-
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setShowCompletedPopup(false)}>Close</button>
             </div>

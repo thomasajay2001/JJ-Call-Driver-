@@ -88,12 +88,12 @@ export default function Dashboard() {
   return (
     <div>
       {/* ── Page Header ── */}
-      <div className="page-header">
+      <div className="page-header page-header-mobile">
         <div className="page-header-left">
           <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">Live overview of your fleet and bookings</p>
         </div>
-        <div className="live-badge">
+        <div className="live-badge live-badge-mobile">
           <span className="live-badge-dot" />
           Live
         </div>

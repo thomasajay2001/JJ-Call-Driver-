@@ -235,12 +235,12 @@ export default function DriverDashboard() {
   return (
     <div>
       {/* ── Page Header ── */}
-      <div className="page-header">
+      <div className="page-header page-header-mobile">
         <div className="page-header-left">
           <h1 className="page-title">Driver Management</h1>
           <p className="page-subtitle">Manage and monitor all your drivers in one place</p>
         </div>
-        <div className="page-header-right">
+        <div className="page-header-right page-header-right-mobile">
           <button className="btn btn-ghost btn-sm" onClick={downloadSample}>⬇ Sample CSV</button>
           <button className="btn btn-success btn-sm" onClick={() => setShowCsvModal(true)}>📂 Import CSV</button>
           <button className="btn btn-primary" onClick={openCreate}>+ Add New Driver</button>

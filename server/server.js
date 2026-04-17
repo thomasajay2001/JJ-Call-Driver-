@@ -228,20 +228,238 @@ app.post("/api/bookings/:id/cancel-scheduled", async (req, res) => {
   } catch (err) { return res.status(500).json({ success: false, message: err.message }); }
 });
 
-// ─── GET ALL BOOKINGS (admin) ─────────────────
-app.get("/api/bookings", (req, res) => {
-  db.query(
-    `SELECT id, customer_name, customer_mobile, pickup, drop_location, status, driver_id, pickup_lat, pickup_lng, triptype, recommended_driver_id, is_scheduled, scheduled_at, scheduled_status, offline_assigned FROM bookings ORDER BY id DESC`,
-    (error, results) => {
-      if (error) return res.status(500).send({ message: "Database error" });
-      res.send(JSON.stringify(results.map((r) => ({
-        id: r.id, name: r.customer_name, mobile: r.customer_mobile, pickup: r.pickup, drop: r.drop_location,
-        status: r.status, driver: r.driver_id, pickup_lat: r.pickup_lat, pickup_lng: r.pickup_lng, triptype: r.triptype,
-        recommended_driver_id: r.recommended_driver_id, is_scheduled: r.is_scheduled === 1,
-        scheduled_at: r.scheduled_at, scheduled_status: r.scheduled_status, offline_assigned: r.offline_assigned === 1,
-      }))));
+// ─── EDIT BOOKING (admin / customer) ─────────
+// Editable fields: customer_name, customer_mobile, pickup, drop_location, triptype, scheduled_at
+// Only allowed when status is: pending, scheduled, wait5, wait10, wait30, allbusy, completed
+app.put("/api/bookings/:id/edit", async (req, res) => {
+  const { id } = req.params;
+  const { customer_name, customer_mobile, pickup, drop_location, triptype, scheduled_at } = req.body;
+
+  try {
+    const [rows] = await db.promise().query(
+      "SELECT id, status, is_scheduled FROM bookings WHERE id = ? LIMIT 1",
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: "Booking not found" });
+
+    const booking = rows[0];
+    const editable = ["pending", "scheduled", "wait5", "wait10", "wait30", "allbusy", "completed"];
+    if (!editable.includes(booking.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot edit booking with status: ${booking.status}`,
+      });
     }
-  );
+
+    const fields = [];
+    const values = [];
+
+    if (customer_name !== undefined) {
+      const n = safeStr(customer_name, 100);
+      if (!n) return res.status(400).json({ success: false, message: "customer_name cannot be empty" });
+      fields.push("customer_name = ?");
+      values.push(n);
+    }
+    if (customer_mobile !== undefined) {
+      const m = safeStr(customer_mobile, 15);
+      if (!m || !/^[6-9]\d{9}$/.test(m)) return res.status(400).json({ success: false, message: "customer_mobile must be a valid 10-digit number" });
+      fields.push("customer_mobile = ?");
+      values.push(m);
+    }
+    if (pickup !== undefined) {
+      const p = safeStr(pickup, 255);
+      if (!p) return res.status(400).json({ success: false, message: "pickup cannot be empty" });
+      fields.push("pickup = ?");
+      values.push(p);
+    }
+    if (drop_location !== undefined) {
+      const d = safeStr(drop_location, 255);
+      if (!d) return res.status(400).json({ success: false, message: "drop_location cannot be empty" });
+      fields.push("drop_location = ?");
+      values.push(d);
+    }
+    if (triptype !== undefined) {
+      if (!["local", "outstation"].includes(triptype)) {
+        return res.status(400).json({ success: false, message: "triptype must be 'local' or 'outstation'" });
+      }
+      fields.push("triptype = ?");
+      values.push(triptype);
+    }
+    if (scheduled_at !== undefined) {
+      if (!booking.is_scheduled) {
+        return res.status(400).json({ success: false, message: "Cannot set scheduled_at on a non-scheduled booking" });
+      }
+      const scheduledDate = new Date(scheduled_at);
+      if (isNaN(scheduledDate.getTime())) {
+        return res.status(400).json({ success: false, message: "Invalid scheduled_at date" });
+      }
+      if (scheduledDate < new Date(Date.now() + 29 * 60 * 1000)) {
+        return res.status(400).json({ success: false, message: "Scheduled time must be at least 30 minutes from now" });
+      }
+      fields.push("scheduled_at = ?");
+      values.push(scheduledDate);
+    }
+
+    if (fields.length === 0) {
+      return res.status(400).json({ success: false, message: "No fields provided to update" });
+    }
+
+    values.push(id);
+    await db.promise().query(`UPDATE bookings SET ${fields.join(", ")} WHERE id = ?`, values);
+
+    // Notify admin panel of the edit
+    io.to("admins").emit("bookingUpdated", { bookingId: id, edited: true });
+
+    // Return updated booking
+    const [updated] = await db.promise().query(
+      "SELECT id, customer_name, customer_mobile, pickup, drop_location, triptype, status, scheduled_at, is_scheduled FROM bookings WHERE id = ?",
+      [id]
+    );
+    return res.json({ success: true, message: "Booking updated successfully", booking: updated[0] });
+  } catch (err) {
+    console.error("Edit booking error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── ADMIN CANCEL BOOKING ────────────────────
+// Admin can cancel any non-terminal booking and optionally free the driver
+app.post("/api/bookings/:id/admin-cancel", async (req, res) => {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  try {
+    const [rows] = await db.promise().query(
+      "SELECT id, status, driver_id FROM bookings WHERE id = ? LIMIT 1",
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: "Booking not found" });
+
+    const booking = rows[0];
+    const terminal = ["completed", "cancelled", "cancelled_with_penalty"];
+    if (terminal.includes(booking.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Booking is already ${booking.status} — cannot cancel`,
+      });
+    }
+
+    // Cancel the booking
+    await db.promise().query(
+      "UPDATE bookings SET status = 'cancelled', driver_id = NULL, cancelled_at = NOW() WHERE id = ?",
+      [id]
+    );
+
+    // Free the driver if one was assigned
+    if (booking.driver_id) {
+      await db.promise().query(
+        "UPDATE DRIVERS SET STATUS = 'online', ENGAGED = 'No' WHERE ID = ? AND STATUS != 'offline'",
+        [booking.driver_id]
+      );
+    }
+
+    // Notify sockets
+    io.to("admins").emit("bookingCancelled", {
+      bookingId: id,
+      message: reason || "Admin cancelled the booking",
+    });
+    io.to(`booking_${id}`).emit("bookingCancelledByAdmin", {
+      bookingId: id,
+      reason: reason || "Booking was cancelled by admin",
+    });
+    if (booking.driver_id) {
+      io.to(`driver_${booking.driver_id}`).emit("bookingCancelledByAdmin", {
+        bookingId: id,
+      });
+    }
+
+    return res.json({ success: true, message: "Booking cancelled by admin" });
+  } catch (err) {
+    console.error("Admin cancel error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── GET ALL BOOKINGS (admin) ─────────────────
+// Supports date filtering via query params:
+//   ?filter=today|yesterday|thisweek|thismonth|custom
+//   ?from=YYYY-MM-DD&to=YYYY-MM-DD  (used when filter=custom)
+//   ?status=pending,assigned,...    (comma-separated list to filter by status)
+app.get("/api/bookings", (req, res) => {
+  const { filter, from, to, status } = req.query;
+
+  let dateClause = "";
+  switch (filter) {
+    case "today":
+      dateClause = "AND DATE(created_at) = CURDATE()";
+      break;
+    case "yesterday":
+      dateClause = "AND DATE(created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)";
+      break;
+    case "thisweek":
+      dateClause = "AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1)";
+      break;
+    case "thismonth":
+      dateClause = "AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())";
+      break;
+    case "custom":
+      if (from && to) {
+        // Sanitize: only allow YYYY-MM-DD format to prevent SQL injection
+        const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRe.test(from) || !dateRe.test(to)) {
+          return res.status(400).json({ message: "Invalid date format. Use YYYY-MM-DD." });
+        }
+        dateClause = `AND DATE(created_at) BETWEEN '${from}' AND '${to}'`;
+      }
+      break;
+  }
+
+  let statusClause = "";
+  if (status) {
+    // Accept comma-separated statuses, whitelist against known values
+    const allowed = ["pending","assigned","accepted","inride","completed","cancelled","cancelled_with_penalty","wait5","wait10","wait30","allbusy","scheduled","preferred_query"];
+    const requested = status.split(",").map(s => s.trim()).filter(s => allowed.includes(s));
+    if (requested.length > 0) {
+      const placeholders = requested.map(() => "?").join(",");
+      statusClause = `AND status IN (${placeholders})`;
+    }
+  }
+
+  // Build final query — date and status params injected safely
+  const query = `
+    SELECT id, customer_name, customer_mobile, pickup, drop_location, status, driver_id,
+           pickup_lat, pickup_lng, triptype, recommended_driver_id, is_scheduled,
+           scheduled_at, scheduled_status, offline_assigned, created_at
+    FROM bookings
+    WHERE 1=1 ${dateClause} ${statusClause}
+    ORDER BY id DESC
+  `;
+
+  const statusValues = status
+    ? status.split(",").map(s => s.trim()).filter(s => ["pending","assigned","accepted","inride","completed","cancelled","cancelled_with_penalty","wait5","wait10","wait30","allbusy","scheduled","preferred_query"].includes(s))
+    : [];
+
+  db.query(query, statusValues, (error, results) => {
+    if (error) return res.status(500).send({ message: "Database error" });
+    res.send(JSON.stringify(results.map((r) => ({
+      id: r.id,
+      name: r.customer_name,
+      mobile: r.customer_mobile,
+      pickup: r.pickup,
+      drop: r.drop_location,
+      status: r.status,
+      driver: r.driver_id,
+      pickup_lat: r.pickup_lat,
+      pickup_lng: r.pickup_lng,
+      triptype: r.triptype,
+      recommended_driver_id: r.recommended_driver_id,
+      is_scheduled: r.is_scheduled === 1,
+      scheduled_at: r.scheduled_at,
+      scheduled_status: r.scheduled_status,
+      offline_assigned: r.offline_assigned === 1,
+      created_at: r.created_at,
+    }))));
+  });
 });
 
 // ─── BOOKING STATUS ───────────────────────────
@@ -251,6 +469,7 @@ app.get("/api/bookings/status/:id", async (req, res) => {
     const [rows] = await db.promise().query(
       `SELECT b.id, b.customer_name, b.pickup, b.drop_location, b.triptype, b.status, b.driver_id, b.scheduled_at, b.is_scheduled,
               b.ride_hours, b.ride_minutes, b.base_hours_used, b.base_fare_used, b.extra_per_hr_used, b.amount, b.payment_status,
+              b.created_at,
               CASE WHEN b.status IN ('accepted','inride','completed') THEN d.NAME  ELSE NULL END AS driver_name,
               CASE WHEN b.status IN ('accepted','inride','completed') THEN d.MOBILE ELSE NULL END AS driver_phone
        FROM bookings b LEFT JOIN DRIVERS d ON b.driver_id = d.ID WHERE b.id = ? LIMIT 1`, [id]
@@ -273,7 +492,6 @@ app.put("/api/bookings/:id", async (req, res) => {
         [driver, newStatus, isOfflineAssign ? 1 : 0, id]
       );
       if (newStatus === "completed") {
-        // Driver goes back to offline on admin complete
         await db.promise().query("UPDATE DRIVERS SET STATUS = 'offline', ENGAGED = 'No' WHERE ID = ?", [driver]);
       } else if (newStatus === "accepted" || newStatus === "inride") {
         await db.promise().query("UPDATE DRIVERS SET STATUS = 'inride', ENGAGED = 'Yes' WHERE ID = ?", [driver]);
@@ -281,7 +499,6 @@ app.put("/api/bookings/:id", async (req, res) => {
         await db.promise().query("UPDATE DRIVERS SET STATUS = 'assigned' WHERE ID = ?", [driver]);
       }
     } else if (status === "completed") {
-      // Admin manually completing with no driver in body — fetch from DB
       const [rows] = await db.promise().query("SELECT driver_id FROM bookings WHERE id = ?", [id]);
       await db.promise().query("UPDATE bookings SET status = 'completed' WHERE id = ?", [id]);
       if (rows.length && rows[0].driver_id) {
@@ -457,51 +674,21 @@ app.post("/api/complete-ride", async (req, res) => {
 
 app.post("/api/completes-ride", async (req, res) => {
   const { bookingId, driverId, amount, ride_hours, ride_minutes } = req.body;
-
   try {
     const [settings] = await db.promise()
       .query("SELECT base_hours, base_fare, extra_per_hr FROM master_settings WHERE id = 1")
       .catch(() => [[]]);
-
     const cfg = settings[0] || {};
-
     if (amount != null) {
       await db.promise().query(
-        `UPDATE bookings 
-         SET status='completed', 
-             ride_hours=?, 
-             ride_minutes=?, 
-             amount=?, 
-             base_hours_used=?, 
-             base_fare_used=?, 
-             extra_per_hr_used=?, 
-             payment_status='pending' 
-         WHERE id=?`,
-        [
-          ride_hours ?? 0,
-          ride_minutes ?? 0,
-          amount,
-          cfg.base_hours ?? null,
-          cfg.base_fare ?? null,
-          cfg.extra_per_hr ?? null,
-          bookingId
-        ]
+        `UPDATE bookings SET status='completed', ride_hours=?, ride_minutes=?, amount=?, base_hours_used=?, base_fare_used=?, extra_per_hr_used=?, payment_status='pending' WHERE id=?`,
+        [ride_hours ?? 0, ride_minutes ?? 0, amount, cfg.base_hours ?? null, cfg.base_fare ?? null, cfg.extra_per_hr ?? null, bookingId]
       );
     } else {
-      await db.promise().query(
-        "UPDATE bookings SET status='completed' WHERE id=?",
-        [bookingId]
-      );
+      await db.promise().query("UPDATE bookings SET status='completed' WHERE id=?", [bookingId]);
     }
-
-    // ✅ ONLY free driver, don't change status
-    await db.promise().query(
-      "UPDATE DRIVERS SET STATUS='offline', ENGAGED='No' WHERE ID=?",
-      [driverId]
-    );
-
+    await db.promise().query("UPDATE DRIVERS SET STATUS='offline', ENGAGED='No' WHERE ID=?", [driverId]);
     res.json({ success: true });
-
   } catch (err) {
     console.error("Complete ride error:", err);
     res.status(500).json({ success: false, message: err.message });
@@ -684,7 +871,9 @@ app.post("/api/bookings/:id/preferred-response", async (req, res) => {
     }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
-});// ═══ MASTER SETTINGS ═══
+});
+
+// ═══ MASTER SETTINGS ═══
 app.get("/api/admin/master-settings", async (req, res) => {
   try {
     const [rows] = await db.promise().query("SELECT id, logo_url, logo_name, base_hours, base_fare, extra_per_hr, outstation_extra, updated_at FROM master_settings WHERE id = 1");
@@ -748,19 +937,6 @@ app.post("/api/admin/master-settings", logoUpload.single("logo"), async (req, re
     });
   } catch (err) { res.status(500).json({ message: "Failed to save settings" }); }
 });
-
-app.delete("/api/admin/master-settings/logo", async (req, res) => {
-  try {
-    const [rows] = await db.promise().query("SELECT logo_url FROM master_settings WHERE id = 1");
-    if (rows.length && rows[0].logo_url) {
-      const filePath = path.join(__dirname, "uploads/logos", path.basename(rows[0].logo_url));
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    }
-    await db.promise().query("UPDATE master_settings SET logo_url = NULL, logo_name = NULL WHERE id = 1");
-    res.json({ success: true, message: "Logo removed successfully" });
-  } catch (err) { res.status(500).json({ message: "Failed to remove logo" }); }
-});
-
 
 app.delete("/api/admin/master-settings/logo", async (req, res) => {
   try {

@@ -151,12 +151,12 @@ export default function MasterSettings() {
     <div>
 
       {/* ── Page Header ── */}
-      <div className="page-header">
+      <div className="page-header page-header-mobile">
         <div className="page-header-left">
           <h1 className="page-title">Master Settings</h1>
           <p className="page-subtitle">App logo &amp; payment configuration</p>
         </div>
-        <div className="page-header-right">
+        <div className="page-header-right page-header-right-mobile">
           <button className="btn btn-ghost btn-sm" onClick={fetchSettings}>↻ Refresh</button>
           <button className="btn btn-primary" onClick={openEdit}>✏️ Edit Settings</button>
         </div>

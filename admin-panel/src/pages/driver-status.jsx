@@ -59,6 +59,7 @@ export default function DriverStats() {
   const [sortBy,        setSortBy]        = useState("totalRides");
   const [sortDir,       setSortDir]       = useState("desc");
   const [filterStatus,  setFilterStatus]  = useState("all");
+  const [filterRegion,  setFilterRegion]  = useState("all");
 
   const [showRidesModal, setShowRidesModal] = useState(false);
   const [ridesData,      setRidesData]      = useState([]);
@@ -159,14 +160,16 @@ export default function DriverStats() {
     avgRating:   Number(allStats[d.id]?.avgRating)   || 0,
     ratingCount: Number(allStats[d.id]?.ratingCount) || 0,
   }));
-
   const filtered = enriched.filter((d) => {
     const matchSearch =
       (d.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
       String(d.mobile ?? "").includes(search) ||
-      (d.driver_no ?? "").toLowerCase().includes(search.toLowerCase());
+      (d.driver_no ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (d.region ?? "").toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === "all" || d.status?.toLowerCase() === filterStatus;
-    return matchSearch && matchStatus;
+    const matchRegion = filterRegion === "all" || (d.region ?? "").toLowerCase() === filterRegion;
+    return matchSearch && matchStatus && matchRegion;
+    console.log(d);
   });
 
   const sorted = [...filtered].sort((a, b) => {
@@ -199,12 +202,12 @@ export default function DriverStats() {
 
       <div className={`dsp-left${selected ? " dsp-left-narrow" : ""}`}>
 
-        <div className="page-header">
+        <div className="page-header page-header-mobile">
           <div className="page-header-left">
             <h1 className="page-title">Driver Performance</h1>
             <p className="page-subtitle">Rides, income, ratings and reviews for every driver</p>
           </div>
-          <div className="page-header-right">
+          <div className="page-header-right page-header-right-mobile">
             <button className="btn btn-ghost btn-sm" onClick={fetchAll}>↻ Refresh</button>
             <button className="btn btn-primary btn-sm" onClick={() => navigate("/driver-dashboard")}>🚗 Manage Drivers</button>
           </div>

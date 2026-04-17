@@ -115,6 +115,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
   const [darea,           setDArea]           = useState(initialDrop     || "");
   const [triptype,        setTriptype]        = useState(initialTriptype || "");
   const [preferredDriver, setPreferredDriver] = useState(null); // { id, name, status }
+  const [notes,           setNotes]           = useState("");
 
   const [suggestions,     setSuggestions]     = useState([]);
   const [dropSuggestions, setDropSuggestions] = useState([]);
@@ -144,7 +145,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
       setName(""); setPhone(""); setArea("");
       setDArea(initialDrop || "");
       setTriptype(initialTriptype || "");
-      setPreferredDriver(null);
+      setPreferredDriver(null); setNotes("");
       setSuggestions([]); setDropSuggestions([]);
       setErrors({}); setPickupCoords(null); setSubmitting(false);
       if (miniMap.current) { miniMap.current.remove(); miniMap.current = null; }
@@ -278,6 +279,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
         triptype,
         bookingphnno,
         preferred_driver_id: preferredDriver?.id ?? null,  // ← sent to backend
+        notes:               notes.trim() || null,
       };
 
       const res = await axios.post(`${BASE_URL}/api/trip-booking`, payload);
@@ -423,6 +425,20 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
         </div>
         {errors.triptype && <p style={st.err}>{errors.triptype}</p>}
 
+        {/* Notes */}
+        <label style={st.label}>Additional Notes (Optional)</label>
+        <textarea
+          style={st.textarea}
+          placeholder="Any special instructions, landmarks, or additional details..."
+          value={notes}
+          onChange={e=>setNotes(e.target.value)}
+          rows={3}
+          maxLength={500}
+        />
+        <div style={{fontSize:11,color:"#64748B",textAlign:"right",marginTop:2}}>
+          {notes.length}/500
+        </div>
+
         {/* ── Recommended Drivers (selectable pill chips) ── */}
         <RecommendedDrivers
           phone={phone}
@@ -453,6 +469,7 @@ const st = {
   label:         { display: "block", fontSize: 13, fontWeight: 600, color: "#64748B", margin: "10px 0 4px" },
   input:         { width: "100%", boxSizing: "border-box", backgroundColor: "#F8FAFC", border: "1.5px solid #E2E8F0", borderRadius: 14, padding: "12px 14px", fontSize: 14, color: "#1E293B", outline: "none" },
   inputErr:      { borderColor: "#EF4444" },
+  textarea:      { width: "100%", boxSizing: "border-box", backgroundColor: "#F8FAFC", border: "1.5px solid #E2E8F0", borderRadius: 14, padding: "12px 14px", fontSize: 14, color: "#1E293B", outline: "none", resize: "vertical", fontFamily: "inherit" },
   err:           { margin: "4px 0 0", fontSize: 12, color: "#EF4444" },
   inputRow:      { display: "flex", alignItems: "center", gap: 8 },
   inputInner:    { flex: 1, boxSizing: "border-box", backgroundColor: "#F8FAFC", border: "1.5px solid #E2E8F0", borderRadius: 14, padding: "12px 14px", fontSize: 14, color: "#1E293B", outline: "none" },
