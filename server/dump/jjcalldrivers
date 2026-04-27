@@ -101,7 +101,7 @@ CREATE TABLE bookings (
   pickup_lat            DECIMAL(10,7) NULL,
   pickup_lng            DECIMAL(10,7) NULL,
   drop_location         VARCHAR(255)  NULL,
-
+  
   driver_id             INT           NULL,
   recommended_driver_id INT           NULL DEFAULT NULL,
 
