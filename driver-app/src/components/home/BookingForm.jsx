@@ -129,9 +129,16 @@ const TimePicker = ({ selectedDate, onChange }) => {
 
 /* ── Schedule Picker ── */
 const SchedulePicker = ({ scheduledAt, onChange }) => {
-  const [mode, setMode] = useState("now");
+  const [mode, setMode] = useState("later");
 
-  const switchNow = () => { setMode("now"); onChange(null); };
+  useEffect(() => {
+    if (!scheduledAt) {
+      const d = new Date();
+      d.setMinutes(Math.ceil(d.getMinutes() / 30) * 30 + 30, 0, 0);
+      onChange(d);
+    }
+  }, []);
+
   const switchLater = () => {
     setMode("later");
     if (!scheduledAt) {
@@ -155,37 +162,16 @@ const SchedulePicker = ({ scheduledAt, onChange }) => {
 
   return (
     <div style={sc.wrap}>
-      <div style={sc.toggleRow}>
-        <button type="button"
-          style={{ ...sc.btn, ...(mode === "now" ? sc.btnNow : {}) }}
-          onClick={switchNow}>
-          <span style={{ fontSize: 16 }}>⚡</span><span>Ride Now</span>
-        </button>
-        <button type="button"
-          style={{ ...sc.btn, ...(mode === "later" ? sc.btnSched : {}) }}
-          onClick={switchLater}>
-          <span style={{ fontSize: 16 }}>📅</span><span>Schedule</span>
-        </button>
-      </div>
-
-      {mode === "now" && (
-        <div style={sc.nowBadge}>
-          <span>✅</span>
-          <span style={sc.nowTxt}>Driver will be assigned immediately</span>
-        </div>
-      )}
-
-      {mode === "later" && (
-        <div style={sc.laterWrap}>
-          {/* Cancellation Policy Notice */}
-          <div style={sc.policyBox}>
-            <span style={{ fontSize: 16 }}>ℹ️</span>
-            <div style={{ flex: 1 }}>
-              <p style={sc.policyTitle}>Cancellation Policy</p>
-              <p style={sc.policyLine}>✅ <strong>Free cancellation</strong> if cancelled <strong>more than 1 hour</strong> before ride</p>
-              <p style={sc.policyLine}>💸 <strong>₹200 cancellation fee</strong> if cancelled <strong>within 1 hour</strong> of ride time</p>
-            </div>
+      <div style={sc.laterWrap}>
+        {/* Cancellation Policy Notice */}
+        <div style={sc.policyBox}>
+          <span style={{ fontSize: 16 }}>ℹ️</span>
+          <div style={{ flex: 1 }}>
+            <p style={sc.policyTitle}>Cancellation Policy</p>
+            <p style={sc.policyLine}>✅ <strong>Free cancellation</strong> if cancelled <strong>more than 1 hour</strong> before ride</p>
+            <p style={sc.policyLine}>💸 <strong>₹200 cancellation fee</strong> if cancelled <strong>within 1 hour</strong> of ride time</p>
           </div>
+        </div>
 
           {scheduledAt && (
             <div style={sc.pill}>
@@ -207,8 +193,7 @@ const SchedulePicker = ({ scheduledAt, onChange }) => {
             <div style={sc.divider} />
             <TimePicker selectedDate={scheduledAt} onChange={onChange} />
           </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 };
@@ -965,6 +950,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
   const [area,setArea]=useState("");
   const [darea,setDArea]=useState(initialDrop||"");
   const [triptype,setTriptype]=useState(initialTriptype||"");
+  const [carType,setCarType]=useState("");
   const [preferredDriver,setPreferredDriver]=useState(null);
   const [scheduledAt,setScheduledAt]=useState(null);
   const [notes,setNotes]=useState("");
@@ -983,7 +969,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
   useEffect(()=>{
     if(!visible){
       setName("");setPhone("");setArea("");setDArea(initialDrop||"");setTriptype(initialTriptype||"");
-      setPreferredDriver(null);setScheduledAt(null);setNotes("");setSuggestions([]);setDropSuggestions([]);
+      setCarType("");setPreferredDriver(null);setScheduledAt(null);setNotes("");setSuggestions([]);setDropSuggestions([]);
       setErrors({});setPickupCoords(null);setSubmitting(false);setBookedId(null);
       if(miniMap.current){miniMap.current.remove();miniMap.current=null;}
     }
@@ -1031,6 +1017,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
     if(!area.trim())e.area="Pickup location required";
     if(!darea.trim())e.darea="Drop location required";
     if(!triptype)e.triptype="Select trip type";
+    if(!carType)e.carType="Enter car type";
     if(scheduledAt && scheduledAt < new Date(Date.now()+29*60*1000))
       e.schedule="Schedule must be at least 30 minutes from now";
     setErrors(e);return Object.keys(e).length===0;
@@ -1044,7 +1031,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
       const res=await axios.post(`${BASE_URL}/api/trip-booking`,{
         name,phone,
         pickup:area,pickupLat:pickupCoords?.lat??null,pickupLng:pickupCoords?.lng??null,
-        drop:darea,triptype,bookingphnno,
+        drop:darea,triptype,carType,bookingphnno,
         recommended_driver_id:preferredDriver?.id??null,
         scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,
         is_scheduled: !!scheduledAt,
@@ -1060,7 +1047,7 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
 
   const handleRebook=()=>{
     setBookedId(null);setName("");setArea("");setDArea(initialDrop||"");setTriptype(initialTriptype||"");
-    setPreferredDriver(null);setScheduledAt(null);setNotes("");setSuggestions([]);setDropSuggestions([]);
+    setCarType("");setPreferredDriver(null);setScheduledAt(null);setNotes("");setSuggestions([]);setDropSuggestions([]);
     setErrors({});setPickupCoords(null);setSubmitting(false);
     if(miniMap.current){miniMap.current.remove();miniMap.current=null;}
   };
@@ -1145,6 +1132,10 @@ const BookingForm = ({ visible, onClose, onSuccess, initialDrop, initialTriptype
           ))}
         </div>
         {errors.triptype&&<p style={st.err}>{errors.triptype}</p>}
+
+        <label style={st.label}>Car Type</label>
+        <input style={{...st.input,...(errors.carType?st.inputErr:{})}} placeholder="Enter car type (e.g., Sedan, SUV)" value={carType} onChange={e=>setCarType(e.target.value)}/>
+        {errors.carType&&<p style={st.err}>{errors.carType}</p>}
 
         <label style={st.label}>Additional Notes (Optional)</label>
         <textarea
@@ -1304,6 +1295,7 @@ const st={
   input:{width:"100%",boxSizing:"border-box",backgroundColor:"#F8FAFC",border:"1.5px solid #E2E8F0",borderRadius:14,padding:"12px 14px",fontSize:14,color:"#1E293B",outline:"none"},
   inputErr:{borderColor:"#EF4444"},
   textarea:{width:"100%",boxSizing:"border-box",backgroundColor:"#F8FAFC",border:"1.5px solid #E2E8F0",borderRadius:14,padding:"12px 14px",fontSize:14,color:"#1E293B",outline:"none",resize:"vertical",fontFamily:"inherit"},
+  select:{width:"100%",boxSizing:"border-box",backgroundColor:"#F8FAFC",border:"1.5px solid #E2E8F0",borderRadius:14,padding:"12px 14px",fontSize:14,color:"#1E293B",outline:"none",cursor:"pointer"},
   err:{margin:"4px 0 0",fontSize:12,color:"#EF4444"},
   inputRow:{display:"flex",alignItems:"center",gap:8},
   inputInner:{flex:1,boxSizing:"border-box",backgroundColor:"#F8FAFC",border:"1.5px solid #E2E8F0",borderRadius:14,padding:"12px 14px",fontSize:14,color:"#1E293B",outline:"none"},

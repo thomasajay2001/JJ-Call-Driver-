@@ -166,7 +166,7 @@ app.post("/api/verify-otp", (req, res) => {
 // ─── TRIP BOOKING ────────────────────────────
 app.post("/api/trip-booking", async (req, res) => {
   try {
-    const { name, phone, pickup, pickupLat, pickupLng, drop, bookingphnno, triptype, recommended_driver_id, scheduled_at, is_scheduled } = req.body;
+    const { name, phone, pickup, pickupLat, pickupLng, drop, bookingphnno, triptype, carType, recommended_driver_id, scheduled_at, is_scheduled } = req.body;
     if (!name || !phone || !pickup || !drop || !bookingphnno)
       return res.status(400).json({ success: false, error: "All fields are required" });
     const scheduledDate = scheduled_at ? new Date(scheduled_at) : null;
@@ -175,8 +175,8 @@ app.post("/api/trip-booking", async (req, res) => {
     const isScheduledBool = !!(is_scheduled && scheduledDate);
     const status = isScheduledBool ? "scheduled" : "pending";
     const [result] = await db.promise().query(
-      `INSERT INTO bookings (customer_name, customer_mobile, booking_phnno, pickup, pickup_lat, pickup_lng, drop_location, triptype, status, recommended_driver_id, is_scheduled, scheduled_at, scheduled_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, phone, bookingphnno, pickup, pickupLat || null, pickupLng || null, drop, triptype || "local", status, recommended_driver_id || null, isScheduledBool ? 1 : 0, scheduledDate, isScheduledBool ? "pending" : null]
+      `INSERT INTO bookings (customer_name, customer_mobile, booking_phnno, pickup, pickup_lat, pickup_lng, drop_location, triptype, car_type, status, recommended_driver_id, is_scheduled, scheduled_at, scheduled_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, phone, bookingphnno, pickup, pickupLat || null, pickupLng || null, drop, triptype || "local", carType || null, status, recommended_driver_id || null, isScheduledBool ? 1 : 0, scheduledDate, isScheduledBool ? "pending" : null]
     );
     if (!isScheduledBool && global.io) {
       global.io.to("admins").emit("newBooking", { bookingId: result.insertId, name, phone, pickup, drop, triptype: triptype || "local" });
@@ -233,7 +233,7 @@ app.post("/api/bookings/:id/cancel-scheduled", async (req, res) => {
 // Only allowed when status is: pending, scheduled, wait5, wait10, wait30, allbusy, completed
 app.put("/api/bookings/:id/edit", async (req, res) => {
   const { id } = req.params;
-  const { customer_name, customer_mobile, pickup, drop_location, triptype, scheduled_at } = req.body;
+  const { customer_name, customer_mobile, pickup, drop_location, triptype, carType, scheduled_at } = req.body;
 
   try {
     const [rows] = await db.promise().query(
@@ -285,6 +285,11 @@ app.put("/api/bookings/:id/edit", async (req, res) => {
       fields.push("triptype = ?");
       values.push(triptype);
     }
+    if (carType !== undefined) {
+      const ct = safeStr(carType, 50);
+      fields.push("car_type = ?");
+      values.push(ct);
+    }
     if (scheduled_at !== undefined) {
       if (!booking.is_scheduled) {
         return res.status(400).json({ success: false, message: "Cannot set scheduled_at on a non-scheduled booking" });
@@ -312,7 +317,7 @@ app.put("/api/bookings/:id/edit", async (req, res) => {
 
     // Return updated booking
     const [updated] = await db.promise().query(
-      "SELECT id, customer_name, customer_mobile, pickup, drop_location, triptype, status, scheduled_at, is_scheduled FROM bookings WHERE id = ?",
+      "SELECT id, customer_name, customer_mobile, pickup, drop_location, triptype, car_type, status, scheduled_at, is_scheduled FROM bookings WHERE id = ?",
       [id]
     );
     return res.json({ success: true, message: "Booking updated successfully", booking: updated[0] });

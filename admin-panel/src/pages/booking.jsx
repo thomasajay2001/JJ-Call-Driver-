@@ -344,7 +344,9 @@ export default function Booking() {
       setAllDrivers(all);
       setDrivers(all.filter((d) => d.status?.toLowerCase() === "online" && d.payactive?.toLowerCase() === "active"));
       setOfflineDrivers(all.filter((d) => d.status?.toLowerCase() === "offline" && d.payactive?.toLowerCase() === "active"));
-    } catch {}
+    } catch (error) {
+      console.error("Error fetching drivers:", error);
+    }
   };
 
   const fetchBookings = async () => {
@@ -1180,8 +1182,9 @@ export default function Booking() {
                             const trips  = completedByDriver[String(d.id)] || 0;
                             return (
                               <option key={d.id} value={d.id}>
-                                {isPref?"⭐ ":""}{d.name||d.NAME} — {d.car_type||"N/A"} (ID:{d.id}) · {trips} trip{trips!==1?"s completed":""}
+                                {isPref?"⭐ ":""}{d.name||d.NAME} — {d.car_type||"N/A"} (ID:{d.driver_no}) · {trips} trip{trips!==1?"s completed":""}
                               </option>
+                        
                             );
                           })}
                         </select>
