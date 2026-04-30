@@ -195,7 +195,7 @@ localStorage.setItem("role", "customer");
             style={{ ...styles.toggleBtn, ...(loginType === "user" ? styles.toggleActive : {}) }}
             onClick={switchToUser}
           >
-            User Login
+            Customer Login
           </button>
           <button
             style={{ ...styles.toggleBtn, ...(loginType === "driver" ? styles.toggleActive : {}) }}
