@@ -33,6 +33,7 @@ const RideCompletionModal = ({ visible, ride, onConfirm, onClose }) => {
   const [baseHours,   setBaseHours]   = useState(4);
   const [baseFare,    setBaseFare]    = useState(450);
   const [extraPerHr,  setExtraPerHr]  = useState(50);
+  const [outstationExtra, setOutstationExtra] = useState(0);
   const [ratesLoading, setRatesLoading] = useState(false);
 
   const [hours,   setHours]   = useState(4);
@@ -54,6 +55,7 @@ const RideCompletionModal = ({ visible, ride, onConfirm, onClose }) => {
         if (data.base_hours   != null) setBaseHours(Number(data.base_hours));
         if (data.base_fare    != null) setBaseFare(Number(data.base_fare));
         if (data.extra_per_hr != null) setExtraPerHr(Number(data.extra_per_hr));
+        if (data.outstation_extra != null) setOutstationExtra(Number(data.outstation_extra));
         /* reset hours spinner to the configured base */
         setHours(data.base_hours != null ? Number(data.base_hours) : 4);
         setMinutes(0);
@@ -71,7 +73,9 @@ const RideCompletionModal = ({ visible, ride, onConfirm, onClose }) => {
   if (!visible) return null;
 
   /* ── derived values ── */
+  const isOutstation = ride?.triptype === "outstation";
   const totalFare  = calcFare(hours, minutes, baseHours, baseFare, extraPerHr);
+  const finalAmount = isOutstation ? totalFare + outstationExtra : totalFare;
   const extraMins  = Math.max(0, hours * 60 + minutes - baseHours * 60);
   const extraHours = Math.ceil(extraMins / 60);
   const isExtra    = extraMins > 0;
@@ -82,7 +86,7 @@ const RideCompletionModal = ({ visible, ride, onConfirm, onClose }) => {
   };
 
   const handleConfirm = () => {
-    onConfirm({ hours, minutes, totalAmount: totalFare });
+    onConfirm({ hours, minutes, totalAmount: finalAmount });
   };
 
   /* ── presets based on dynamic base hours ── */
@@ -222,6 +226,7 @@ const RideCompletionModal = ({ visible, ride, onConfirm, onClose }) => {
                 <span style={{ fontSize: 16 }}>💰</span>
                 <span style={s.ratesText}>
                   ₹{baseFare} for {baseHours} hr{baseHours !== 1 ? "s" : ""} &nbsp;·&nbsp; +₹{extraPerHr}/hr extra
+                  {isOutstation && outstationExtra > 0 && ` · +₹${outstationExtra} outstation`}
                 </span>
                 <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 700, color: "#22C55E", background: "#DCFCE7", padding: "2px 8px", borderRadius: 20 }}>
                   LIVE RATES
@@ -280,10 +285,16 @@ const RideCompletionModal = ({ visible, ride, onConfirm, onClose }) => {
                         <span style={s.fareVal}>₹{extraHours * extraPerHr}</span>
                       </div>
                     )}
+                    {isOutstation && outstationExtra > 0 && (
+                      <div style={s.fareRow}>
+                        <span style={s.fareKey}>🗺️ Outstation Extra</span>
+                        <span style={s.fareVal}>₹{outstationExtra}</span>
+                      </div>
+                    )}
                     <div style={s.fareDivider} />
                     <div style={s.fareRow}>
                       <span style={s.fareTotalLabel}>Total Fare</span>
-                      <span style={s.fareTotal}>₹{totalFare}</span>
+                      <span style={s.fareTotal}>₹{finalAmount}</span>
                     </div>
                   </div>
 
@@ -305,7 +316,7 @@ const RideCompletionModal = ({ visible, ride, onConfirm, onClose }) => {
                     <div style={s.summaryTitle}>Ride Duration</div>
                     <div style={s.summaryDur}>{fmtDuration(hours, minutes)}</div>
                     <div style={s.summaryAmtLbl}>Total Fare</div>
-                    <div style={s.summaryAmt}>₹{totalFare}</div>
+                    <div style={s.summaryAmt}>₹{finalAmount}</div>
 
                     <div style={s.summaryBreak}>
                       <div style={s.breakRow}>
@@ -320,10 +331,16 @@ const RideCompletionModal = ({ visible, ride, onConfirm, onClose }) => {
                           <span style={s.breakVal}>₹{extraHours * extraPerHr}</span>
                         </div>
                       )}
+                      {isOutstation && outstationExtra > 0 && (
+                        <div style={s.breakRow}>
+                          <span style={s.breakKey}>🗺️ Outstation Extra</span>
+                          <span style={s.breakVal}>₹{outstationExtra}</span>
+                        </div>
+                      )}
                       <div style={{ borderTop: "1px solid #BBF7D0", margin: "6px 0" }} />
                       <div style={s.breakRow}>
                         <span style={{ ...s.breakKey, fontWeight: 700 }}>Grand Total</span>
-                        <span style={{ ...s.breakVal, fontSize: 14 }}>₹{totalFare}</span>
+                        <span style={{ ...s.breakVal, fontSize: 14 }}>₹{finalAmount}</span>
                       </div>
                     </div>
                   </div>

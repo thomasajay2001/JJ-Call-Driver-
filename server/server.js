@@ -137,17 +137,48 @@ app.post("/api/support/update-credentials", upload.none(), (req, res) => {
 app.post("/api/send-otp", (req, res) => {
   const { phone } = req.body;
   if (!phone || !/^[6-9]\d{9}$/.test(phone)) return res.status(400).json({ success: false, message: "Invalid phone number" });
+
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   otpStore[phone] = { otp, expiresAt: Date.now() + OTP_EXPIRY_MS };
+
   db.query("INSERT IGNORE INTO CUSTOMERS (PHONE) VALUES (?)", [phone], async (err) => {
     if (err) return res.status(500).json({ success: false, message: "Database error" });
+
     const apiKey = process.env.FAST2SMS_API_KEY;
-    if (!apiKey) { console.log(`[TEST MODE] OTP for ${phone}: ${otp}`); return res.json({ success: true, message: "OTP generated (test mode)", otp }); }
+
+    // If no API key, use test mode
+    if (!apiKey || apiKey === 'your_fast2sms_api_key_here') {
+      console.log(`[TEST MODE] OTP for ${phone}: ${otp}`);
+      return res.json({ success: true, message: "OTP generated (test mode)", otp });
+    }
+
     try {
-      const smsRes = await axios.post("https://www.fast2sms.com/dev/bulkV2", { variables_values: otp, route: "otp", numbers: phone }, { headers: { authorization: apiKey, "Content-Type": "application/json" } });
-      if (!smsRes.data.return) return res.json({ success: true, message: `SMS unavailable. OTP: ${otp}`, otp });
-      return res.json({ success: true, message: "OTP sent to your mobile number" });
-    } catch { return res.json({ success: true, message: `SMS unavailable. OTP: ${otp}`, otp }); }
+      // Fast2SMS API call
+      const smsRes = await axios.post("https://www.fast2sms.com/dev/bulkV2", {
+        route: "otp",
+        variables_values: otp,
+        numbers: phone
+      }, {
+        headers: {
+          "authorization": apiKey,
+          "Content-Type": "application/json"
+        }
+      });
+
+      console.log(`SMS Response for ${phone}:`, smsRes.data);
+
+      // Check if SMS was sent successfully
+      if (smsRes.data.return === true) {
+        return res.json({ success: true, message: "OTP sent to your mobile number" });
+      } else {
+        console.error(`SMS failed for ${phone}:`, smsRes.data);
+        return res.json({ success: true, message: `SMS failed. OTP: ${otp}`, otp });
+      }
+
+    } catch (error) {
+      console.error(`SMS Error for ${phone}:`, error.response?.data || error.message);
+      return res.json({ success: true, message: `SMS service error. OTP: ${otp}`, otp });
+    }
   });
 });
 
@@ -161,6 +192,77 @@ app.post("/api/verify-otp", (req, res) => {
   if (String(record.otp) !== String(otp.trim())) return res.status(400).json({ success: false, message: "Invalid OTP. Try again." });
   delete otpStore[phone];
   return res.json({ success: true, message: "OTP verified successfully" });
+});
+
+// ─── TEST SMS ENDPOINT ──────────────────────
+app.post("/api/test-sms", async (req, res) => {
+  const { phone } = req.body;
+  if (!phone || !/^[6-9]\d{9}$/.test(phone)) {
+    return res.status(400).json({ success: false, message: "Valid phone number required" });
+  }
+
+  const apiKey = process.env.FAST2SMS_API_KEY;
+  if (!apiKey || apiKey === 'your_fast2sms_api_key_here') {
+    return res.json({
+      success: false,
+      message: "Fast2SMS API key not configured",
+      test_mode: true,
+      api_key_configured: false
+    });
+  }
+
+  try {
+    const testOtp = "123456"; // Test OTP
+    const smsRes = await axios.post("https://www.fast2sms.com/dev/bulkV2", {
+      route: "otp",
+      variables_values: testOtp,
+      numbers: phone
+    }, {
+      headers: {
+        "authorization": apiKey,
+        "Content-Type": "application/json"
+      }
+    });
+
+    console.log(`Test SMS Response for ${phone}:`, smsRes.data);
+
+    return res.json({
+      success: true,
+      message: "Test SMS sent successfully",
+      response: smsRes.data,
+      test_otp: testOtp
+    });
+
+  } catch (error) {
+    console.error(`Test SMS Error for ${phone}:`, error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Test SMS failed",
+      error: error.response?.data || error.message
+    });
+  }
+});
+
+// ─── DRIVER OTP VERIFICATION ─────────────────
+app.post("/api/drivers/verify-otp", (req, res) => {
+  const { phone, otp } = req.body;
+  if (!phone || !otp) return res.status(400).json({ success: false, message: "Phone and OTP required" });
+  
+  // Verify OTP first
+  const record = otpStore[phone];
+  if (!record) return res.status(400).json({ success: false, message: "OTP not found. Request a new one." });
+  if (Date.now() > record.expiresAt) { delete otpStore[phone]; return res.status(400).json({ success: false, message: "OTP expired. Request a new one." }); }
+  if (String(record.otp) !== String(otp.trim())) return res.status(400).json({ success: false, message: "Invalid OTP. Try again." });
+  delete otpStore[phone];
+  
+  // Find driver by phone number
+  db.query("SELECT ID as id, NAME as name, MOBILE as mobile, DRIVER_NO as driver_no, STATUS as status FROM DRIVERS WHERE MOBILE = ?", [phone], (err, results) => {
+    if (err) return res.status(500).json({ success: false, message: "Database error" });
+    if (!results || results.length === 0) return res.status(404).json({ success: false, message: "Driver not found with this phone number" });
+    
+    const driver = results[0];
+    return res.json({ success: true, message: "OTP verified successfully", driver });
+  });
 });
 
 // ─── TRIP BOOKING ────────────────────────────

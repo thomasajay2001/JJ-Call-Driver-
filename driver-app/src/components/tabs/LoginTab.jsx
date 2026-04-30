@@ -14,8 +14,9 @@ const LoginTab = ({ onLogin }) => {
   const [otpSent, setOtpSent]  = useState(false);
 
   /* Driver login */
-  const [driverId,     setDriverId]     = useState("");
-  const [driverPhone,  setDriverPhone]  = useState("");
+  const [driverPhone,      setDriverPhone]      = useState("");
+  const [driverOtp,        setDriverOtp]        = useState("");
+  const [driverOtpSent,    setDriverOtpSent]    = useState(false);
 
   /* Feedback */
   const [message,      setMessage]      = useState("");
@@ -24,10 +25,15 @@ const LoginTab = ({ onLogin }) => {
   /* Timer */
   const RESEND_SECONDS = 30;
   const [timer, setTimer] = useState(0);
+  const [driverTimer, setDriverTimer] = useState(0);
   const timerRef = useRef(null);
+  const driverTimerRef = useRef(null);
 
   useEffect(() => {
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (driverTimerRef.current) clearInterval(driverTimerRef.current);
+    };
   }, []);
 
   const startTimer = () => {
@@ -36,6 +42,17 @@ const LoginTab = ({ onLogin }) => {
     timerRef.current = setInterval(() => {
       setTimer((prev) => {
         if (prev <= 1) { clearInterval(timerRef.current); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const startDriverTimer = () => {
+    setDriverTimer(RESEND_SECONDS);
+    if (driverTimerRef.current) clearInterval(driverTimerRef.current);
+    driverTimerRef.current = setInterval(() => {
+      setDriverTimer((prev) => {
+        if (prev <= 1) { clearInterval(driverTimerRef.current); return 0; }
         return prev - 1;
       });
     }, 1000);
@@ -92,28 +109,64 @@ localStorage.setItem("role", "customer");
     } catch { setErrorMessage("Verification failed"); }
   };
 
-  /* ─── Driver Login ─── */
-  const driverLogin = async () => {
+  /* ─── Driver OTP Login ─── */
+  const sendDriverOtp = async () => {
     clear();
-    if (!driverId.trim())        { setErrorMessage("Enter Driver ID"); return; }
-    if (driverPhone.length !== 10) { setErrorMessage("Enter 10-digit phone number"); return; }
+    if (driverPhone.length !== 10) { setErrorMessage("Please enter a valid 10-digit phone number"); return; }
     try {
-      const res = await axios.get(`${BASE_URL}/api/drivers`);
-      const list = res.data || [];
-      const driver = list.find((d) => String(d.driver_no) === String(driverId.trim()));
-      if (!driver) { setErrorMessage("Driver ID not found"); return; }
-      if (String(driver.mobile) !== String(driverPhone)) { setErrorMessage("Phone number does not match"); return; }
-      localStorage.setItem("role",       "driver");
-      localStorage.setItem("driverId",   driver.id);
-      console.log(driver.id);
-      localStorage.setItem("driverName", driver.name || driver.NAME || "");
-      onLogin && onLogin("driver");
-    } catch { setErrorMessage("Failed to login driver"); }
+      const res = await axios.post(`${BASE_URL}/api/send-otp`, { phone: driverPhone });
+      if (res.data.success) {
+        setDriverOtpSent(true);
+        startDriverTimer();
+        setMessage(res.data.otp ? `OTP: ${res.data.otp}` : "OTP sent to your mobile number!");
+      } else {
+        setErrorMessage(res.data.message || "Failed to send OTP");
+      }
+    } catch {
+      setErrorMessage("Failed to send OTP. Check your connection.");
+    }
+  };
+
+  const resendDriverOtp = async () => {
+    if (driverTimer > 0) return;
+    clear();
+    try {
+      const res = await axios.post(`${BASE_URL}/api/send-otp`, { phone: driverPhone });
+      if (res.data.success) {
+        setDriverOtp(""); startDriverTimer();
+        setMessage(res.data.otp ? `OTP: ${res.data.otp}` : "New OTP sent!");
+      } else {
+        setErrorMessage(res.data.message || "Failed to resend OTP");
+      }
+    } catch { setErrorMessage("Failed to resend OTP"); }
+  };
+
+  const verifyDriverOtp = async () => {
+    clear();
+    if (driverOtp.length !== 6) { setErrorMessage("Enter a valid 6-digit OTP"); return; }
+    try {
+      const res = await axios.post(`${BASE_URL}/api/drivers/verify-otp`, { phone: driverPhone, otp: driverOtp });
+      if (res.data.success) {
+        if (driverTimerRef.current) clearInterval(driverTimerRef.current);
+        localStorage.setItem("role",       "driver");
+        localStorage.setItem("driverId",   res.data.driver.id);
+        localStorage.setItem("driverName", res.data.driver.name || res.data.driver.NAME || "");
+        onLogin && onLogin("driver");
+      } else {
+        setErrorMessage(res.data.message || "Invalid OTP");
+      }
+    } catch { setErrorMessage("Verification failed"); }
   };
 
   const handleChangePhone = () => {
     setOtpSent(false); setOtp(""); setTimer(0);
     if (timerRef.current) clearInterval(timerRef.current);
+    clear();
+  };
+
+  const handleChangeDriverPhone = () => {
+    setDriverOtpSent(false); setDriverOtp(""); setDriverTimer(0);
+    if (driverTimerRef.current) clearInterval(driverTimerRef.current);
     clear();
   };
 
@@ -123,7 +176,11 @@ localStorage.setItem("role", "customer");
     clear();
   };
 
-  const switchToDriver = () => { setLoginType("driver"); setDriverId(""); setDriverPhone(""); clear(); };
+  const switchToDriver = () => {
+    setLoginType("driver"); setDriverPhone(""); setDriverOtpSent(false); setDriverOtp(""); setDriverTimer(0);
+    if (driverTimerRef.current) clearInterval(driverTimerRef.current);
+    clear();
+  };
 
   return (
     <div style={styles.page}>
@@ -210,28 +267,59 @@ localStorage.setItem("role", "customer");
         {/* ── DRIVER LOGIN ── */}
         {loginType === "driver" && (
           <>
-            <label style={lbl}>Driver ID</label>
-            <div style={inputWrap}>
-              <span>🪪</span>
-              <input
-                style={inp}
-                placeholder="Enter Driver ID"
-                value={driverId}
-                onChange={(e) => setDriverId(e.target.value)}
-              />
-            </div>
-            <label style={lbl}>Phone Number</label>
-            <div style={inputWrap}>
-              <span>📞</span>
-              <input
-                style={inp}
-                placeholder="10-digit number"
-                maxLength={10}
-                value={driverPhone}
-                onChange={(e) => setDriverPhone(e.target.value.replace(/\D/g, ""))}
-              />
-            </div>
-            <button style={styles.successBtn} onClick={driverLogin}>Login as Driver</button>
+            {!driverOtpSent ? (
+              <>
+                <label style={lbl}>Phone Number</label>
+                <div style={inputWrap}>
+                  <span>📞</span>
+                  <input
+                    style={inp}
+                    placeholder="Enter phone number"
+                    maxLength={10}
+                    value={driverPhone}
+                    onChange={(e) => setDriverPhone(e.target.value.replace(/\D/g, ""))}
+                  />
+                </div>
+                <button style={styles.primaryBtn} onClick={sendDriverOtp}>Send OTP</button>
+              </>
+            ) : (
+              <>
+                {/* Phone display */}
+                <div style={styles.phoneRow}>
+                  <span>📞</span>
+                  <span style={{ flex: 1, fontWeight: 600, fontSize: 14, color: "#333" }}>+91 {driverPhone}</span>
+                  <button style={styles.changeLink} onClick={handleChangeDriverPhone}>Change</button>
+                </div>
+
+                <label style={lbl}>Enter OTP</label>
+                <div style={inputWrap}>
+                  <span>🔒</span>
+                  <input
+                    style={inp}
+                    placeholder="6-digit OTP"
+                    maxLength={6}
+                    value={driverOtp}
+                    onChange={(e) => setDriverOtp(e.target.value.replace(/\D/g, ""))}
+                  />
+                </div>
+                <button style={styles.successBtn} onClick={verifyDriverOtp}>Verify & Login</button>
+
+                {/* Resend */}
+                <div style={styles.resendRow}>
+                  {driverTimer > 0 ? (
+                    <>
+                      <span style={styles.resendLabel}>Resend OTP in </span>
+                      <span style={styles.timerBadge}>00:{String(driverTimer).padStart(2, "0")}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span style={styles.resendLabel}>Didn't receive? </span>
+                      <button style={styles.resendLink} onClick={resendDriverOtp}>Resend OTP</button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
           </>
         )}
 
