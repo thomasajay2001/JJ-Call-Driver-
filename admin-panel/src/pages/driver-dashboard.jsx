@@ -73,7 +73,8 @@ export default function DriverDashboard() {
   const [badgeNo, setBadgeNo] = useState(""); const [joinDate, setJoinDate] = useState(""); const [altNo, setAltNo] = useState("");
   const [curAddress, setCurAddress] = useState(""); const [perAddress, setPerAddress] = useState(""); const [region, setRegion] = useState("");
   const [bikeStatus, setBikeStatus] = useState(""); const [driverStatus, setDriverStatus] = useState(""); const [remarks, setRemarks] = useState("");
-  const [engaged, setEngaged] = useState(""); const [licenseExpiryDate, setLicenseExpiryDate] = useState("");
+  const [engaged, setEngaged] = useState(""); const [licenseExpiryDate, setLicenseExpiryDate] = useState(""); const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [formErrors, setFormErrors] = useState({});
 
   const resetForm = () => {
@@ -82,7 +83,7 @@ export default function DriverDashboard() {
     setLicenceNo(""); setFeeDetails(""); setExperience(""); setCarType(""); setPaymentmode(""); setPayActive(""); setStatus("offline");
     setDriverNo(""); setFatherName(""); setQualification(""); setBadgeNo(""); setJoinDate(""); setAltNo("");
     setCurAddress(""); setPerAddress(""); setRegion(""); setBikeStatus(""); setDriverStatus(""); setRemarks("");
-    setEngaged(""); setLicenseExpiryDate(""); setFormErrors({});
+    setEngaged(""); setLicenseExpiryDate(""); setPassword(""); setShowPassword(false); setFormErrors({});
   };
 
   const openCreate = () => { resetForm(); setShowForm(true); };
@@ -98,6 +99,7 @@ export default function DriverDashboard() {
     setRegion(d.region || ""); setBikeStatus(d.bike_status || ""); setDriverStatus(d.driver_status || "");
     setRemarks(d.remarks || ""); setEngaged(d.engaged || "");
     setLicenseExpiryDate(d.license_expiry_date ? d.license_expiry_date.split("T")[0] : "");
+    setPassword("");
     setFormErrors({}); setShowForm(true);
   };
 
@@ -113,6 +115,7 @@ export default function DriverDashboard() {
     if (dob && new Date(dob) >= new Date()) e.dob = "DOB must be in the past";
     if (age && (isNaN(+age) || +age < 18 || +age > 80)) e.age = "Age must be 18–80";
     if (altNo && !/^\d{10}$/.test(altNo)) e.altNo = "Alternate number must be 10 digits";
+    if (password && password.trim().length < 4) e.password = "Password must be at least 4 characters";
     setFormErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -124,8 +127,9 @@ export default function DriverDashboard() {
       licenceNo, paymentmode, payactive, status: editId ? status : "offline",
       driver_no: driverNo, father_name: fatherName, qualification, badge_no: badgeNo,
       join_date: joinDate, alt_no: altNo, cur_address: curAddress, per_address: perAddress,
-      region, bike_status: bikeStatus, driver_status: driverStatus, remarks, engaged,
+      region, bike_status, driver_status, remarks, engaged,
       license_expiry_date: licenseExpiryDate,
+      password,
     };
     if (editId) await axios.put(`${BASE_URL}/api/updatedriver/${editId}`, body);
     else        await axios.post(`${BASE_URL}/api/adddrivers`, body);
@@ -563,7 +567,17 @@ export default function DriverDashboard() {
                   <ErrMsg k="altNo" />
                 </div>
                 <div className="form-field">
-                  <label className="form-label">Blood Group</label>
+                  <label className="form-label">Password {editId ? <span className="form-hint">Leave blank to keep current password</span> : <span className="form-hint">Default is 123456 if left blank</span>}</label>
+                  <div style={{ position: "relative" }}>
+                    <input type={showPassword ? "text" : "password"} className={`form-input${formErrors.password ? " form-input-error" : ""}`} placeholder={editId ? "Enter new password to update" : "Set initial password"} value={password}
+                      onChange={(e) => { setPassword(e.target.value); setFormErrors((p) => ({ ...p, password:"" })); }} style={{ paddingRight: 42 }} />
+                    <button type="button" className="profile-eye-btn" style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)" }} onClick={() => setShowPassword((v) => !v)}>
+                      {showPassword ? "🙈" : "👁️"}
+                    </button>
+                  </div>
+                  <ErrMsg k="password" />
+                </div>
+                <div className="form-field">                  <label className="form-label">Blood Group</label>
                   <select className="form-select" value={bloodgrp} onChange={(e) => setBloodgrp(e.target.value)}>
                     <option value="">Select Blood Group</option>
                     {["A+","A-","B+","B-","O+","O-","AB+","AB-"].map((b) => <option key={b}>{b}</option>)}

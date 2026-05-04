@@ -80,6 +80,7 @@ const ASSIGN_MODES = [
 /* ═══ UPCOMING PANEL ═══ */
 const UpcomingPanel = ({ bookings, onAssign }) => {
   const [collapsed, setCollapsed] = useState(true);
+  console.log(bookings);
   const future = bookings.filter((b) => {
     if (!b.is_scheduled || !b.scheduled_at) return false;
     const s = b.status?.toLowerCase();
@@ -1113,7 +1114,7 @@ export default function Booking() {
                   </div>
                 )}
 
-                {[["Customer",editBooking.name],["Mobile",editBooking.mobile],["Pickup",editBooking.pickup],["Drop",editBooking.drop||editBooking.drop_location]].map(([lbl,val]) => (
+                {[["Customer",editBooking.name],["Mobile",editBooking.mobile],["Pickup",editBooking.pickup],["Drop",editBooking.drop||editBooking.drop_location],["Vehicle Type",editBooking.vehicle||"Any"]].map(([lbl,val]) => (
                   <div key={lbl} className="form-field">
                     <label className="form-label">{lbl}</label>
                     <input value={val||"—"} readOnly className="form-input form-input-readonly" />

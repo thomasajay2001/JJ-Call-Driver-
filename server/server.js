@@ -35,7 +35,26 @@ const db = mysql.createConnection({
 
 db.connect((err) => {
   if (err) { console.error("Database connection failed:", err); }
-  else { console.log("Connected to MySQL Database"); }
+  else {
+    console.log("Connected to MySQL Database");
+    db.query("SHOW COLUMNS FROM DRIVERS LIKE 'PASSWORD'", (showErr, results) => {
+      if (showErr) {
+        console.warn("Could not verify DRIVERS.PASSWORD column:", showErr.sqlMessage || showErr.message);
+        return;
+      }
+      if (!results || results.length === 0) {
+        db.query("ALTER TABLE DRIVERS ADD COLUMN PASSWORD VARCHAR(255) DEFAULT NULL", (alterErr) => {
+          if (alterErr) {
+            console.warn("Could not add DRIVERS.PASSWORD column:", alterErr.sqlMessage || alterErr.message);
+          } else {
+            console.log("DRIVERS.PASSWORD column created");
+          }
+        });
+      } else {
+        console.log("DRIVERS.PASSWORD column is ready");
+      }
+    });
+  }
 });
 
 // ═══ MULTER — logo upload ═══
@@ -262,6 +281,40 @@ app.post("/api/drivers/verify-otp", (req, res) => {
     
     const driver = results[0];
     return res.json({ success: true, message: "OTP verified successfully", driver });
+  });
+});
+
+app.post("/api/drivers/login", (req, res) => {
+  const { phone, password } = req.body;
+  if (!phone || !password) return res.status(400).json({ success: false, message: "Phone and password are required" });
+  const mobile = safeMobile(phone);
+  if (!mobile) return res.status(400).json({ success: false, message: "Invalid phone number" });
+  db.query("SELECT ID as id, NAME as name, MOBILE as mobile, DRIVER_NO as driver_no, STATUS as status FROM DRIVERS WHERE MOBILE = ? AND PASSWORD = ?", [mobile, password.trim()], (err, results) => {
+    if (err) {
+      console.error("Driver login DB error:", err.sqlMessage || err.message);
+      return res.status(500).json({ success: false, message: "Database error", error: err.sqlMessage || err.message });
+    }
+    if (!results || results.length === 0) return res.status(400).json({ success: false, message: "Invalid phone or password" });
+    return res.json({ success: true, message: "Login successful", driver: results[0] });
+  });
+});
+
+app.post("/api/drivers/reset-password", (req, res) => {
+  const { phone, otp, newPassword } = req.body;
+  console.log("Reset-password request:", { phone, otp: otp ? "<redacted>" : undefined, hasOtp: !!otp, newPassword: newPassword ? "<provided>" : undefined });
+  if (!phone || !newPassword) return res.status(400).json({ success: false, message: "Phone and new password are required" });
+  if (String(newPassword).trim().length < 4) return res.status(400).json({ success: false, message: "New password must be at least 4 characters" });
+
+  const mobile = safeMobile(phone);
+  if (!mobile) return res.status(400).json({ success: false, message: "Invalid phone number" });
+
+  db.query("UPDATE DRIVERS SET PASSWORD = ? WHERE MOBILE = ?", [newPassword.trim(), mobile], (err, result) => {
+    if (err) {
+      console.error("Reset password DB error:", err.sqlMessage || err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+    if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Driver not found" });
+    return res.json({ success: true, message: "Password reset successfully" });
   });
 });
 
@@ -830,11 +883,12 @@ app.get("/api/customer", (req, res) => {
 
 // ─── ADD DRIVER ───────────────────────────────
 app.post("/api/adddrivers", upload.none(), (req, res) => {
-  const { name, status, paymentmode, location, experience, feeDetails, age, licenceNo, gender, car_type, lat, lng, payactive, driver_no, father_name, qualification, badge_no, alt_no, cur_address, per_address, region, bike_status, driver_status, remarks, engaged } = req.body;
+  const { name, status, paymentmode, location, experience, feeDetails, age, licenceNo, gender, car_type, lat, lng, payactive, driver_no, father_name, qualification, badge_no, alt_no, cur_address, per_address, region, bike_status, driver_status, remarks, engaged, password } = req.body;
   const mobile = safeMobile(req.body.mobile), dob = safeDate(req.body.dob), joinDate = safeDate(req.body.join_date), licExpiry = safeDate(req.body.license_expiry_date), blood = normalizeBlood(req.body.bloodgrp);
+  const passwordValue = String(password || "123456").trim();
   db.query(
-    `INSERT INTO DRIVERS (NAME,MOBILE,LOCATION,EXPERIENCE,FEES_DETAILS,DOB,BLOODGRP,AGE,GENDER,CAR_TYPE,LICENCENO,LAT,LNG,PAYMENT_METHOD,STATUS,PAYACTIVE,DRIVER_NO,FATHER_NAME,QUALIFICATION,BADGE_NO,JOIN_DATE,ALT_NO,CUR_ADDRESS,PER_ADDRESS,REGION,BIKE_STATUS,DRIVER_STATUS,REMARKS,ENGAGED,LICENSE_EXPIRY_DATE) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [safeStr(name), safeStr(mobile?.toString()), safeStr(location), safeStr(experience, 50), safeStr(feeDetails, 50), dob, blood, safeStr(age, 10), safeStr(gender, 10), safeStr(car_type, 50), safeStr(licenceNo, 50), lat || null, lng || null, safeStr(paymentmode, 50), status || "offline", safeStr(payactive, 20), safeStr(driver_no, 50), safeStr(father_name), safeStr(qualification, 100), safeStr(badge_no, 50), joinDate, safeStr(alt_no, 50), safeStr(cur_address), safeStr(per_address), safeStr(region, 100), safeStr(bike_status, 20), safeStr(driver_status, 20), safeStr(remarks), safeStr(engaged, 10) || "No", licExpiry],
+    `INSERT INTO DRIVERS (NAME,MOBILE,LOCATION,EXPERIENCE,FEES_DETAILS,DOB,BLOODGRP,AGE,GENDER,CAR_TYPE,LICENCENO,LAT,LNG,PAYMENT_METHOD,STATUS,PAYACTIVE,DRIVER_NO,FATHER_NAME,QUALIFICATION,BADGE_NO,JOIN_DATE,ALT_NO,CUR_ADDRESS,PER_ADDRESS,REGION,BIKE_STATUS,DRIVER_STATUS,REMARKS,ENGAGED,PASSWORD,LICENSE_EXPIRY_DATE) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [safeStr(name), safeStr(mobile?.toString()), safeStr(location), safeStr(experience, 50), safeStr(feeDetails, 50), dob, blood, safeStr(age, 10), safeStr(gender, 10), safeStr(car_type, 50), safeStr(licenceNo, 50), lat || null, lng || null, safeStr(paymentmode, 50), status || "offline", safeStr(payactive, 20), safeStr(driver_no, 50), safeStr(father_name), safeStr(qualification, 100), safeStr(badge_no, 50), joinDate, safeStr(alt_no, 50), safeStr(cur_address), safeStr(per_address), safeStr(region, 100), safeStr(bike_status, 20), safeStr(driver_status, 20), safeStr(remarks), safeStr(engaged, 10) || "No", safeStr(passwordValue), licExpiry],
     (err) => {
       if (err) return res.status(500).send({ message: "Database Error", detail: err.sqlMessage });
       return res.status(200).send({ message: "Driver added successfully" });
@@ -856,17 +910,22 @@ app.get("/api/drivers", (req, res) => {
 // ─── UPDATE DRIVER ────────────────────────────
 app.put("/api/updatedriver/:id", upload.none(), (req, res) => {
   const driverId = req.params.id;
-  const { name, location, paymentmode, experience, feeDetails, age, licenceNo, gender, car_type, lat, lng, status, payactive, driver_no, father_name, qualification, badge_no, alt_no, cur_address, per_address, region, bike_status, driver_status, remarks, engaged } = req.body;
+  const { name, location, paymentmode, experience, feeDetails, age, licenceNo, gender, car_type, lat, lng, status, payactive, driver_no, father_name, qualification, badge_no, alt_no, cur_address, per_address, region, bike_status, driver_status, remarks, engaged, password } = req.body;
   const mobile = safeMobile(req.body.mobile), dob = safeDate(req.body.dob), joinDate = safeDate(req.body.join_date), licExpiry = safeDate(req.body.license_expiry_date), blood = normalizeBlood(req.body.bloodgrp);
-  db.query(
-    `UPDATE DRIVERS SET NAME=?,MOBILE=?,LOCATION=?,EXPERIENCE=?,FEES_DETAILS=?,DOB=?,BLOODGRP=?,AGE=?,GENDER=?,CAR_TYPE=?,LICENCENO=?,PAYMENT_METHOD=?,LAT=?,LNG=?,STATUS=?,PAYACTIVE=?,DRIVER_NO=?,FATHER_NAME=?,QUALIFICATION=?,BADGE_NO=?,JOIN_DATE=?,ALT_NO=?,CUR_ADDRESS=?,PER_ADDRESS=?,REGION=?,BIKE_STATUS=?,DRIVER_STATUS=?,REMARKS=?,ENGAGED=?,LICENSE_EXPIRY_DATE=? WHERE ID=?`,
-    [safeStr(name), mobile, safeStr(location), safeStr(experience, 50), safeStr(feeDetails, 50), dob, blood, safeStr(age, 10), safeStr(gender, 10), safeStr(car_type, 50), safeStr(licenceNo, 50), safeStr(paymentmode, 50), lat || null, lng || null, status || "offline", safeStr(payactive, 20), safeStr(driver_no, 50), safeStr(father_name), safeStr(qualification, 100), safeStr(badge_no, 50), joinDate, safeStr(alt_no, 50), safeStr(cur_address), safeStr(per_address), safeStr(region, 100), safeStr(bike_status, 20), safeStr(driver_status, 20), safeStr(remarks), safeStr(engaged, 10) || "No", licExpiry, driverId],
-    (err, result) => {
-      if (err) return res.status(500).send({ message: "Database error", detail: err.sqlMessage });
-      if (result.affectedRows === 0) return res.status(404).send({ message: "Driver not found" });
-      return res.status(200).send({ message: "Driver updated successfully" });
-    }
-  );
+  const passwordValue = password ? String(password).trim() : null;
+  const values = [safeStr(name), mobile, safeStr(location), safeStr(experience, 50), safeStr(feeDetails, 50), dob, blood, safeStr(age, 10), safeStr(gender, 10), safeStr(car_type, 50), safeStr(licenceNo, 50), safeStr(paymentmode, 50), lat || null, lng || null, status || "offline", safeStr(payactive, 20), safeStr(driver_no, 50), safeStr(father_name), safeStr(qualification, 100), safeStr(badge_no, 50), joinDate, safeStr(alt_no, 50), safeStr(cur_address), safeStr(per_address), safeStr(region, 100), safeStr(bike_status, 20), safeStr(driver_status, 20), safeStr(remarks), safeStr(engaged, 10) || "No", licExpiry];
+  let query = `UPDATE DRIVERS SET NAME=?,MOBILE=?,LOCATION=?,EXPERIENCE=?,FEES_DETAILS=?,DOB=?,BLOODGRP=?,AGE=?,GENDER=?,CAR_TYPE=?,LICENCENO=?,PAYMENT_METHOD=?,LAT=?,LNG=?,STATUS=?,PAYACTIVE=?,DRIVER_NO=?,FATHER_NAME=?,QUALIFICATION=?,BADGE_NO=?,JOIN_DATE=?,ALT_NO=?,CUR_ADDRESS=?,PER_ADDRESS=?,REGION=?,BIKE_STATUS=?,DRIVER_STATUS=?,REMARKS=?,ENGAGED=?,LICENSE_EXPIRY_DATE=?`;
+  if (passwordValue) {
+    query += ",PASSWORD=?";
+    values.push(safeStr(passwordValue));
+  }
+  query += " WHERE ID=?";
+  values.push(driverId);
+  db.query(query, values, (err, result) => {
+    if (err) return res.status(500).send({ message: "Database error", detail: err.sqlMessage });
+    if (result.affectedRows === 0) return res.status(404).send({ message: "Driver not found" });
+    return res.status(200).send({ message: "Driver updated successfully" });
+  });
 });
 
 // ─── DELETE DRIVER ────────────────────────────

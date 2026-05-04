@@ -15,8 +15,13 @@ const LoginTab = ({ onLogin }) => {
 
   /* Driver login */
   const [driverPhone,      setDriverPhone]      = useState("");
-  const [driverOtp,        setDriverOtp]        = useState("");
-  const [driverOtpSent,    setDriverOtpSent]    = useState(false);
+  const [driverPassword,   setDriverPassword]   = useState("");
+  const [driverResetMode,  setDriverResetMode]  = useState(false);
+  const [driverNewPassword, setDriverNewPassword] = useState("");
+  const [driverConfirmPassword, setDriverConfirmPassword] = useState("");
+  const [showDriverPassword, setShowDriverPassword] = useState(false);
+  const [showDriverNewPassword, setShowDriverNewPassword] = useState(false);
+  const [showDriverConfirmPassword, setShowDriverConfirmPassword] = useState(false);
 
   /* Feedback */
   const [message,      setMessage]      = useState("");
@@ -25,14 +30,11 @@ const LoginTab = ({ onLogin }) => {
   /* Timer */
   const RESEND_SECONDS = 30;
   const [timer, setTimer] = useState(0);
-  const [driverTimer, setDriverTimer] = useState(0);
   const timerRef = useRef(null);
-  const driverTimerRef = useRef(null);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      if (driverTimerRef.current) clearInterval(driverTimerRef.current);
     };
   }, []);
 
@@ -42,17 +44,6 @@ const LoginTab = ({ onLogin }) => {
     timerRef.current = setInterval(() => {
       setTimer((prev) => {
         if (prev <= 1) { clearInterval(timerRef.current); return 0; }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
-  const startDriverTimer = () => {
-    setDriverTimer(RESEND_SECONDS);
-    if (driverTimerRef.current) clearInterval(driverTimerRef.current);
-    driverTimerRef.current = setInterval(() => {
-      setDriverTimer((prev) => {
-        if (prev <= 1) { clearInterval(driverTimerRef.current); return 0; }
         return prev - 1;
       });
     }, 1000);
@@ -109,53 +100,61 @@ localStorage.setItem("role", "customer");
     } catch { setErrorMessage("Verification failed"); }
   };
 
-  /* ─── Driver OTP Login ─── */
-  const sendDriverOtp = async () => {
+  const loginDriver = async () => {
     clear();
     if (driverPhone.length !== 10) { setErrorMessage("Please enter a valid 10-digit phone number"); return; }
+    if (!driverPassword.trim()) { setErrorMessage("Please enter your password"); return; }
     try {
-      const res = await axios.post(`${BASE_URL}/api/send-otp`, { phone: driverPhone });
+      const res = await axios.post(`${BASE_URL}/api/drivers/login`, { phone: driverPhone, password: driverPassword });
       if (res.data.success) {
-        setDriverOtpSent(true);
-        startDriverTimer();
-        setMessage(res.data.otp ? `OTP: ${res.data.otp}` : "OTP sent to your mobile number!");
+        localStorage.setItem("role", "driver");
+        localStorage.setItem("driverId", res.data.driver.id);
+        localStorage.setItem("driverName", res.data.driver.name || "");
+        onLogin && onLogin("driver");
       } else {
-        setErrorMessage(res.data.message || "Failed to send OTP");
+        setErrorMessage(res.data.message || "Invalid phone or password");
       }
     } catch {
-      setErrorMessage("Failed to send OTP. Check your connection.");
+      setErrorMessage("Login failed. Check your connection.");
     }
   };
 
-  const resendDriverOtp = async () => {
-    if (driverTimer > 0) return;
+  const resetDriverPassword = async () => {
     clear();
-    try {
-      const res = await axios.post(`${BASE_URL}/api/send-otp`, { phone: driverPhone });
-      if (res.data.success) {
-        setDriverOtp(""); startDriverTimer();
-        setMessage(res.data.otp ? `OTP: ${res.data.otp}` : "New OTP sent!");
-      } else {
-        setErrorMessage(res.data.message || "Failed to resend OTP");
-      }
-    } catch { setErrorMessage("Failed to resend OTP"); }
-  };
+    const normalizedPhone = String(driverPhone).replace(/\D/g, "");
+    const newPassword = driverNewPassword.trim();
 
-  const verifyDriverOtp = async () => {
-    clear();
-    if (driverOtp.length !== 6) { setErrorMessage("Enter a valid 6-digit OTP"); return; }
+    if (!normalizedPhone || normalizedPhone.length !== 10) {
+      setErrorMessage("Please enter a valid 10-digit phone number");
+      return;
+    }
+    if (!newPassword) {
+      setErrorMessage("Enter your new password");
+      return;
+    }
+    if (newPassword !== driverConfirmPassword) {
+      setErrorMessage("Passwords do not match");
+      return;
+    }
+
     try {
-      const res = await axios.post(`${BASE_URL}/api/drivers/verify-otp`, { phone: driverPhone, otp: driverOtp });
+      const res = await axios.post(`${BASE_URL}/api/drivers/reset-password`, {
+        phone: normalizedPhone,
+        newPassword,
+      });
       if (res.data.success) {
-        if (driverTimerRef.current) clearInterval(driverTimerRef.current);
-        localStorage.setItem("role",       "driver");
-        localStorage.setItem("driverId",   res.data.driver.id);
-        localStorage.setItem("driverName", res.data.driver.name || res.data.driver.NAME || "");
-        onLogin && onLogin("driver");
+        clear();
+        setDriverResetMode(false);
+        setDriverNewPassword("");
+        setDriverConfirmPassword("");
+        setMessage("Password reset successfully. Please login with your new password.");
       } else {
-        setErrorMessage(res.data.message || "Invalid OTP");
+        setErrorMessage(res.data.message || "Failed to reset password");
       }
-    } catch { setErrorMessage("Verification failed"); }
+    } catch (error) {
+      console.error("Reset password error:", error.response?.data || error.message);
+      setErrorMessage(error.response?.data?.message || "Password reset failed. Check your connection.");
+    }
   };
 
   const handleChangePhone = () => {
@@ -165,8 +164,7 @@ localStorage.setItem("role", "customer");
   };
 
   const handleChangeDriverPhone = () => {
-    setDriverOtpSent(false); setDriverOtp(""); setDriverTimer(0);
-    if (driverTimerRef.current) clearInterval(driverTimerRef.current);
+    setDriverPhone(""); setDriverNewPassword(""); setDriverConfirmPassword("");
     clear();
   };
 
@@ -177,8 +175,7 @@ localStorage.setItem("role", "customer");
   };
 
   const switchToDriver = () => {
-    setLoginType("driver"); setDriverPhone(""); setDriverOtpSent(false); setDriverOtp(""); setDriverTimer(0);
-    if (driverTimerRef.current) clearInterval(driverTimerRef.current);
+    setLoginType("driver"); setDriverPhone(""); setDriverPassword(""); setDriverResetMode(false); setDriverNewPassword(""); setDriverConfirmPassword("");
     clear();
   };
 
@@ -267,7 +264,7 @@ localStorage.setItem("role", "customer");
         {/* ── DRIVER LOGIN ── */}
         {loginType === "driver" && (
           <>
-            {!driverOtpSent ? (
+            {!driverResetMode ? (
               <>
                 <label style={lbl}>Phone Number</label>
                 <div style={inputWrap}>
@@ -280,44 +277,82 @@ localStorage.setItem("role", "customer");
                     onChange={(e) => setDriverPhone(e.target.value.replace(/\D/g, ""))}
                   />
                 </div>
-                <button style={styles.primaryBtn} onClick={sendDriverOtp}>Send OTP</button>
+                <label style={lbl}>Password</label>
+                <div style={{ ...inputWrap, position: "relative" }}>
+                  <span>🔒</span>
+                  <input
+                    type={showDriverPassword ? "text" : "password"}
+                    style={{ ...inp, paddingRight: 38 }}
+                    placeholder="Enter your password"
+                    value={driverPassword}
+                    onChange={(e) => setDriverPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    style={styles.eyeBtn}
+                    onClick={() => setShowDriverPassword((v) => !v)}
+                  >
+                    {showDriverPassword ? "🙈" : "👁️"}
+                  </button>
+                </div>
+                <button style={styles.primaryBtn} onClick={loginDriver}>Login</button>
+                <button style={{ ...styles.resendLink, width: "100%", textAlign: "center", marginTop: 10 }} onClick={() => { setDriverResetMode(true); clear(); }}>
+                  Forgot password?
+                </button>
               </>
             ) : (
               <>
-                {/* Phone display */}
-                <div style={styles.phoneRow}>
-                  <span>📞</span>
-                  <span style={{ flex: 1, fontWeight: 600, fontSize: 14, color: "#333" }}>+91 {driverPhone}</span>
-                  <button style={styles.changeLink} onClick={handleChangeDriverPhone}>Change</button>
-                </div>
-
-                <label style={lbl}>Enter OTP</label>
+                <label style={lbl}>Phone Number</label>
                 <div style={inputWrap}>
-                  <span>🔒</span>
+                  <span>📞</span>
                   <input
                     style={inp}
-                    placeholder="6-digit OTP"
-                    maxLength={6}
-                    value={driverOtp}
-                    onChange={(e) => setDriverOtp(e.target.value.replace(/\D/g, ""))}
+                    placeholder="Enter phone number"
+                    maxLength={10}
+                    value={driverPhone}
+                    onChange={(e) => setDriverPhone(e.target.value.replace(/\D/g, ""))}
                   />
                 </div>
-                <button style={styles.successBtn} onClick={verifyDriverOtp}>Verify & Login</button>
-
-                {/* Resend */}
-                <div style={styles.resendRow}>
-                  {driverTimer > 0 ? (
-                    <>
-                      <span style={styles.resendLabel}>Resend OTP in </span>
-                      <span style={styles.timerBadge}>00:{String(driverTimer).padStart(2, "0")}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span style={styles.resendLabel}>Didn't receive? </span>
-                      <button style={styles.resendLink} onClick={resendDriverOtp}>Resend OTP</button>
-                    </>
-                  )}
+                <label style={lbl}>New Password</label>
+                <div style={{ ...inputWrap, position: "relative" }}>
+                  <span>🔑</span>
+                  <input
+                    type={showDriverNewPassword ? "text" : "password"}
+                    style={{ ...inp, paddingRight: 38 }}
+                    placeholder="Enter new password"
+                    value={driverNewPassword}
+                    onChange={(e) => setDriverNewPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    style={styles.eyeBtn}
+                    onClick={() => setShowDriverNewPassword((v) => !v)}
+                  >
+                    {showDriverNewPassword ? "🙈" : "👁️"}
+                  </button>
                 </div>
+                <label style={lbl}>Confirm Password</label>
+                <div style={{ ...inputWrap, position: "relative" }}>
+                  <span>🔑</span>
+                  <input
+                    type={showDriverConfirmPassword ? "text" : "password"}
+                    style={{ ...inp, paddingRight: 38 }}
+                    placeholder="Confirm new password"
+                    value={driverConfirmPassword}
+                    onChange={(e) => setDriverConfirmPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    style={styles.eyeBtn}
+                    onClick={() => setShowDriverConfirmPassword((v) => !v)}
+                  >
+                    {showDriverConfirmPassword ? "🙈" : "👁️"}
+                  </button>
+                </div>
+                <button style={styles.successBtn} onClick={resetDriverPassword}>Reset Password</button>
+                <button style={{ ...styles.resendLink, width: "100%", textAlign: "center", marginTop: 10 }} onClick={() => { setDriverResetMode(false); clear(); }}>
+                  Back to login
+                </button>
               </>
             )}
           </>
@@ -434,6 +469,18 @@ const styles = {
     fontSize: 15,
     cursor: "pointer",
     marginTop: 10,
+  },
+  eyeBtn: {
+    position: "absolute",
+    right: 10,
+    top: "50%",
+    transform: "translateY(-50%)",
+    border: "none",
+    background: "none",
+    color: "#475569",
+    fontSize: 18,
+    cursor: "pointer",
+    padding: 4,
   },
   phoneRow: {
     display: "flex",
