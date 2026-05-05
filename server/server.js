@@ -80,9 +80,38 @@ const logoUpload = multer({
 // ═══ HELPERS ═══
 const safeMobile = (val) => {
   if (val === null || val === undefined || val === "") return null;
-  const n = parseInt(String(val).replace(/\D/g, ""), 10);
-  return isNaN(n) ? null : n;
+  const digits = String(val).replace(/\D/g, "");
+  return digits || null;
 };
+const normalizeMobileVariants = (val) => {
+  const digits = safeMobile(val);
+  if (!digits) return null;
+  const variants = new Set();
+  const addVariant = (v) => { if (v) variants.add(v); };
+
+  if (digits.length === 10) {
+    addVariant(digits);
+    addVariant(`91${digits}`);
+    addVariant(`+91${digits}`);
+    addVariant(`0${digits}`);
+  } else if (digits.length === 11 && digits.startsWith("0")) {
+    const last10 = digits.slice(-10);
+    addVariant(last10);
+    addVariant(`91${last10}`);
+    addVariant(`+91${last10}`);
+    addVariant(digits);
+  } else if (digits.length === 12 && digits.startsWith("91")) {
+    const last10 = digits.slice(-10);
+    addVariant(digits);
+    addVariant(`+${digits}`);
+    addVariant(last10);
+    addVariant(`0${last10}`);
+  } else {
+    addVariant(digits);
+  }
+  return Array.from(variants);
+};
+const DEFAULT_DRIVER_PASSWORD = "Driver@123";
 const safeDate = (val) => {
   if (!val) return null;
   const s = String(val).trim();
@@ -127,7 +156,7 @@ io.on("connection", (socket) => {
 });
 
 // ─── LOGIN ───────────────────────────────────
-app.post("/api/login", upload.none(), (req, res) => {
+app.post("/api/login", (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ success: false, message: "Username and password are required" });
   db.query("SELECT * FROM SUPPORTTEAM WHERE USERNAME = ? AND PASSWORD = ?", [username, password], (err, results) => {
@@ -275,27 +304,149 @@ app.post("/api/drivers/verify-otp", (req, res) => {
   delete otpStore[phone];
   
   // Find driver by phone number
-  db.query("SELECT ID as id, NAME as name, MOBILE as mobile, DRIVER_NO as driver_no, STATUS as status FROM DRIVERS WHERE MOBILE = ?", [phone], (err, results) => {
-    if (err) return res.status(500).json({ success: false, message: "Database error" });
-    if (!results || results.length === 0) return res.status(404).json({ success: false, message: "Driver not found with this phone number" });
-    
-    const driver = results[0];
-    return res.json({ success: true, message: "OTP verified successfully", driver });
-  });
+  const mobileVariants = normalizeMobileVariants(phone);
+  if (!mobileVariants) return res.status(400).json({ success: false, message: "Invalid phone number" });
+  const placeholders = mobileVariants.map(() => "?").join(", ");
+  const normalizedMobileSql = "REPLACE(REPLACE(REPLACE(REPLACE(TRIM(MOBILE), '+', ''), ' ', ''), '-', ''), '(', '')";
+  db.query(
+    `SELECT ID as id, NAME as name, MOBILE as mobile, DRIVER_NO as driver_no, STATUS as status FROM DRIVERS WHERE ${normalizedMobileSql} IN (${placeholders})`,
+    mobileVariants,
+    (err, results) => {
+      if (err) return res.status(500).json({ success: false, message: "Database error" });
+      if (!results || results.length === 0) {
+        console.info("Driver OTP verify no match for variants:", mobileVariants);
+        return res.status(404).json({ success: false, message: "Driver not found with this phone number" });
+      }
+      
+      const driver = results[0];
+      return res.json({ success: true, message: "OTP verified successfully", driver });
+    }
+  );
 });
 
 app.post("/api/drivers/login", (req, res) => {
   const { phone, password } = req.body;
   if (!phone || !password) return res.status(400).json({ success: false, message: "Phone and password are required" });
-  const mobile = safeMobile(phone);
-  if (!mobile) return res.status(400).json({ success: false, message: "Invalid phone number" });
-  db.query("SELECT ID as id, NAME as name, MOBILE as mobile, DRIVER_NO as driver_no, STATUS as status FROM DRIVERS WHERE MOBILE = ? AND PASSWORD = ?", [mobile, password.trim()], (err, results) => {
-    if (err) {
-      console.error("Driver login DB error:", err.sqlMessage || err.message);
-      return res.status(500).json({ success: false, message: "Database error", error: err.sqlMessage || err.message });
+  const mobileVariants = normalizeMobileVariants(phone);
+  if (!mobileVariants) return res.status(400).json({ success: false, message: "Invalid phone number" });
+  const passwordTrim = String(password).trim();
+
+  const placeholders = mobileVariants.map(() => "?").join(", ");
+  const normalizedMobileSql = "REPLACE(REPLACE(REPLACE(REPLACE(TRIM(MOBILE), '+', ''), ' ', ''), '-', ''), '(', '')";
+  db.query(
+    `SELECT ID as id, NAME as name, MOBILE as mobile, DRIVER_NO as driver_no, STATUS as status, PASSWORD FROM DRIVERS WHERE ${normalizedMobileSql} IN (${placeholders})`,
+    mobileVariants,
+    (err, results) => {
+      if (err) {
+        console.error("Driver login DB error:", err.sqlMessage || err.message);
+        return res.status(500).json({ success: false, message: "Database error", error: err.sqlMessage || err.message });
+      }
+      if (!results || results.length === 0) {
+        console.info("Driver login no match for variants:", mobileVariants);
+        return res.status(400).json({ success: false, message: "Invalid phone or password" });
+      }
+
+      const driver = results[0];
+      const storedPassword = driver.PASSWORD;
+      const storedTrimmed = storedPassword !== null ? String(storedPassword).trim() : "";
+      const hasStoredPassword = storedTrimmed !== "";
+      const passwordMatches = hasStoredPassword && storedTrimmed === passwordTrim;
+      const defaultPasswordMatch = passwordTrim === DEFAULT_DRIVER_PASSWORD;
+      const allowDefaultLogin = defaultPasswordMatch && (!hasStoredPassword || storedTrimmed === DEFAULT_DRIVER_PASSWORD || storedTrimmed === "123456");
+
+      if (!passwordMatches && !allowDefaultLogin) {
+        return res.status(400).json({ success: false, message: "Invalid phone or password" });
+      }
+
+      if (allowDefaultLogin && storedTrimmed !== DEFAULT_DRIVER_PASSWORD) {
+        db.query("UPDATE DRIVERS SET PASSWORD = ? WHERE ID = ?", [DEFAULT_DRIVER_PASSWORD, driver.id], (updateErr) => {
+          if (updateErr) {
+            console.error("Default driver password update failed:", updateErr.sqlMessage || updateErr.message);
+          }
+        });
+      }
+
+      delete driver.PASSWORD;
+      return res.json({ success: true, message: "Login successful", driver });
     }
-    if (!results || results.length === 0) return res.status(400).json({ success: false, message: "Invalid phone or password" });
-    return res.json({ success: true, message: "Login successful", driver: results[0] });
+  );
+});
+
+app.get("/api/drivers/lookup", (req, res) => {
+  const { phone } = req.query;
+  if (!phone) return res.status(400).json({ success: false, message: "Phone is required" });
+  const mobileVariants = normalizeMobileVariants(phone);
+  if (!mobileVariants) return res.status(400).json({ success: false, message: "Invalid phone number" });
+
+  const placeholders = mobileVariants.map(() => "?").join(", ");
+  const normalizedMobileSql = "REPLACE(REPLACE(REPLACE(REPLACE(TRIM(MOBILE), '+', ''), ' ', ''), '-', ''), '(', '')";
+  db.query(
+    `SELECT ID as id, NAME as name, MOBILE as mobile, DRIVER_NO as driver_no, STATUS as status FROM DRIVERS WHERE ${normalizedMobileSql} IN (${placeholders})`,
+    mobileVariants,
+    (err, results) => {
+      if (err) return res.status(500).json({ success: false, message: "Database error" });
+      if (!results || results.length === 0) {
+        return res.status(404).json({ success: false, message: "Driver not found" });
+      }
+      return res.json({ success: true, driver: results[0] });
+    }
+  );
+});
+
+app.post("/api/drivers/change-password", (req, res) => {
+  const { driverId, phone, currentPassword, newPassword } = req.body;
+  if (!newPassword || String(newPassword).trim().length < 4) {
+    return res.status(400).json({ success: false, message: "New password must be at least 4 characters" });
+  }
+  if (!currentPassword || !String(currentPassword).trim()) {
+    return res.status(400).json({ success: false, message: "Current password is required" });
+  }
+  if (!driverId && !phone) {
+    return res.status(400).json({ success: false, message: "Driver ID or phone is required" });
+  }
+
+  const executeLookup = (query) => {
+    db.query(query.sql, query.params, (err, results) => {
+      if (err) return res.status(500).json({ success: false, message: "Database error" });
+      if (!results || results.length === 0) {
+        return res.status(404).json({ success: false, message: "Driver not found" });
+      }
+      const driver = results[0];
+      const storedPassword = driver.PASSWORD;
+      const storedTrimmed = storedPassword !== null ? String(storedPassword).trim() : "";
+      const hasStoredPassword = storedTrimmed !== "";
+      const currentTrim = String(currentPassword).trim();
+      const passwordMatches = hasStoredPassword && storedTrimmed === currentTrim;
+      const defaultPasswordMatch = currentTrim === DEFAULT_DRIVER_PASSWORD;
+      const allowDefaultLogin = defaultPasswordMatch && (!hasStoredPassword || storedTrimmed === DEFAULT_DRIVER_PASSWORD || storedTrimmed === "123456");
+
+      if (!passwordMatches && !allowDefaultLogin) {
+        return res.status(400).json({ success: false, message: "Current password is invalid" });
+      }
+
+      db.query("UPDATE DRIVERS SET PASSWORD = ? WHERE ID = ?", [String(newPassword).trim(), driver.id], (updateErr) => {
+        if (updateErr) {
+          console.error("Change password DB error:", updateErr.sqlMessage || updateErr.message);
+          return res.status(500).json({ success: false, message: "Database error" });
+        }
+        return res.json({ success: true, message: "Password updated successfully" });
+      });
+    });
+  };
+
+  if (driverId) {
+    executeLookup({ sql: "SELECT ID as id, NAME as name, MOBILE as mobile, STATUS as status, PASSWORD FROM DRIVERS WHERE ID = ?", params: [driverId] });
+    return;
+  }
+
+  const mobileVariants = normalizeMobileVariants(phone);
+  if (!mobileVariants) {
+    return res.status(400).json({ success: false, message: "Invalid phone number" });
+  }
+  const normalizedMobileSql = "REPLACE(REPLACE(REPLACE(REPLACE(TRIM(MOBILE), '+', ''), ' ', ''), '-', ''), '(', '')";
+  executeLookup({
+    sql: `SELECT ID as id, NAME as name, MOBILE as mobile, STATUS as status, PASSWORD FROM DRIVERS WHERE ${normalizedMobileSql} IN (${mobileVariants.map(() => "?").join(", ")})`,
+    params: mobileVariants,
   });
 });
 
@@ -305,10 +456,12 @@ app.post("/api/drivers/reset-password", (req, res) => {
   if (!phone || !newPassword) return res.status(400).json({ success: false, message: "Phone and new password are required" });
   if (String(newPassword).trim().length < 4) return res.status(400).json({ success: false, message: "New password must be at least 4 characters" });
 
-  const mobile = safeMobile(phone);
-  if (!mobile) return res.status(400).json({ success: false, message: "Invalid phone number" });
+  const mobileVariants = normalizeMobileVariants(phone);
+  if (!mobileVariants) return res.status(400).json({ success: false, message: "Invalid phone number" });
+  const placeholders = mobileVariants.map(() => "?").join(", ");
+  const normalizedMobileSql = "REPLACE(REPLACE(REPLACE(REPLACE(TRIM(MOBILE), '+', ''), ' ', ''), '-', ''), '(', '')";
 
-  db.query("UPDATE DRIVERS SET PASSWORD = ? WHERE MOBILE = ?", [newPassword.trim(), mobile], (err, result) => {
+  db.query(`UPDATE DRIVERS SET PASSWORD = ? WHERE ${normalizedMobileSql} IN (${placeholders})`, [newPassword.trim(), ...mobileVariants], (err, result) => {
     if (err) {
       console.error("Reset password DB error:", err.sqlMessage || err.message);
       return res.status(500).json({ success: false, message: "Database error" });
@@ -885,7 +1038,7 @@ app.get("/api/customer", (req, res) => {
 app.post("/api/adddrivers", upload.none(), (req, res) => {
   const { name, status, paymentmode, location, experience, feeDetails, age, licenceNo, gender, car_type, lat, lng, payactive, driver_no, father_name, qualification, badge_no, alt_no, cur_address, per_address, region, bike_status, driver_status, remarks, engaged, password } = req.body;
   const mobile = safeMobile(req.body.mobile), dob = safeDate(req.body.dob), joinDate = safeDate(req.body.join_date), licExpiry = safeDate(req.body.license_expiry_date), blood = normalizeBlood(req.body.bloodgrp);
-  const passwordValue = String(password || "123456").trim();
+  const passwordValue = String(password || DEFAULT_DRIVER_PASSWORD).trim();
   db.query(
     `INSERT INTO DRIVERS (NAME,MOBILE,LOCATION,EXPERIENCE,FEES_DETAILS,DOB,BLOODGRP,AGE,GENDER,CAR_TYPE,LICENCENO,LAT,LNG,PAYMENT_METHOD,STATUS,PAYACTIVE,DRIVER_NO,FATHER_NAME,QUALIFICATION,BADGE_NO,JOIN_DATE,ALT_NO,CUR_ADDRESS,PER_ADDRESS,REGION,BIKE_STATUS,DRIVER_STATUS,REMARKS,ENGAGED,PASSWORD,LICENSE_EXPIRY_DATE) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [safeStr(name), safeStr(mobile?.toString()), safeStr(location), safeStr(experience, 50), safeStr(feeDetails, 50), dob, blood, safeStr(age, 10), safeStr(gender, 10), safeStr(car_type, 50), safeStr(licenceNo, 50), lat || null, lng || null, safeStr(paymentmode, 50), status || "offline", safeStr(payactive, 20), safeStr(driver_no, 50), safeStr(father_name), safeStr(qualification, 100), safeStr(badge_no, 50), joinDate, safeStr(alt_no, 50), safeStr(cur_address), safeStr(per_address), safeStr(region, 100), safeStr(bike_status, 20), safeStr(driver_status, 20), safeStr(remarks), safeStr(engaged, 10) || "No", safeStr(passwordValue), licExpiry],

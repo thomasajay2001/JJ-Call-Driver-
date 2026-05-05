@@ -17,6 +17,15 @@ const ProfileTab = () => {
   const [showEditName, setShowEditName] = useState(false);
   const [tempName,     setTempName]     = useState("");
 
+  /* Change password */
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
+
   useEffect(() => {
     const storedRole = localStorage.getItem("role");
     setRole(storedRole);
@@ -69,6 +78,46 @@ const ProfileTab = () => {
     }
   };
 
+  const handlePasswordChange = async () => {
+    setPasswordMessage("");
+    setPasswordError("");
+    if (!currentPassword.trim()) {
+      setPasswordError("Enter your current password");
+      return;
+    }
+    if (!newPassword.trim()) {
+      setPasswordError("Enter a new password");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New passwords do not match");
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      const driverId = localStorage.getItem("driverId");
+      const res = await axios.post(`${BASE_URL}/api/drivers/change-password`, {
+        driverId,
+        currentPassword: currentPassword.trim(),
+        newPassword: newPassword.trim(),
+      });
+      if (res.data.success) {
+        setPasswordMessage(res.data.message || "Password updated successfully");
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setShowPasswordModal(false);
+      } else {
+        setPasswordError(res.data.message || "Failed to update password");
+      }
+    } catch (err) {
+      setPasswordError(err.response?.data?.message || "Failed to update password");
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div style={styles.center}>
@@ -101,6 +150,53 @@ const ProfileTab = () => {
         </div>
       )}
 
+      {/* ── Password Change Modal ── */}
+      {showPasswordModal && (
+        <div style={modalOverlay}>
+          <div style={modalBox}>
+            <h3 style={modalTitle}>Change Password</h3>
+            <div style={styles.fieldWrap}>
+              <label style={styles.fieldLabel}>Current Password</label>
+              <input
+                style={styles.fieldInput}
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Current password"
+              />
+            </div>
+            <div style={styles.fieldWrap}>
+              <label style={styles.fieldLabel}>New Password</label>
+              <input
+                style={styles.fieldInput}
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="New password"
+              />
+            </div>
+            <div style={styles.fieldWrap}>
+              <label style={styles.fieldLabel}>Confirm Password</label>
+              <input
+                style={styles.fieldInput}
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+              />
+            </div>
+            {passwordMessage && <p style={styles.successText}>{passwordMessage}</p>}
+            {passwordError && <p style={styles.errorText}>{passwordError}</p>}
+            <div style={modalBtns}>
+              <button style={cancelBtn} onClick={() => { setShowPasswordModal(false); setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); setPasswordMessage(""); setPasswordError(""); }}>Cancel</button>
+              <button style={saveBtn} onClick={handlePasswordChange} disabled={passwordLoading}>
+                {passwordLoading ? "Updating..." : "Update"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─── DRIVER PROFILE ─── */}
       {role === "driver" && profile && (
         <>
@@ -128,6 +224,11 @@ const ProfileTab = () => {
           <InfoCard label="Mobile"      value={profile.MOBILE} />
           <InfoCard label="Blood Group" value={profile.BLOODGRP || "—"} />
           <InfoCard label="🪪 Licence No"  value={profile.LICENCENO || "—"} />
+
+          {/* Update Password Button */}
+          <div style={styles.passwordCard}>
+            <button style={styles.primaryBtn} onClick={() => setShowPasswordModal(true)}>Update Password</button>
+          </div>
 
           {/* Rides */}
           <div style={styles.ridesCard}>
@@ -263,6 +364,63 @@ const styles = {
     fontSize: 15,
     fontWeight: 600,
     color: "#333",
+  },
+  passwordCard: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 20,
+    marginBottom: 16,
+    boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+  },
+  passwordTitle: {
+    margin: "0 0 12px",
+    fontSize: 15,
+    fontWeight: 700,
+    color: "#1E293B",
+  },
+  fieldWrap: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    marginBottom: 12,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    color: "#475569",
+    fontWeight: 600,
+  },
+  fieldInput: {
+    width: "100%",
+    border: "1px solid #CBD5E1",
+    borderRadius: 12,
+    padding: "12px 14px",
+    fontSize: 15,
+    outline: "none",
+    color: "#1E293B",
+    backgroundColor: "#F8FAFC",
+  },
+  primaryBtn: {
+    width: "100%",
+    padding: "14px 0",
+    borderRadius: 12,
+    backgroundColor: "#2563EB",
+    border: "none",
+    color: "#fff",
+    fontWeight: 700,
+    cursor: "pointer",
+    fontSize: 15,
+  },
+  successText: {
+    color: "#16A34A",
+    margin: "0 0 10px",
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  errorText: {
+    color: "#DC2626",
+    margin: "0 0 10px",
+    fontSize: 14,
+    fontWeight: 600,
   },
   ridesCard: {
     backgroundColor: "#c8e4fe",

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { BASE_URL } from "../../utils/constants";
+import { BASE_URL, DEFAULT_DRIVER_PASSWORD } from "../../utils/constants";
 
 /* ═══════════════════════════════════════════
    LoginTab — User OTP login + Driver ID login
@@ -15,13 +15,53 @@ const LoginTab = ({ onLogin }) => {
 
   /* Driver login */
   const [driverPhone,      setDriverPhone]      = useState("");
-  const [driverPassword,   setDriverPassword]   = useState("");
-  const [driverResetMode,  setDriverResetMode]  = useState(false);
-  const [driverNewPassword, setDriverNewPassword] = useState("");
-  const [driverConfirmPassword, setDriverConfirmPassword] = useState("");
-  const [showDriverPassword, setShowDriverPassword] = useState(false);
-  const [showDriverNewPassword, setShowDriverNewPassword] = useState(false);
+  const [driverPassword,         setDriverPassword]         = useState("");
+  const [driverResetMode,        setDriverResetMode]        = useState(false);
+  const [driverCurrentPassword,  setDriverCurrentPassword]  = useState("");
+  const [driverNewPassword,      setDriverNewPassword]      = useState("");
+  const [driverConfirmPassword,  setDriverConfirmPassword]  = useState("");
+  const [driverPreview,          setDriverPreview]          = useState(null);
+  const [driverLookupLoading,    setDriverLookupLoading]    = useState(false);
+  const [driverLookupError,      setDriverLookupError]      = useState("");
+  const [showDriverPassword,     setShowDriverPassword]     = useState(false);
+  const [showDriverCurrentPassword, setShowDriverCurrentPassword] = useState(false);
+  const [showDriverNewPassword,  setShowDriverNewPassword]  = useState(false);
   const [showDriverConfirmPassword, setShowDriverConfirmPassword] = useState(false);
+
+  useEffect(() => {
+    if (driverPhone.length !== 10) {
+      setDriverPreview(null);
+      setDriverLookupError("");
+      return;
+    }
+
+    let cancelled = false;
+    const lookupDriver = async () => {
+      setDriverLookupLoading(true);
+      setDriverLookupError("");
+      try {
+        const res = await axios.get(`${BASE_URL}/api/drivers/lookup`, {
+          params: { phone: driverPhone },
+        });
+        if (cancelled) return;
+        if (res.data?.success) {
+          setDriverPreview(res.data.driver);
+        } else {
+          setDriverPreview(null);
+          setDriverLookupError(res.data?.message || "Driver not found");
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setDriverPreview(null);
+        setDriverLookupError(err.response?.data?.message || "Driver not found");
+      } finally {
+        if (!cancelled) setDriverLookupLoading(false);
+      }
+    };
+
+    lookupDriver();
+    return () => { cancelled = true; };
+  }, [driverPhone]);
 
   /* Feedback */
   const [message,      setMessage]      = useState("");
@@ -114,8 +154,8 @@ localStorage.setItem("role", "customer");
       } else {
         setErrorMessage(res.data.message || "Invalid phone or password");
       }
-    } catch {
-      setErrorMessage("Login failed. Check your connection.");
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message || "Login failed. Check your connection.");
     }
   };
 
@@ -123,9 +163,14 @@ localStorage.setItem("role", "customer");
     clear();
     const normalizedPhone = String(driverPhone).replace(/\D/g, "");
     const newPassword = driverNewPassword.trim();
+    const currentPassword = driverCurrentPassword.trim();
 
     if (!normalizedPhone || normalizedPhone.length !== 10) {
       setErrorMessage("Please enter a valid 10-digit phone number");
+      return;
+    }
+    if (!currentPassword) {
+      setErrorMessage("Enter your current password");
       return;
     }
     if (!newPassword) {
@@ -138,22 +183,24 @@ localStorage.setItem("role", "customer");
     }
 
     try {
-      const res = await axios.post(`${BASE_URL}/api/drivers/reset-password`, {
+      const res = await axios.post(`${BASE_URL}/api/drivers/change-password`, {
         phone: normalizedPhone,
+        currentPassword,
         newPassword,
       });
       if (res.data.success) {
         clear();
         setDriverResetMode(false);
+        setDriverCurrentPassword("");
         setDriverNewPassword("");
         setDriverConfirmPassword("");
-        setMessage("Password reset successfully. Please login with your new password.");
+        setMessage("Password updated successfully. Please login with your new password.");
       } else {
-        setErrorMessage(res.data.message || "Failed to reset password");
+        setErrorMessage(res.data.message || "Failed to update password");
       }
     } catch (error) {
-      console.error("Reset password error:", error.response?.data || error.message);
-      setErrorMessage(error.response?.data?.message || "Password reset failed. Check your connection.");
+      console.error("Change password error:", error.response?.data || error.message);
+      setErrorMessage(error.response?.data?.message || "Password update failed. Check your connection.");
     }
   };
 
@@ -164,7 +211,9 @@ localStorage.setItem("role", "customer");
   };
 
   const handleChangeDriverPhone = () => {
-    setDriverPhone(""); setDriverNewPassword(""); setDriverConfirmPassword("");
+    setDriverPhone(""); setDriverCurrentPassword(""); setDriverNewPassword(""); setDriverConfirmPassword("");
+    setDriverPreview(null);
+    setDriverLookupError("");
     clear();
   };
 
@@ -175,7 +224,15 @@ localStorage.setItem("role", "customer");
   };
 
   const switchToDriver = () => {
-    setLoginType("driver"); setDriverPhone(""); setDriverPassword(""); setDriverResetMode(false); setDriverNewPassword(""); setDriverConfirmPassword("");
+    setLoginType("driver");
+    setDriverPhone("");
+    setDriverPassword("");
+    setDriverResetMode(false);
+    setDriverCurrentPassword("");
+    setDriverNewPassword("");
+    setDriverConfirmPassword("");
+    setDriverPreview(null);
+    setDriverLookupError("");
     clear();
   };
 
@@ -277,6 +334,7 @@ localStorage.setItem("role", "customer");
                     onChange={(e) => setDriverPhone(e.target.value.replace(/\D/g, ""))}
                   />
                 </div>
+             
                 <label style={lbl}>Password</label>
                 <div style={{ ...inputWrap, position: "relative" }}>
                   <span>🔒</span>
@@ -292,13 +350,11 @@ localStorage.setItem("role", "customer");
                     style={styles.eyeBtn}
                     onClick={() => setShowDriverPassword((v) => !v)}
                   >
-                    {showDriverPassword ? "🙈" : "👁️"}
+                    {showDriverPassword ? "" : "👁️"}
                   </button>
                 </div>
                 <button style={styles.primaryBtn} onClick={loginDriver}>Login</button>
-                <button style={{ ...styles.resendLink, width: "100%", textAlign: "center", marginTop: 10 }} onClick={() => { setDriverResetMode(true); clear(); }}>
-                  Forgot password?
-                </button>
+                
               </>
             ) : (
               <>
@@ -312,6 +368,24 @@ localStorage.setItem("role", "customer");
                     value={driverPhone}
                     onChange={(e) => setDriverPhone(e.target.value.replace(/\D/g, ""))}
                   />
+                </div>
+                <label style={lbl}>Current Password</label>
+                <div style={{ ...inputWrap, position: "relative" }}>
+                  <span>🔐</span>
+                  <input
+                    type={showDriverCurrentPassword ? "text" : "password"}
+                    style={{ ...inp, paddingRight: 38 }}
+                    placeholder="Enter current password"
+                    value={driverCurrentPassword}
+                    onChange={(e) => setDriverCurrentPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    style={styles.eyeBtn}
+                    onClick={() => setShowDriverCurrentPassword((v) => !v)}
+                  >
+                    {showDriverCurrentPassword ? "🙈" : "👁️"}
+                  </button>
                 </div>
                 <label style={lbl}>New Password</label>
                 <div style={{ ...inputWrap, position: "relative" }}>
@@ -527,5 +601,39 @@ const styles = {
   },
   successMsg: { color: "green",  textAlign: "center", marginTop: 10, fontSize: 14 },
   errorMsg:   { color: "red",    textAlign: "center", marginTop: 10, fontSize: 14 },
+  hintMsg:    { color: "#334155", textAlign: "left", marginTop: 8, marginBottom: 0, fontSize: 13, lineHeight: 1.4 },
   footer: { textAlign: "center", marginTop: 16, color: "#666", fontSize: 12 },
+  driverPreviewCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: "#EFF6FF",
+    marginBottom: 10,
+    border: "1px solid #D1D5DB",
+  },
+  driverAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: "50%",
+    backgroundColor: "#2563EB",
+    color: "#fff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 18,
+    fontWeight: 700,
+  },
+  driverName: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 700,
+    color: "#0F172A",
+  },
+  driverSubtitle: {
+    margin: 0,
+    fontSize: 13,
+    color: "#475569",
+  },
 };
