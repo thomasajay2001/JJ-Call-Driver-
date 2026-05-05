@@ -210,6 +210,7 @@ export default function Booking() {
   const [allDrivers,     setAllDrivers]     = useState([]);
   const [driverMode,     setDriverMode]     = useState("online");
   const [search,         setSearch]         = useState("");
+  const [driverInput,    setDriverInput]    = useState("");
   const [filterTab,      setFilterTab]      = useState("all");
 
   const [reminders,    setReminders]    = useState([]);
@@ -359,11 +360,11 @@ export default function Booking() {
 
   const openEdit = (b) => {
     setEditId(b.id); setEditBooking(b);
-    setAssignMode("assign"); setDriver(""); setDriverMode("online"); setShowForm(true);
+    setAssignMode("assign"); setDriver(""); setDriverMode("online"); setDriverInput(""); setShowForm(true);
   };
   const closeForm = () => {
     setShowForm(false); setEditId(null); setEditBooking(null);
-    setDriver(""); setAssignMode("assign"); setDriverMode("online");
+    setDriver(""); setAssignMode("assign"); setDriverMode("online"); setDriverInput("");
   };
 
   const openBookingEdit = (b) => {
@@ -651,6 +652,12 @@ export default function Booking() {
 
   const selMode            = ASSIGN_MODES.find((m) => m.value === assignMode);
   const currentDriverList  = driverMode === "online" ? drivers : offlineDrivers;
+  const driverOptions      = currentDriverList.map((d) => ({
+    id: d.id,
+    label: `${d.name||d.NAME} — ${d.car_type||"N/A"} (ID:${d.driver_no}) · ${(completedByDriver[String(d.id)] || 0)} trip${(completedByDriver[String(d.id)]||0)!==1 ? "s" : ""}`,
+  }));
+  const selectedDriver     = currentDriverList.find((d) => String(d.id) === String(driver));
+  const selectedDriverLabel = selectedDriver ? `${selectedDriver.name||selectedDriver.NAME} — ${selectedDriver.car_type||"N/A"} (ID:${selectedDriver.driver_no}) · ${(completedByDriver[String(selectedDriver.id)] || 0)} trip${(completedByDriver[String(selectedDriver.id)]||0)!==1 ? "s" : ""}` : "";
 
   /* ══════════════════════════════════════════════════
      RENDER
@@ -1176,19 +1183,27 @@ export default function Booking() {
                       </div>
                     ) : (
                       <>
-                        <select className="form-select" value={driver} onChange={(e) => setDriver(e.target.value)}>
-                          <option value="">— Choose a {driverMode} driver —</option>
-                          {currentDriverList.map((d) => {
-                            const isPref = String(d.id) === String(editBooking.recommended_driver_id);
-                            const trips  = completedByDriver[String(d.id)] || 0;
-                            return (
-                              <option key={d.id} value={d.id}>
-                                {isPref?"⭐ ":""}{d.name||d.NAME} — {d.car_type||"N/A"} (ID:{d.driver_no}) · {trips} trip{trips!==1?"s completed":""}
-                              </option>
-                        
-                            );
-                          })}
-                        </select>
+                        <input
+                          className="form-input"
+                          placeholder={`Choose a ${driverMode} driver or type driver no`}
+                          list="driver-options"
+                          value={driverInput || (driver ? selectedDriverLabel : "")}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setDriverInput(value);
+                            const match = currentDriverList.find((d) => {
+                              const label = `${d.name||d.NAME} — ${d.car_type||"N/A"} (ID:${d.driver_no}) · ${(completedByDriver[String(d.id)] || 0)} trip${(completedByDriver[String(d.id)]||0)!==1 ? "s" : ""}`;
+                              return label === value || String(d.driver_no || "").toLowerCase() === value.trim().toLowerCase();
+                            });
+                            setDriver(match ? match.id : "");
+                          }}
+                          style={{ marginBottom: 10 }}
+                        />
+                        <datalist id="driver-options">
+                          {driverOptions.map((opt) => (
+                            <option key={opt.id} value={opt.label} />
+                          ))}
+                        </datalist>
 
                         {driver && (() => {
                           const sel   = currentDriverList.find((d) => String(d.id) === String(driver));
