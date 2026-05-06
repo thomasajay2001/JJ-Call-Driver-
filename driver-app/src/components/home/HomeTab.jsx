@@ -136,7 +136,7 @@ const HomeTab = () => {
         const p = res.data[0];
         console.log("Driver profile:", p);
         setDriverName(p.NAME || p.name || "Driver");
-        setDriverNo(p.driver_no || "");
+        setDriverNo(p.DRIVER_NO || "");
         setTotalTrips(p.total_rides || 0);
       }
     } catch {}

@@ -29,7 +29,7 @@ const mysql = require("mysql2");
 const db = mysql.createConnection({
   host: "localhost",
   user: "root",
-  password: "Gomathi@123",
+  password: "q2m@123",
   database: "jjdrivers",
 });
 
@@ -1020,7 +1020,7 @@ app.post("/api/bookings/:id/mark-paid", async (req, res) => {
 // ─── DRIVER PROFILE ───────────────────────────
 app.get("/api/drivers/profile", (req, res) => {
   const { driverId } = req.query;
-  db.query(`SELECT d.ID, d.NAME, d.MOBILE, d.BLOODGRP, d.LICENCENO, COUNT(b.id) AS total_rides FROM DRIVERS d LEFT JOIN bookings b ON d.ID = b.driver_id AND b.status = 'completed' WHERE d.ID = ? GROUP BY d.ID`, [driverId], (err, result) => {
+  db.query(`SELECT d.ID, d.NAME, d.MOBILE, d.BLOODGRP, d.LICENCENO, d.DRIVER_NO, COUNT(b.id) AS total_rides FROM DRIVERS d LEFT JOIN bookings b ON d.ID = b.driver_id AND b.status = 'completed' WHERE d.ID = ? GROUP BY d.ID`, [driverId], (err, result) => {
     if (err) return res.status(500).send(err);
     res.json(result);
   });
