@@ -46,6 +46,7 @@ const HomeTab = () => {
   const [acceptedRide,      setAcceptedRide]      = useState(null);
   const [todayEarnings,     setTodayEarnings]     = useState(0);
   const [driverName,        setDriverName]        = useState(localStorage.getItem("driverName") || "Driver");
+  const [driverNo,          setDriverNo]          = useState("");
   const [totalTrips,        setTotalTrips]        = useState(0);
   const [profileLoading,    setProfileLoading]    = useState(false);
   const [recentDriverTrips, setRecentDriverTrips] = useState([]);
@@ -133,7 +134,9 @@ const HomeTab = () => {
       const res = await axios.get(`${BASE_URL}/api/drivers/profile?driverId=${driverId}`);
       if (Array.isArray(res.data) && res.data.length > 0) {
         const p = res.data[0];
+        console.log("Driver profile:", p);
         setDriverName(p.NAME || p.name || "Driver");
+        setDriverNo(p.driver_no || "");
         setTotalTrips(p.total_rides || 0);
       }
     } catch {}
@@ -292,7 +295,7 @@ const HomeTab = () => {
       <div style={st.page}>
         <DriverHeader
           driverName={driverName}
-          driverIdDisplay={DRIVER_ID}
+          driverNo={driverNo}
           onHelpClick={() => setShowHelp(true)}
         />
 

@@ -223,7 +223,8 @@ export default function DriverDashboard() {
     (d.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
     String(d.mobile ?? "").includes(search) ||
     (d.driver_no ?? "").toLowerCase().includes(search.toLowerCase()) ||
-    (d.region ?? "").toLowerCase().includes(search.toLowerCase())
+    (d.region ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (d.driver_status ?? "").toLowerCase().includes(search.toLowerCase())
   );
   const pg = usePagination(filtered, 10);
 
@@ -270,7 +271,7 @@ export default function DriverDashboard() {
       <div className="search-bar">
         <div className="search-wrap">
           <span className="search-icon-pos">🔍</span>
-          <input className="search-input" placeholder="Search by name, mobile, driver no or region..."
+          <input className="search-input" placeholder="Search by name, mobile, driver no, region or status..."
             value={search} onChange={(e) => { setSearch(e.target.value); pg.setPage(1); }} />
         </div>
         <span className="search-result-count">
@@ -288,7 +289,7 @@ export default function DriverDashboard() {
           <table>
             <thead>
               <tr>
-                {["ID", "Driver No", "Name", "Mobile", "Region", "Driver Status", "Actions"].map((h) => (
+                {["Driver ID", "Name", "Mobile", "Region", "Driver Status", "Actions"].map((h) => (
                   <th key={h}>{h}</th>
                 ))}
               </tr>
@@ -304,7 +305,7 @@ export default function DriverDashboard() {
                 </td></tr>
               ) : pg.slice.map((d) => (
                 <tr key={d.id}>
-                  <td><span className="cell-id">{d.id}</span></td>
+                  {/* <td><span className="cell-id">{d.id}</span></td> */}
                   <td style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>{d.driver_no || "—"}</td>
                   <td>
                     <div className="cell-name">

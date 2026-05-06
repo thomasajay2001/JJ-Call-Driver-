@@ -418,12 +418,10 @@ export default function DriverStats() {
                 <div className="ds-header-meta">
                   <span className="ds-header-mobile">{selected.mobile}</span>
                   <span className="ds-meta-sep">·</span>
-                  <span className={statusBadgeClass(selected.status)}>{statusLabel(selected.status)}</span>
                 </div>
               </div>
             </div>
             <div className="dsp-detail-actions">
-              <button className="btn btn-primary btn-sm" onClick={() => navigate("/driver-dashboard")}>✏️ Edit</button>
               <button className="dsp-close-btn" onClick={() => { setSelected(null); setSelectedStats(null); }}>✕</button>
             </div>
           </div>

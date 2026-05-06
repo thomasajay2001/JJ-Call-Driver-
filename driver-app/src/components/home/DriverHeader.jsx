@@ -3,7 +3,7 @@ import React from "react";
 /* ─────────────────────────────────────────
    DriverHeader — Avatar, name, ID, help button
    ───────────────────────────────────────── */
-const DriverHeader = ({ driverName, driverIdDisplay, onHelpClick }) => {
+const DriverHeader = ({ driverName, driverNo, onHelpClick }) => {
   return (
     <header style={styles.header}>
       <div style={styles.left}>
@@ -17,8 +17,8 @@ const DriverHeader = ({ driverName, driverIdDisplay, onHelpClick }) => {
         <div>
           <p style={styles.greet}>Welcome back!</p>
           <p style={styles.name}>{driverName}</p>
-          {driverIdDisplay && (
-            <span style={styles.idBadge}>ID: #{driverIdDisplay}</span>
+          {driverNo && (
+            <p style={styles.driverNo}>Driver ID: {driverNo}</p>
           )}
         </div>
       </div>
@@ -72,6 +72,7 @@ const styles = {
   },
   greet: { margin: 0, fontSize: 12, color: "#64748B", fontWeight: 500 },
   name:  { margin: "2px 0", fontSize: 17, fontWeight: 800, color: "#1E293B" },
+  driverNo: { margin: "2px 0", fontSize: 13, fontWeight: 600, color: "#2563EB" },
   idBadge: {
     display: "inline-block",
     marginTop: 3,

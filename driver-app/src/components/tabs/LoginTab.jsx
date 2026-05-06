@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { BASE_URL, DEFAULT_DRIVER_PASSWORD } from "../../utils/constants";
+import { BASE_URL } from "../../utils/constants";
 
 /* ═══════════════════════════════════════════
    LoginTab — User OTP login + Driver ID login

@@ -138,6 +138,7 @@ const RideTab = () => {
   const [driverPos,   setDriverPos]   = useState(null);
 
   const [allBookings, setAllBookings] = useState([]);
+  const [historyBookings, setHistoryBookings] = useState([]);
   const [histLoading, setHistLoading] = useState(false);
   const [activeTab,   setActiveTab]   = useState("active");
 
@@ -261,11 +262,11 @@ const RideTab = () => {
         const phone = localStorage.getItem("customerPhone") || "";
         if (!phone) return;
         const res = await axios.get(`${BASE_URL}/api/bookings/customer?phone=${phone}`);
-        setAllBookings(Array.isArray(res?.data) ? res.data : []);
+        setHistoryBookings(Array.isArray(res?.data) ? res.data : []);
       } else if (currentRole === "driver") {
         const res  = await axios.get(`${BASE_URL}/api/bookings/driver/all?driverId=${DRIVER_ID}`);
         const list = Array.isArray(res?.data?.data) ? res.data.data : Array.isArray(res?.data) ? res.data : [];
-        setAllBookings(list);
+        setHistoryBookings(list);
       }
     } catch (e) { console.warn("fetchHistory error:", e); }
     finally { setHistLoading(false); }
@@ -280,6 +281,12 @@ const RideTab = () => {
       clearInterval(pollRef.current);
       if (watchId.current) navigator.geolocation.clearWatch(watchId.current);
     };
+  }, []);
+
+  useEffect(() => {
+    if (role === "driver" || role === "customer") {
+      fetchHistory();
+    }
   }, []);
 
   /* reset receiptShown when a new active booking appears */
@@ -384,7 +391,7 @@ const RideTab = () => {
   };
 
   /* ─── filters ─── */
-  const filteredBookings = allBookings.filter((b) => {
+  const filteredBookings = (activeTab === "history" ? historyBookings : allBookings).filter((b) => {
     const dateStr  = toDateStr(b.created_at || b.scheduled_at);
     const monthStr = dateStr.slice(0,7);
     if (dateMode==="today"       && dateStr  !== todayStr())     return false;
@@ -419,7 +426,7 @@ const RideTab = () => {
             🚗 Active Ride {booking && <span style={S.liveDotInline}/>}
           </button>
           <button style={{...S.tabBtn,...(activeTab==="history"?S.tabActive:{})}} onClick={()=>setActiveTab("history")}>
-            📋 All Trips <span style={S.tabCount}>{allBookings.length}</span>
+            📋 All Trips <span style={S.tabCount}>{historyBookings.length}</span>
           </button>
         </div>
 
@@ -488,7 +495,7 @@ const RideTab = () => {
                 </div>
 
                 <div style={S.card}>
-                  <p style={S.cardLabel}>📋 Booking Info</p>
+                  <p style={S.cardLabel}> Booking Info</p>
                   <div style={{display:"flex",gap:12}}>
                     <div style={S.infoChip}><span style={S.infoKey}>Booking ID</span><span style={S.infoVal}>#{booking.id}</span></div>
                     <div style={S.infoChip}><span style={S.infoKey}>Trip Type</span><span style={S.infoVal}>{booking.triptype||"local"}</span></div>
@@ -583,7 +590,7 @@ const RideTab = () => {
           🚗 Active Ride {booking && <span style={S.liveDotInline}/>}
         </button>
         <button style={{...S.tabBtn,...(activeTab==="history"?S.tabActive:{})}} onClick={()=>setActiveTab("history")}>
-          📋 All Bookings <span style={S.tabCount}>{allBookings.length}</span>
+          📋 All Bookings <span style={S.tabCount}>{historyBookings.length}</span>
         </button>
       </div>
 

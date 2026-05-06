@@ -601,10 +601,22 @@ export default function Booking() {
     if (filterTab === "immediate") return !b.is_scheduled;
     return true;
   });
-  const filtered = afterTab.filter((b) =>
-    (b.name||"").toLowerCase().includes(search.toLowerCase()) ||
-    String(b.mobile||"").includes(search)
-  );
+  const filtered = afterTab.filter((b) => {
+    const searchLower = search.toLowerCase();
+    const driverInfo = allDrivers.find((d) => String(d.id) === String(b.driver));
+    const driverNo = driverInfo?.driver_no || b.driver || "";
+    const driverName = driverInfo?.name || driverInfo?.NAME || "";
+    
+    return (
+      (b.name||"").toLowerCase().includes(searchLower) ||
+      String(b.mobile||"").includes(search) ||
+      (b.pickup||"").toLowerCase().includes(searchLower) ||
+      (b.drop||b.drop_location||"").toLowerCase().includes(searchLower) ||
+      String(driverNo).toLowerCase().includes(searchLower) ||
+      driverName.toLowerCase().includes(searchLower) ||
+      (b.status||"").toLowerCase().includes(searchLower)
+    );
+  });
   const pg = usePagination(filtered, 10);
 
   const totalB     = bookings.length;
@@ -706,11 +718,9 @@ export default function Booking() {
 
       {/* ── Filter tabs + search ── */}
       <div style={S.filterRow} className="filter-row-mobile">
-        <div style={S.tabs} className="filter-tabs-mobile">
+        {/* <div style={S.tabs} className="filter-tabs-mobile">
           {[
             { key:"all",       label:"All Bookings", count:bookings.length },
-            { key:"scheduled", label:"📅 Scheduled", count:scheduledCount  },
-            { key:"immediate", label:"⚡ Immediate",  count:immediateCount  },
           ].map((tab) => (
             <button key={tab.key}
               style={{ ...S.tab, ...(filterTab===tab.key ? S.tabActive : {}) }}
@@ -719,10 +729,10 @@ export default function Booking() {
               <span style={{ ...S.tabCount, ...(filterTab===tab.key ? S.tabCountActive : {}) }}>{tab.count}</span>
             </button>
           ))}
-        </div>
+        </div> */}
         <div className="search-wrap search-bar-mobile" style={{ flex:1, maxWidth:320 }}>
           <span className="search-icon-pos">🔍</span>
-          <input className="search-input" placeholder="Search by name or mobile..."
+          <input className="search-input" placeholder="Search name, mobile, pickup, drop, driver, status..."
             value={search} onChange={(e) => { setSearch(e.target.value); pg.setPage(1); }} />
         </div>
         <span className="search-result-count search-result-mobile">
@@ -740,7 +750,7 @@ export default function Booking() {
           <table>
             <thead>
               <tr>
-                {["ID","Customer","Mobile","Date","Pickup","Drop","Assigned Driver","Status","Action"].map((h) => (
+                {["Customer","Mobile Number","Date","Pickup","Drop","Assigned Driver","Status","Action"].map((h) => (
                   <th key={h}>{h}</th>
                 ))}
               </tr>
@@ -783,7 +793,7 @@ export default function Booking() {
                     ...(isScheduled && !isCancelled && !isDone && !isReminder && !isFuture && !isTomorrow && !isToday
                       ? { backgroundColor:"#F0FDFA" } : {}),
                   }}>
-                    <td>
+                    {/* <td>
                       <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
                         <span className="cell-id">{b.id}</span>
                         {b.driver_no && (
@@ -799,7 +809,7 @@ export default function Booking() {
                           </span>
                         )}
                       </div>
-                    </td>
+                    </td> */}
                     <td>
                       <div className="cell-name">
                         <div className="avatar">{(b.name||"?").charAt(0).toUpperCase()}</div>
@@ -814,11 +824,14 @@ export default function Booking() {
                           ? new Date(b.created_at).toLocaleDateString("en-IN", { day:"2-digit", month:"2-digit", year:"numeric" })
                           : "—"}
                     </td>
-                    <td><div className="cell-loc"><span>📍</span><span className="cell-loc-text">{b.pickup}</span></div></td>
-                    <td><div className="cell-loc"><span>🎯</span><span className="cell-loc-text">{b.drop||b.drop_location}</span></div></td>
+                    <td><div className="cell-loc"><span></span><span className="cell-loc-text">{b.pickup}</span></div></td>
+                    <td><div className="cell-loc"><span></span><span className="cell-loc-text">{b.drop||b.drop_location}</span></div></td>
                     <td>
                       {b.driver
-                        ? <span className="badge badge-green">✓ {getDriverName(b.driver)}</span>
+                        ? (() => {
+                            const d = allDrivers.find((d) => String(d.id) === String(b.driver));
+                            return <span className="badge badge-green"> {d?.name || d?.NAME || `Driver #${b.driver}`}(ID:{d?.driver_no || b.driver})</span>;
+                          })()
                         : <span className="badge badge-red">Not Assigned</span>}
                     </td>
                     <td><span className={getStatusClass(b.status)}>{getStatusLabel(b.status)}</span></td>
